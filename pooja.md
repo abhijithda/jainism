@@ -18,4 +18,5 @@ Bada abhisheka jisme dood, dahi, ghee; Padmanandi Panchavinshati: <https://youtu
    Sarvarth siddhi granth: 
    - Samyak kriya definition: Chaitya, Guru, Pravachan poojadi samyak vardhini kriya.
 
-2. Goutam charitra - Vishalakshi (Goutam swami's previous life) after doing upsarga to a muni, and later after getting into right path, asks the same muni for prayaschit. And, the muni suggests to do labdhi vidhan. Watch 18:18 and 24:14 of this video <https://youtu.be/B1eE9dUCnq4?t=1908>.
+2. Gautama charitra - During Vasupujya thirthankar's time, Rani Vishalakshi (Gautama swami's previous life) gives upsarga to a muni, and later after getting into right path, asks the same muni for prayaschit to avoid narak. The muni suggests to do labdhi vidhan vrat which involves doing mahaveera swami pratima's abhisheka with ikshu ras, uttam grut, dadi, jal...
+Watch 18:18 and 24:14 of this video <https://youtu.be/B1eE9dUCnq4?t=1908>.
