@@ -24,3 +24,25 @@ Tiloyapannati - Indra phal (narial, katal, ghanne), pushpa.
 Watch 18:18 and 24:14 of this video <https://youtu.be/B1eE9dUCnq4?t=1908>.
 
 1. Details about Yaksha and Yakshi and their names from Tiloyapannati: <https://youtu.be/EPyreD6pnPk?t=2070>.
+
+1. While reading (bhaktamara stotra with riddhi &) mantra, keep deepa in the front, and dhoop on the left side. Specifically when swaahaa is involved in the mantra.
+
+1. Five Nirmalya items that could be taken from jinendra bhagawan abhisheka/pooja: https://youtu.be/R5gHbgE6Qz4?t=3281
+gandhodhaka
+pushpa
+arati
+gandha (sandal) that is applied on god's legs.
+archana phala
+
+Whatever is offered to yaksha/yakshi or devi/devatas are not considered nirmalya, and can be taken: <https://youtu.be/R5gHbgE6Qz4?t=3275>
+
+1. The hinsa caused during preparation of Asta dravya is like 1 drop of poision falling into the ocean (amount of punya one would get by doing pooja), does ocean become poisonous?
+<https://youtu.be/vajTgZUEY60?t=961>
+
+1. Dravya pooja? Doing pooja with asta dravya. <https://youtu.be/vajTgZUEY60?t=1154>
+
+1. What is bhav pooja? Bhakti paat (chaitya bhakti, pancha guru bhakti) karna: <https://youtu.be/vajTgZUEY60?t=1226>
+
+1. In videha kshetra - there is only way - jinamata (no swethambar, digambar)
+Whatever kriya related to dharma is done is as per jinamata.
+<https://youtu.be/nCy01khbyS4?t=1975>
