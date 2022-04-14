@@ -6,6 +6,8 @@ layout: page
 
 Abhisheka, Archana and Pooja related info.
 
+1. No need to do snaana from head (just normal bath is ok) for doing abhisheka: <https://youtu.be/R3Wc8qjVm3M?t=656> (Includes description of types of bath)
+
 1. Mukut pahen kar karna Abhishek, sir (head) dhak kar nahi: <https://youtu.be/CHdvWoEIhlM?t=327>
 
 1. Phala/Pushpa / Dravya usage: <https://youtu.be/J2hqPH4m-5A?t=1365>
@@ -27,7 +29,7 @@ Watch 18:18 and 24:14 of this video <https://youtu.be/B1eE9dUCnq4?t=1908>.
 
 1. While reading (bhaktamara stotra with riddhi &) mantra, keep deepa in the front, and dhoop on the left side. Specifically when swaahaa is involved in the mantra.
 
-1. Five Nirmalya items that could be taken from jinendra bhagawan abhisheka/pooja: https://youtu.be/R5gHbgE6Qz4?t=3281
+1. Five Nirmalya items that could be taken from jinendra bhagawan abhisheka/pooja: <https://youtu.be/R5gHbgE6Qz4?t=3281>
 gandhodhaka
 pushpa
 arati
