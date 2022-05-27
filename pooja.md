@@ -10,6 +10,9 @@ Abhisheka, Archana and Pooja related info.
 
 1. Mukut pahen kar karna Abhishek, sir (head) dhak kar nahi: <https://youtu.be/CHdvWoEIhlM?t=327>
 
+1. Acharya Gunabhadra - mahapurana - 55th parva (uttara purana), 28th sloka :
+(5th ocean is kshera samudra... And Devatas bring it for Tirthankara Janma Kalyanaka abhisheka): <https://youtu.be/cJjd7Ql1--M?t=810>
+
 1. Phala/Pushpa / Dravya usage: <https://youtu.be/J2hqPH4m-5A?t=1365>
 Vaddaradhane - Elephant does pooja with pusha whenever it sees muni.
 Tiloyapannati - Indra phal (narial, katal, ghanne), pushpa.
