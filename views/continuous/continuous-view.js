@@ -2,7 +2,7 @@
 // Rendering logic is verbatim from master's script.js renderChat().
 // Imports from media.js and read-tracking.js for clean separation.
 
-import { createVideoCard } from '../../core/media.js';
+import { createVideoCard, appendLinkedText } from '../../core/media.js';
 import { getReadBlocks, isBlockTrackable, countTrackableBlocks, updateProgressDisplay } from '../../core/read-tracking.js';
 import { buildReadTick } from '../../core/read-tick.js';
 import { formatIdForDisplay, buildBlockIndex, resolveReference, classifyInsert, hasAnyText, langsWithText, imageUrl } from '../../core/blocks.js';
@@ -181,7 +181,9 @@ export function renderContinuousView(data, container, lang = 'all', opts = {}) {
                 langsWithText(refBlock, langs).forEach(l => {
                     const col = document.createElement('div');
                     col.className = `col-${l}`;
-                    col.innerHTML = `<p>${refBlock.content[l].join(' ')}</p>`;
+                    const refP = document.createElement('p');
+                    appendLinkedText(refP, refBlock.content[l].join(' '));
+                    col.appendChild(refP);
                     contentWrap.appendChild(col);
                 });
 
@@ -216,7 +218,12 @@ export function renderContinuousView(data, container, lang = 'all', opts = {}) {
             langsWithText(block, langs).forEach(l => {
                 const col = document.createElement('div');
                 col.className = `col-${l}`;
-                col.innerHTML = `<p>${block.content[l].join('<br>')}</p>`;
+                const p = document.createElement('p');
+                block.content[l].forEach((line, i) => {
+                    if (i > 0) p.appendChild(document.createElement('br'));
+                    appendLinkedText(p, line);
+                });
+                col.appendChild(p);
                 row.appendChild(col);
             });
 

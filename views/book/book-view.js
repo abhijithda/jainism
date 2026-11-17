@@ -1,6 +1,6 @@
 // book-view.js — Book spread view powered by CSS Multi-column Layout.
 
-import { createVideoCard } from '../../core/media.js';
+import { createVideoCard, appendLinkedText } from '../../core/media.js';
 import { getReadBlocks, isBlockTrackable, countTrackableBlocks, updateProgressDisplay } from '../../core/read-tracking.js';
 import { buildReadTick } from '../../core/read-tick.js';
 import { buildShareButton } from '../../core/share-ui.js';
@@ -81,7 +81,7 @@ function createBookCard(entry, activeLangs, readBlocks) {
         const line = document.createElement('div');
         line.className = `book-lang-line lang-${lang}`;
         line.dataset.lang = lang;
-        line.textContent = block.content[lang].join('\n');
+        appendLinkedText(line, block.content[lang].join('\n'));
         card.appendChild(line);
         if (i < langLines.length - 1) {
             const sep = document.createElement('div');

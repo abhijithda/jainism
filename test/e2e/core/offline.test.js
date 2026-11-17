@@ -143,6 +143,49 @@ test.describe('Offline copy (opt-in service worker)', () => {
         expect(hasIndex).toBe(true);
     });
 
+    // Video thumbnails live in the project (images/thumbs/<videoId>.jpg). They are saved
+    // best effort and are not counted: a video without one (new, or YouTube has none)
+    // shows the plain "Video" tile, and that must never make the copy "incomplete".
+    test('saves the video thumbnails the project has, and a missing one does not make the copy incomplete', async ({ page, context }) => {
+        test.setTimeout(60000);
+        await page.goto('/?sw=on');
+        await toggleOfflineCopy(page);
+        await expect(page.locator('#home-offline-status')).toHaveAttribute('data-state', 'ready', { timeout: 30000 });
+
+        // Which thumbnails does the project actually have?
+        const ids = await page.evaluate(async () => {
+            const data = await (await fetch('data.json')).json();
+            const found = new Set();
+            for (const item of data) for (const b of item.blocks || []) for (const v of b.videos || []) if (v.youtubeId) found.add(v.youtubeId);
+            return [...found];
+        });
+        const have = [];
+        for (const id of ids) {
+            const res = await page.request.get(`images/thumbs/${id}.jpg`);
+            if (res.ok()) have.push(id);
+        }
+        test.skip(have.length === 0, 'no thumbnails in the project yet (run npm run thumbs)');
+
+        // Every one of them is in the saved copy already, before any video card was shown
+        const missing = await page.evaluate(async ids => {
+            const keys = (await (await caches.open('pooja-images-v1')).keys()).map(r => new URL(r.url).pathname);
+            return ids.filter(id => !keys.some(k => k.endsWith(`/images/thumbs/${id}.jpg`)));
+        }, have);
+        expect(missing).toEqual([]);
+
+        // ...and with no network the cards still show their saved thumbnails
+        await context.setOffline(true);
+        await page.reload();
+        await page.locator('.view-toggle-btn[data-view="continuous"]').click();
+        await expect(page.locator('#continuous-container .card').first()).toBeVisible();
+        await expect.poll(() => page.evaluate(() => [...document.querySelectorAll('.video-card img')]
+            .filter(i => i.getAttribute('src').startsWith('images/thumbs/') && i.naturalWidth > 0).length)).toBeGreaterThan(0);
+        // none of them is left as a broken-image box: each is either a picture or the plain tile
+        const broken = await page.evaluate(() => [...document.querySelectorAll('.video-card')]
+            .filter(c => !c.classList.contains('thumb-failed') && c.querySelector('img').naturalWidth === 0).length);
+        expect(broken).toBe(0);
+    });
+
     test('is not registered when the page is opened by automation without ?sw=on', async ({ page }) => {
         await page.goto('/');
         const count = await page.evaluate(async () => (await navigator.serviceWorker.getRegistrations()).length);

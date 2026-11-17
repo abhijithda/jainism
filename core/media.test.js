@@ -1,9 +1,14 @@
 const {
     escapeHtml,
     linkify,
+    splitLinks,
+    appendLinkedText,
     extractYouTubeId,
     buildQrUrl,
     buildYouTubeThumbnailUrl,
+    buildLocalThumbnailUrl,
+    handleThumbnailError,
+    installThumbnailFallback,
     createVideoCard,
     publishImageSize,
     installImageSizeTracking,
@@ -35,6 +40,88 @@ describe('linkify', () => {
     });
 });
 
+describe('splitLinks', () => {
+    test('splits text around an address and loses nothing', () => {
+        expect(splitLinks('See https://example.com/page for more')).toEqual([
+            { text: 'See ' }, { link: 'https://example.com/page' }, { text: ' for more' },
+        ]);
+    });
+
+    test('does not swallow the punctuation that ends a sentence or a bracket', () => {
+        expect(splitLinks('(see https://example.com/a.)')).toEqual([
+            { text: '(see ' }, { link: 'https://example.com/a' }, { text: '.)' },
+        ]);
+        expect(splitLinks('go to https://example.com/a, then b')[1]).toEqual({ link: 'https://example.com/a' });
+    });
+
+    test('keeps a closing bracket that belongs to the address', () => {
+        expect(splitLinks('https://en.wikipedia.org/wiki/Foo_(bar)')).toEqual([{ link: 'https://en.wikipedia.org/wiki/Foo_(bar)' }]);
+    });
+
+    test('a Kannada letter right after the address ends the link', () => {
+        expect(splitLinks('https://forms.gle/abc123ನಲ್ಲಿ ಹಂಚಿಕೊಳ್ಳಿ')).toEqual([
+            { link: 'https://forms.gle/abc123' }, { text: 'ನಲ್ಲಿ ಹಂಚಿಕೊಳ್ಳಿ' },
+        ]);
+    });
+
+    test('keeps query strings, and finds several addresses', () => {
+        const parts = splitLinks('a https://youtu.be/x?si=1&t=2 b https://forms.gle/q c');
+        expect(parts.filter(p => p.link).map(p => p.link)).toEqual(['https://youtu.be/x?si=1&t=2', 'https://forms.gle/q']);
+    });
+
+    test('text with no address comes back as one piece, and empty input as none', () => {
+        expect(splitLinks('no links here')).toEqual([{ text: 'no links here' }]);
+        expect(splitLinks('')).toEqual([]);
+        expect(splitLinks(null)).toEqual([]);
+    });
+
+    test('a bare "https://" is not a link', () => {
+        expect(splitLinks('see https:// later').some(p => p.link)).toBe(false);
+    });
+});
+
+describe('appendLinkedText', () => {
+    test('adds a real link that opens in a new tab, and plain text around it', () => {
+        const p = document.createElement('p');
+        appendLinkedText(p, 'Share it at https://forms.gle/abc123 please.');
+        const a = p.querySelector('a');
+        expect(a.getAttribute('href')).toBe('https://forms.gle/abc123');
+        expect(a.textContent).toBe('https://forms.gle/abc123');
+        expect(a.target).toBe('_blank');
+        expect(a.rel).toBe('noopener noreferrer');
+        expect(a.className).toBe('text-link');
+        expect(p.textContent).toBe('Share it at https://forms.gle/abc123 please.');
+    });
+
+    test('text can never turn into markup', () => {
+        const p = document.createElement('p');
+        appendLinkedText(p, '<img src=x onerror=alert(1)> & <b>bold</b> https://example.com/a');
+        expect(p.querySelector('img')).toBeNull();
+        expect(p.querySelector('b')).toBeNull();
+        expect(p.textContent).toContain('<img src=x onerror=alert(1)> & <b>bold</b>');
+        expect(p.querySelectorAll('a')).toHaveLength(1);
+    });
+
+    test('keeps line breaks in the text', () => {
+        const p = document.createElement('p');
+        appendLinkedText(p, 'one\ntwo https://example.com/a');
+        expect(p.textContent).toBe('one\ntwo https://example.com/a');
+    });
+
+    test('clicking the link does not also click the card around it', () => {
+        const card = document.createElement('div');
+        const p = document.createElement('p');
+        card.appendChild(p);
+        document.body.appendChild(card);
+        const outer = jest.fn();
+        card.addEventListener('click', outer);
+        appendLinkedText(p, 'https://example.com/a');
+        p.querySelector('a').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+        expect(outer).not.toHaveBeenCalled();
+        card.remove();
+    });
+});
+
 describe('extractYouTubeId', () => {
     test.each([
         ['https://www.youtube.com/watch?v=dQw4w9WgXcQ', 'dQw4w9WgXcQ'],
@@ -55,16 +142,21 @@ describe('extractYouTubeId', () => {
     });
 });
 
-describe('buildQrUrl / buildYouTubeThumbnailUrl', () => {
-    test('builds a QR API url with the destination encoded', () => {
-        const url = buildQrUrl('https://example.com/a?b=c', 80);
-        expect(url).toBe(
-            'https://api.qrserver.com/v1/create-qr-code/?size=80x80&data=https%3A%2F%2Fexample.com%2Fa%3Fb%3Dc'
-        );
+describe('buildQrUrl / thumbnail urls', () => {
+    test('draws the QR code itself: an SVG data URL, no request to any service', () => {
+        const url = buildQrUrl('https://example.com/a?b=c');
+        expect(url.startsWith('data:image/svg+xml')).toBe(true);
+        expect(url).not.toContain('qrserver');
+        expect(decodeURIComponent(url)).toContain('<svg');
     });
 
-    test('defaults QR size to 100 when not given', () => {
-        expect(buildQrUrl('https://example.com')).toContain('size=100x100');
+    test('the same link gives the same code, and different links differ', () => {
+        expect(buildQrUrl('https://example.com/a')).toBe(buildQrUrl('https://example.com/a'));
+        expect(buildQrUrl('https://example.com/a')).not.toBe(buildQrUrl('https://example.com/b'));
+    });
+
+    test('the local thumbnail is images/thumbs/<id>.jpg', () => {
+        expect(buildLocalThumbnailUrl('dQw4w9WgXcQ')).toBe('images/thumbs/dQw4w9WgXcQ.jpg');
     });
 
     test('builds the standard YouTube thumbnail url from a video id', () => {
@@ -74,26 +166,74 @@ describe('buildQrUrl / buildYouTubeThumbnailUrl', () => {
 });
 
 describe('createVideoCard', () => {
+    const watch = 'https://www.youtube.com/watch?v=dQw4w9WgXcQ';
+
     test('renders a media-wrap with a video thumbnail and a QR overlay for a valid YouTube URL', () => {
-        const html = createVideoCard('https://www.youtube.com/watch?v=dQw4w9WgXcQ');
+        const html = createVideoCard(watch);
         expect(html).toContain('class="media-wrap"');
         expect(html).toContain('class="video-card"');
         expect(html).toContain('class="qr-code"');
-        expect(html).toContain('img.youtube.com/vi/dQw4w9WgXcQ/0.jpg');
     });
 
-    test('uses a print-quality 200px QR — both views share this one card', () => {
-        const html = createVideoCard('https://www.youtube.com/watch?v=dQw4w9WgXcQ');
-        expect(html).toContain('size=200x200');
+    test('the thumbnail is the local copy first, with YouTube as the fallback', () => {
+        const html = createVideoCard(watch);
+        expect(html).toContain('src="images/thumbs/dQw4w9WgXcQ.jpg"');
+        expect(html).toContain('data-fallback-src="https://img.youtube.com/vi/dQw4w9WgXcQ/0.jpg"');
+    });
+
+    test('the QR code is drawn locally — both views share this one card', () => {
+        const html = createVideoCard(watch);
+        expect(html).toContain('<img src="data:image/svg+xml');
+        expect(html).not.toContain('qrserver');
     });
 
     test('the thumbnail is wrapped in a link to the video, opened in a new tab (the play badge hangs off this anchor)', () => {
-        const html = createVideoCard('https://www.youtube.com/watch?v=dQw4w9WgXcQ');
-        expect(html).toMatch(/<a href="https:\/\/www\.youtube\.com\/watch\?v=dQw4w9WgXcQ" target="_blank">\s*<img src="https:\/\/img\.youtube\.com/);
+        const html = createVideoCard(watch);
+        expect(html).toMatch(/<a href="https:\/\/www\.youtube\.com\/watch\?v=dQw4w9WgXcQ" target="_blank">\s*<img src="images\/thumbs\//);
     });
 
     test('returns an empty string for a non-YouTube URL', () => {
         expect(createVideoCard('https://example.com/not-youtube')).toBe('');
+    });
+});
+
+describe('thumbnail fallback (local file -> YouTube -> plain tile)', () => {
+    function cardInDom() {
+        document.body.innerHTML = '<div id="host"></div>';
+        document.getElementById('host').innerHTML = createVideoCard('https://www.youtube.com/watch?v=dQw4w9WgXcQ');
+        return document.querySelector('.video-card img');
+    }
+
+    test('first failure: switches to the YouTube address, once', () => {
+        const img = cardInDom();
+        handleThumbnailError(img);
+        expect(img.getAttribute('src')).toBe('https://img.youtube.com/vi/dQw4w9WgXcQ/0.jpg');
+        expect(img.hasAttribute('data-fallback-src')).toBe(false);
+        expect(document.querySelector('.video-card').classList.contains('thumb-failed')).toBe(false);
+    });
+
+    test('second failure: the card becomes the plain "thumb-failed" tile', () => {
+        const img = cardInDom();
+        handleThumbnailError(img);
+        handleThumbnailError(img);
+        expect(document.querySelector('.video-card').classList.contains('thumb-failed')).toBe(true);
+    });
+
+    test('images that are not video thumbnails are left alone', () => {
+        document.body.innerHTML = '<img id="photo" src="images/x.jpg" data-fallback-src="y.jpg">';
+        const photo = document.getElementById('photo');
+        handleThumbnailError(photo);
+        expect(photo.getAttribute('src')).toBe('images/x.jpg');
+    });
+
+    test('installThumbnailFallback listens for failed loads anywhere in the document', () => {
+        document.body.innerHTML = '';
+        const doc = document.implementation.createHTMLDocument('t');
+        installThumbnailFallback(doc);
+        doc.body.innerHTML = createVideoCard('https://www.youtube.com/watch?v=dQw4w9WgXcQ');
+        const img = doc.querySelector('.video-card img');
+        img.dispatchEvent(new Event('error'));
+        expect(img.getAttribute('src')).toContain('img.youtube.com');
     });
 });
 

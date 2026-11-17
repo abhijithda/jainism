@@ -93,8 +93,13 @@ signal. What it does:
   switch turned off and on again in the same tab), turning on or retrying re-saves
   them as well as the pictures. It retries at most twice per page load and then
   says how to try again (*turn the switch off and on*) instead of looping.
-- **Leaves other sites alone.** YouTube thumbnails and the QR-code service are
-  not saved, so offline they may show as empty boxes; videos need a connection anyway.
+- **Saves the video thumbnails kept in the project** (`images/thumbs/<videoId>.jpg`),
+  best effort and just before the pictures. They are not counted in the
+  "Saving… 4/11" progress, so a video without one never makes the copy look
+  incomplete: it shows the plain "Video" tile.
+- **Leaves other sites alone.** The YouTube fallback for a thumbnail is not saved
+  (offline the card shows the plain tile); videos need a connection anyway. QR codes
+  are drawn by the page itself, so they work offline with nothing to save.
 
 Things to know:
 
@@ -127,6 +132,54 @@ If the site moves, change that one line. `og:url` is left out on purpose
 Chat apps remember a link's preview. After changing `images/og-image.jpg` or the text,
 an already-shared link can keep the old preview for days; sharing the link with
 a changed ending (`…/jainism/?v=2`) shows the new one straight away.
+
+## Video thumbnails and QR codes
+
+**QR codes are drawn in the browser** (`core/qr.js`, used by `createVideoCard` in
+`core/media.js`) from the video link already in `data.json`: no files to keep in
+step, no third-party service, and they work offline and as vector shapes in the
+PDFs. The encoder handles QR versions 1-20 (a link needs 10 at most). It was
+checked by decoding its output with OpenCV: every version at all four error
+correction levels, the first and last text length of each version, all the video
+links in `data.json`, and Kannada text. `core/qr.test.js` keeps three
+known-answer codes.
+
+**Thumbnails are kept in the repo** as `images/thumbs/<videoId>.jpg`, so they
+work in the offline copy, the print builds don't depend on YouTube being
+reachable, and a video that is later deleted keeps the picture that shows what
+it was.
+
+- Add or change a video in `data.json`, then run `npm run thumbs` (needs
+  internet; downloads only what is missing) and commit `images/thumbs/` and
+  `thumbs-unavailable.json`. Or run the **Update Thumbnails** GitHub workflow
+  (Actions tab; `commit` pushes them to the branch, `artifact` gives you a zip to
+  review first). It is quick: it only needs Node, no `npm ci`, no browsers.
+- `npm run thumbs:check` lists missing thumbnails without using the network. The
+  Jest test in `data.test.js` runs the same check, so CI fails (naming the video
+  ids) instead of readers seeing an empty box.
+- YouTube answers a deleted or private video with a 404 or a small grey stand-in
+  picture. Those are not saved; the id is recorded in `thumbs-unavailable.json`
+  so it isn't retried on every run (`--retry-unavailable` looks again). The page
+  then falls back to whatever YouTube itself returns.
+- In the page, a thumbnail that fails to load tries YouTube once, and if that
+  fails too (offline) the card shows a plain dark "Video" tile
+  (`.video-card.thumb-failed`) instead of a broken-image box.
+- The print run (`scripts/render-prints.js`) waits for that whole chain to settle
+  (`scripts/wait-for-images.js`), including the second try, before it makes each PDF.
+- The e2e fixture's videos (`test/data.json`) are fetched too, so the screenshot
+  tests don't depend on the internet.
+- **Order matters after changing either:** the print/e2e screenshot baselines
+  contain thumbnails and QR codes. Run *Update Thumbnails* first, then *Update
+  Playwright Snapshots*.
+
+## Links in text
+
+A web address typed into a block's text (for example the Google Form link in a
+"PS:" note) becomes a real link in Book, Continuous and shared-link views
+(`appendLinkedText` in `core/media.js`). Text is added as DOM text, never as
+HTML, so nothing in `data.json` can turn into markup. A link ends at a space,
+trailing punctuation or a non-ASCII letter (so `…/abc123ನಲ್ಲಿ` links only
+`…/abc123`).
 
 ## License
 

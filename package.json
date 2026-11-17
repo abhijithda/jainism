@@ -17,6 +17,8 @@
     "test:e2e": "playwright test",
     "test": "npm run test:unit && npm run test:e2e",
     "render:prints": "node scripts/render-prints.js",
+    "thumbs": "node scripts/fetch-thumbs.js",
+    "thumbs:check": "node scripts/fetch-thumbs.js --check",
     "impose:booklet": "node scripts/impose-booklet.js"
   },
   "jest": {

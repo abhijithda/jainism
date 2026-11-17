@@ -139,3 +139,29 @@ describe('Data Layer Validation', () => {
     });
   });
 });
+
+// Video thumbnails are kept in the repo (images/thumbs/<videoId>.jpg) so they work
+// in the offline copy and the print builds don't depend on YouTube. A video with
+// no thumbnail yet is caught here, before readers see an empty box.
+describe('Video thumbnails', () => {
+  const data = JSON.parse(fs.readFileSync(path.join(__dirname, 'data.json'), 'utf8'));
+  const ids = [...new Set(data.flatMap((i) => (i.blocks || []).flatMap((b) => (b.videos || []).map((v) => v.youtubeId))))];
+  let unavailable = [];
+  try {
+    unavailable = JSON.parse(fs.readFileSync(path.join(__dirname, 'thumbs-unavailable.json'), 'utf8')).ids || [];
+  } catch (e) { /* no list yet */ }
+
+  test('every video has a saved thumbnail, or is listed as unavailable', () => {
+    const missing = ids.filter((id) => !unavailable.includes(id) && !fs.existsSync(path.join(__dirname, 'images', 'thumbs', `${id}.jpg`)));
+    if (missing.length) {
+      console.error(`Videos without a thumbnail in images/thumbs/: ${missing.join(', ')}\n`
+        + 'Fix: run  npm run thumbs   (or the "Update Thumbnails" GitHub workflow) and commit the result.');
+    }
+    expect(missing).toEqual([]);
+  });
+
+  test('thumbs-unavailable.json only lists ids that are really used by a video', () => {
+    expect(unavailable.filter((id) => !ids.includes(id))).toEqual([]);
+  });
+});
+

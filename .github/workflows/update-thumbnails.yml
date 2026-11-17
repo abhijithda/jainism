@@ -1,0 +1,77 @@
+name: Update Thumbnails
+
+# Manual only — never runs on push/PR. Trigger it from the Actions tab
+# ("Run workflow"), pick the branch and a delivery mode:
+#   commit   — saves any new video thumbnails to images/thumbs/ and pushes them
+#              to the branch (and records videos YouTube has no thumbnail for in
+#              thumbs-unavailable.json)
+#   artifact — uploads them as a downloadable zip for you to review first,
+#              nothing is committed
+# Quick (no npm install, no browsers: scripts/fetch-thumbs.js only needs Node).
+# Run this BEFORE "Update Playwright Snapshots": the screenshot baselines contain
+# the thumbnails. The project is the repository root, so no sub-folder is needed.
+on:
+  workflow_dispatch:
+    inputs:
+      delivery:
+        description: 'How to deliver the thumbnails'
+        required: true
+        type: choice
+        default: commit
+        options:
+          - commit
+          - artifact
+      retry_unavailable:
+        description: 'Look again at videos recorded as unavailable (deleted/private)?'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  update-thumbnails:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+    - name: 📥 Checkout repository
+      uses: actions/checkout@v4
+
+    - name: ⚙️ Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: 20
+
+    - name: 🖼️ Fetch missing video thumbnails
+      run: |
+        if [ "${{ inputs.retry_unavailable }}" = "true" ]; then
+          node scripts/fetch-thumbs.js --retry-unavailable
+        else
+          node scripts/fetch-thumbs.js
+        fi
+
+    - name: 💾 Commit thumbnails
+      if: inputs.delivery == 'commit'
+      run: |
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+        git add -A images/thumbs thumbs-unavailable.json
+        if git diff --cached --quiet; then
+          echo "No thumbnail changes to commit."
+        else
+          git commit -m "chore: update video thumbnails"
+          git push
+        fi
+
+    - name: 📦 Upload thumbnails as an artifact for review
+      if: inputs.delivery == 'artifact'
+      uses: actions/upload-artifact@v4
+      with:
+        name: video-thumbnails
+        path: |
+          images/thumbs/
+          thumbs-unavailable.json
+        retention-days: 14
+        if-no-files-found: warn

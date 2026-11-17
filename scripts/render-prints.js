@@ -33,10 +33,12 @@ const http = require('http');
 const path = require('path');
 const { chromium } = require('@playwright/test');
 const { imposeBooklet } = require('./impose-booklet');
+const { waitForImages } = require('./wait-for-images');
 
 const ROOT = path.join(__dirname, '..');
 const OUT_DIR = path.join(ROOT, 'prints');
 const TITLE = 'Jina Pooja Questions & Answers';
+const IMAGE_WAIT_MS = 30000;
 const FILE_TITLE = 'Jina-Pooja-Questions-and-Answers';   // no spaces or "&" in file names
 
 const ALL_SIZES = ['a4', 'a3'];
@@ -116,10 +118,12 @@ function footerTemplate(showPageNumbers) {
     </div>`;
 }
 
-async function imagesLoaded(page) {
-    await page.evaluate(() => Promise.all(
-        [...document.images].map(img => img.complete ? null : new Promise(r => { img.onload = img.onerror = r; }))
-    ));
+// Waits until every image has settled, INCLUDING the second try a video thumbnail
+// makes after its local file is missing (local -> YouTube -> plain tile); see
+// scripts/wait-for-images.js. A stalled request gives up after 30 s with a warning.
+async function imagesLoaded(page, label) {
+    const stuck = await page.evaluate(waitForImages, IMAGE_WAIT_MS);
+    if (stuck.length) console.warn(`warning: ${label}: ${stuck.length} image(s) still loading after ${IMAGE_WAIT_MS / 1000}s: ${stuck.slice(0, 3).join(', ')}`);
 }
 
 (async () => {
@@ -143,7 +147,7 @@ async function imagesLoaded(page) {
                 await view.ready(page);
                 await selectPaperSize(page, paperSize);
                 await view.ready(page);
-                await imagesLoaded(page);
+                await imagesLoaded(page, `${view.label} ${paperSize.toUpperCase()}`);
 
                 const sizeLabel = paperSize.toUpperCase();
                 // Chrome uses document.title as the PDF's title (what a viewer
