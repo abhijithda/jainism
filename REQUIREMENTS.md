@@ -7,8 +7,8 @@ in their own words, from the development conversation.
 
 ## General
 
-- Building a Jain FAQ website from repo https://github.com/abhijithda/abhijithda.github.io
-- The code is inside jainism/pooja folder
+- Building a Jain FAQ website from repo https://github.com/abhijithda/jainism
+- The code is at the root of this repo
 - Segregate the continuous view and the book view code in the "book" branch
 - Fix regressions in continuous view first — it was branched out of master which has clean continuous view
 

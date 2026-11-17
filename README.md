@@ -120,10 +120,15 @@ description and picture, using `images/og-image.jpg` (1200×630, about 160 KB: W
 may ignore images much over ~300 KB). Chat apps read these tags from the raw
 HTML and never run JavaScript, so they can't be generated in the browser. The
 only address that has to be written out is the one in `og:image`, which must be
-an absolute https URL (`https://abhijithda.github.io/jainism/pooja/images/og-image.jpg`).
+an absolute https URL (`https://abhijithda.github.io/jainism/images/og-image.jpg`).
 If the site moves, change that one line. `og:url` is left out on purpose
 (optional), and X reuses the `og:` title, description and image.
 
 Chat apps remember a link's preview. After changing `images/og-image.jpg` or the text,
 an already-shared link can keep the old preview for days; sharing the link with
-a changed ending (`…/pooja/?v=2`) shows the new one straight away.
+a changed ending (`…/jainism/?v=2`) shows the new one straight away.
+
+## License
+
+- Code: [MIT](LICENSE)
+- Written content (questions, answers, stories): [CC BY-NC-SA 4.0](LICENSE-CONTENT.md). Third-party media (for example linked YouTube videos) is not covered.

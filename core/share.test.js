@@ -37,9 +37,9 @@ describe('parseShareHash', () => {
 describe('building links', () => {
     test('hash and full url round-trip through parseShareHash', () => {
         expect(buildShareHash(['ab1', 'ab2'])).toBe(`${SHARE_PREFIX}ab1,ab2`);
-        const loc = { origin: 'https://x.github.io', pathname: '/jainism/pooja/', search: '?sw=on', hash: '#old' };
+        const loc = { origin: 'https://x.github.io', pathname: '/jainism/', search: '?sw=on', hash: '#old' };
         const url = buildShareUrl(loc, ['ab1']);
-        expect(url).toBe('https://x.github.io/jainism/pooja/#/s/ab1');
+        expect(url).toBe('https://x.github.io/jainism/#/s/ab1');
         expect(parseShareHash(new URL(url).hash)).toEqual(['ab1']);
     });
 });

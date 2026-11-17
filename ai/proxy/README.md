@@ -23,8 +23,8 @@ search and Local mode keep working. Edit the numbers in `wrangler.toml` and rede
 2. **GitHub:** repo Settings -> Secrets and variables -> Actions -> add `CLOUDFLARE_API_TOKEN` and
    `CLOUDFLARE_ACCOUNT_ID`. No AI key is needed.
 3. **Put the workflow at the repo root.** GitHub only runs workflows from `.github/workflows/` at the very top of the
-   repository (`abhijithda.github.io/.github/workflows/deploy-ai-proxy.yml`), not from inside `jainism/pooja/`. The
-   workflow's `PROXY_DIR` (`jainism/pooja/ai/proxy`) says where the proxy is inside the repo; commit and push both.
+   repository (`.github/workflows/deploy-ai-proxy.yml`). The
+   workflow's `PROXY_DIR` (`ai/proxy`) says where the proxy is inside the repo; commit and push both.
 4. **Run** Actions -> *Deploy AI proxy* -> Run workflow. The log prints the Worker URL
    (`https://pooja-ai-proxy.<your-subdomain>.workers.dev`).
 5. Paste that URL into `CLOUD_ENDPOINT` in `ai/config.js`, commit, push. Settings -> AI assistant -> Cloud now works.

@@ -8,7 +8,7 @@ const data = JSON.parse(fs.readFileSync(path.join(__dirname, 'data.json'), 'utf8
 
 function boot(hash) {
   document.documentElement.innerHTML = html.replace(/<script[\s\S]*?<\/script>/g, '');
-  window.history.replaceState(null, '', '/pooja/' + hash);
+  window.history.replaceState(null, '', '/jainism/' + hash);
   global.fetch = jest.fn(async () => ({ json: async () => data }));
   Element.prototype.scrollIntoView = jest.fn();
   window.scrollTo = jest.fn();

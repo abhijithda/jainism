@@ -7,7 +7,7 @@ show_help() {
     echo "Usage: $0 [branch_name] [media_option]"
     echo ""
     echo "Arguments:"
-    echo "  branch_name    The GitHub branch to download (default: 'master')."
+    echo "  branch_name    The GitHub branch to download (default: 'main')."
     echo "  media_option   Set to 'with-media' or 'all' to include images/audio."
     echo "                 (default: excludes media files)."
     echo ""
@@ -15,9 +15,9 @@ show_help() {
     echo "  -h, -help, --help  Show this help message and exit."
     echo ""
     echo "Examples:"
-    echo "  $0                  # Bundles 'master' branch, excludes media"
+    echo "  $0                  # Bundles 'main' branch, excludes media"
     echo "  $0 develop          # Bundles 'develop' branch, excludes media"
-    echo "  $0 master all       # Bundles 'master' branch, includes all media"
+    echo "  $0 main all       # Bundles 'main' branch, includes all media"
     exit 0
 }
 
@@ -26,9 +26,9 @@ if [ "${1:-}" = "-h" ] || [ "${1:-}" = "-help" ] || [ "${1:-}" = "--help" ]; the
     show_help
 fi
 
-BRANCH="${1:-master}"
+BRANCH="${1:-main}"
 MEDIA_OPTION="${2:-exclude}"
-REPO="abhijithda/abhijithda.github.io/jainism/pooja"
+REPO="abhijithda/jainism"
 TMP_DIR="tmp"
 
 mkdir -p "${TMP_DIR}"

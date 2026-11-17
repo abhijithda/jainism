@@ -10,7 +10,7 @@ const path = require('path');
 const vm = require('vm');
 
 const ROOT = __dirname;
-const SCOPE = 'http://localhost/pooja/';
+const SCOPE = 'http://localhost/jainism/';
 
 function loadWorkerHelpers() {
     const source = fs.readFileSync(path.join(ROOT, 'sw.js'), 'utf8');

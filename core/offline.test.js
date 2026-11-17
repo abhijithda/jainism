@@ -129,7 +129,7 @@ function makeEnv({ webdriver = false, search = '', supported = true, enabled = f
     const homeToggle = { checked: false };
     const doc = {
         readyState: 'complete',
-        baseURI: 'https://example.org/jainism/pooja/',
+        baseURI: 'https://example.org/jainism/',
         getElementById: id => ({ [STATUS_ELEMENT_ID]: status, [TOGGLE_ID]: toggle, ['home-' + TOGGLE_ID]: homeToggle })[id] || null,
     };
     const winListeners = {};
@@ -161,7 +161,7 @@ describe('initOffline', () => {
         initOffline(t);
         await flush();
         expect(t.toggle.checked).toBe(true);
-        expect(t.register).toHaveBeenCalledWith('https://example.org/jainism/pooja/sw.js');
+        expect(t.register).toHaveBeenCalledWith('https://example.org/jainism/sw.js');
         expect(t.postMessage).toHaveBeenCalledWith({ type: 'enable' });
     });
 

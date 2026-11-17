@@ -15,7 +15,7 @@ not a description of present behaviour.
 ## Directory Structure
 
 ```
-jainism/pooja/
+jainism/
 ├── index.html, data.json, schema.json, images/
 ├── app.js                      ← entry point; composes everything below
 ├── core/                       ← shared by every view
