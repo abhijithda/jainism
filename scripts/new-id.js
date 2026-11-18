@@ -16,7 +16,7 @@ const fs = require('fs');
 const path = require('path');
 const { randomInt } = require('crypto');
 
-const DATA_PATH = path.join(__dirname, '..', 'data.json');
+const DATA_PATH = path.join(__dirname, '..', 'assets', 'data.json');
 const FILL_COMMAND = 'node scripts/new-id.js --fill';
 
 const LETTERS = 'abcdefghjkmnpqrstuvwxyz';              // first char: a letter, so ids are always valid CSS selectors

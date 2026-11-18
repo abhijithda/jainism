@@ -1,4 +1,4 @@
-# Manual: deploys the Cloud-engine proxy (ai/proxy/) to Cloudflare Workers.
+# Manual: deploys the Cloud-engine proxy (proxy/) to Cloudflare Workers.
 # The site itself is NOT deployed by this (GitHub Pages serves it straight from the repo).
 #
 # WHERE THIS FILE LIVES: GitHub only reads workflows from the REPO ROOT, i.e.
@@ -12,7 +12,7 @@
 #   CLOUDFLARE_ACCOUNT_ID  shown on the Workers & Pages overview page
 #
 # No AI key is needed: the default backend is Cloudflare Workers AI (free). If you switch the proxy to
-# Anthropic (ai/proxy/wrangler.toml), add that key in the Cloudflare dashboard, never as a GitHub secret.
+# Anthropic (proxy/wrangler.toml), add that key in the Cloudflare dashboard, never as a GitHub secret.
 
 name: Deploy AI proxy
 
@@ -23,7 +23,7 @@ permissions:
   contents: read
 
 env:
-  PROXY_DIR: ai/proxy
+  PROXY_DIR: proxy
 
 jobs:
   deploy:

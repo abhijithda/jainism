@@ -102,8 +102,9 @@ describe('run (against a local stand-in for YouTube)', () => {
         requests.length = 0;
         root = fs.mkdtempSync(path.join(os.tmpdir(), 'thumbs-run-'));
         fs.mkdirSync(path.join(root, 'test'));
+        fs.mkdirSync(path.join(root, 'assets'));
         const video = id => ({ blocks: [{ videos: [{ youtubeId: id, url: `https://youtu.be/${id}` }] }] });
-        fs.writeFileSync(path.join(root, 'data.json'), JSON.stringify([
+        fs.writeFileSync(path.join(root, 'assets', 'data.json'), JSON.stringify([
             video('GOOD0000001'), video('GOOD0000002'), video('GONE0000000'), video('GREY0000000'), video('BROKEN00000'),
         ]));
         fs.writeFileSync(path.join(root, 'test', 'data.json'), JSON.stringify([video('FIXT0000001'), video('GOOD0000001')]));
@@ -111,7 +112,7 @@ describe('run (against a local stand-in for YouTube)', () => {
     afterEach(() => { fs.rmSync(root, { recursive: true, force: true }); });
 
     const go = (args = []) => run({ rootDir: root, baseUrl, args, log: () => {} });
-    const saved = () => fs.readdirSync(path.join(root, 'images', 'thumbs')).sort();
+    const saved = () => fs.readdirSync(path.join(root, 'assets', 'images', 'thumbs')).sort();
 
     test('saves real thumbnails (including the test fixture\'s), records deleted and grey ones, and reports a server error without recording it', async () => {
         const s = await go();
@@ -119,7 +120,7 @@ describe('run (against a local stand-in for YouTube)', () => {
         expect(s.downloaded.sort()).toEqual(['FIXT0000001', 'GOOD0000001', 'GOOD0000002']);
         expect([...readUnavailable(path.join(root, 'thumbs-unavailable.json'))].sort()).toEqual(['GONE0000000', 'GREY0000000']);
         expect(s.failed).toEqual(['BROKEN00000']);                    // a server error says nothing about the video
-        expect(fs.statSync(path.join(root, 'images', 'thumbs', 'GOOD0000001.jpg')).size).toBe(30000);
+        expect(fs.statSync(path.join(root, 'assets', 'images', 'thumbs', 'GOOD0000001.jpg')).size).toBe(30000);
     });
 
     test('a second run downloads nothing it already has, and does not ask again about unavailable ones', async () => {

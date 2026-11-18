@@ -154,14 +154,14 @@ test.describe('Offline copy (opt-in service worker)', () => {
 
         // Which thumbnails does the project actually have?
         const ids = await page.evaluate(async () => {
-            const data = await (await fetch('data.json')).json();
+            const data = await (await fetch('assets/data.json')).json();
             const found = new Set();
             for (const item of data) for (const b of item.blocks || []) for (const v of b.videos || []) if (v.youtubeId) found.add(v.youtubeId);
             return [...found];
         });
         const have = [];
         for (const id of ids) {
-            const res = await page.request.get(`images/thumbs/${id}.jpg`);
+            const res = await page.request.get(`assets/images/thumbs/${id}.jpg`);
             if (res.ok()) have.push(id);
         }
         test.skip(have.length === 0, 'no thumbnails in the project yet (run npm run thumbs)');
@@ -169,7 +169,7 @@ test.describe('Offline copy (opt-in service worker)', () => {
         // Every one of them is in the saved copy already, before any video card was shown
         const missing = await page.evaluate(async ids => {
             const keys = (await (await caches.open('pooja-images-v1')).keys()).map(r => new URL(r.url).pathname);
-            return ids.filter(id => !keys.some(k => k.endsWith(`/images/thumbs/${id}.jpg`)));
+            return ids.filter(id => !keys.some(k => k.endsWith(`/assets/images/thumbs/${id}.jpg`)));
         }, have);
         expect(missing).toEqual([]);
 
@@ -179,7 +179,7 @@ test.describe('Offline copy (opt-in service worker)', () => {
         await page.locator('.view-toggle-btn[data-view="continuous"]').click();
         await expect(page.locator('#continuous-container .card').first()).toBeVisible();
         await expect.poll(() => page.evaluate(() => [...document.querySelectorAll('.video-card img')]
-            .filter(i => i.getAttribute('src').startsWith('images/thumbs/') && i.naturalWidth > 0).length)).toBeGreaterThan(0);
+            .filter(i => i.getAttribute('src').startsWith('assets/images/thumbs/') && i.naturalWidth > 0).length)).toBeGreaterThan(0);
         // none of them is left as a broken-image box: each is either a picture or the plain tile
         const broken = await page.evaluate(() => [...document.querySelectorAll('.video-card')]
             .filter(c => !c.classList.contains('thumb-failed') && c.querySelector('img').naturalWidth === 0).length);

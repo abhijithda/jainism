@@ -52,7 +52,7 @@ function syncIndexHtml(html, data) {
 module.exports = { readTitle, syncIndexHtml };
 
 if (require.main === module) {
-    const dataPath = path.join(ROOT, 'data.json');
+    const dataPath = path.join(ROOT, 'assets', 'data.json');
     const htmlPath = path.join(ROOT, 'index.html');
     const html = fs.readFileSync(htmlPath, 'utf8');
     const next = syncIndexHtml(html, JSON.parse(fs.readFileSync(dataPath, 'utf8')));
@@ -63,6 +63,6 @@ if (require.main === module) {
         process.exit(1);
     } else {
         fs.writeFileSync(htmlPath, next);
-        console.log('index.html updated from the title in data.json. Redo images/og-image.jpg if the picture shows the old title.');
+        console.log('index.html updated from the title in data.json. Redo assets/images/og-image.jpg if the picture shows the old title.');
     }
 }

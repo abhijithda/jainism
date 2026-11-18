@@ -4,10 +4,10 @@
 const fs = require('fs');
 const path = require('path');
 const { syncIndexHtml, readTitle } = require('./scripts/sync-title');
-const { getBookTitle } = require('./core/book-title');
+const { getBookTitle } = require('./src/core/book-title');
 
 const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
-const data = JSON.parse(fs.readFileSync(path.join(__dirname, 'data.json'), 'utf8'));
+const data = JSON.parse(fs.readFileSync(path.join(__dirname, 'assets/data.json'), 'utf8'));
 
 test('index.html link-preview title matches data.json (run: npm run sync:title)', () => {
     expect(syncIndexHtml(html, data)).toBe(html);
@@ -34,7 +34,7 @@ test('syncIndexHtml refuses data without a cover title', () => {
 
 test('no other place in the shipped code hard-codes the title', () => {
     const { en, kn } = getBookTitle(data);
-    const files = ['app.js', 'views/book/book-view.js', 'home/home.js', 'scripts/render-prints.js', '.github/workflows/publish-pooja-prints.yml'];
+    const files = ['src/app.js', 'src/views/book/book-view.js', 'src/home/home.js', 'scripts/render-prints.js', '.github/workflows/publish-pooja-prints.yml'];
     files.forEach(f => {
         const src = fs.readFileSync(path.join(__dirname, f), 'utf8');
         expect([f, src.includes(en.title)]).toEqual([f, false]);

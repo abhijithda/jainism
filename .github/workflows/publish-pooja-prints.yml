@@ -62,7 +62,7 @@ jobs:
         echo "date=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
         echo "artifact_name=pooja-prints-$(date -u +%Y%m%d)-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
         # The book's English title, read from data.json (first English line of the cover block).
-        echo "title=$(node -p "((require('./data.json')[0].blocks[0].content.en||[]).map(s=>s.trim()).filter(Boolean)[0])||'Prints'")" >> "$GITHUB_OUTPUT"
+        echo "title=$(node -p "((require('./assets/data.json')[0].blocks[0].content.en||[]).map(s=>s.trim()).filter(Boolean)[0])||'Prints'")" >> "$GITHUB_OUTPUT"
 
     - name: ⚙️ Setup Node.js
       uses: actions/setup-node@v4
