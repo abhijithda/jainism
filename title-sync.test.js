@@ -4,10 +4,10 @@
 const fs = require('fs');
 const path = require('path');
 const { syncIndexHtml, readTitle } = require('./scripts/sync-title');
-const { getBookTitle } = require('./core/book-title');
+const { getBookTitle } = require('./src/core/book-title');
 
 const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
-const data = JSON.parse(fs.readFileSync(path.join(__dirname, 'data.json'), 'utf8'));
+const data = JSON.parse(fs.readFileSync(path.join(__dirname, 'assets/data.json'), 'utf8'));
 
 test('index.html link-preview title matches data.json (run: npm run sync:title)', () => {
     expect(syncIndexHtml(html, data)).toBe(html);

@@ -1,4 +1,4 @@
-// core/book-title.js — The book's title and subtitle, read from data.json.
+// src/core/book-title.js — The book's title and subtitle, read from data.json.
 //
 // data.json is the one place the title is written. The cover (data[0], an
 // "insert" item) has one block whose content lists lines per language; the
