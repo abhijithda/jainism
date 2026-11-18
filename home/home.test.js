@@ -1,7 +1,7 @@
 // The AI-assistant picker exists twice: in the header's Settings menu and in
 // the Home page's settings mirror. They must always agree, whichever is used.
 
-const { initHomeControls } = require('./home');
+const { initHomeControls, refreshHomeView } = require('./home');
 const { initAi } = require('../ai/ai-panel');
 const { saveSettings } = require('../core/settings');
 
@@ -70,4 +70,16 @@ test('a font-size change in the header refreshes the Home page display too', () 
     jest.runAllTimers();
     expect(document.getElementById('home-font-scale-display').textContent).toBe('120%');
     jest.useRealTimers();
+});
+
+test('the Home cover shows each language\'s title, then its subtitle styled as a subtitle', () => {
+    localStorage.clear();
+    saveSettings({ langs: ['kn', 'en'] });
+    document.body.innerHTML = '<img id="home-cover-image"><div id="home-cover-title"></div>';
+    initHomeControls([{ id: 'c', type: 'insert', blocks: [{ id: 'b', content: {
+        kn: ['ಶೀರ್ಷಿಕೆ', 'ಉಪಶೀರ್ಷಿಕೆ'], en: ['Title', 'Subtitle'] } }] }]);
+    refreshHomeView();
+    const lines = [...document.querySelectorAll('#home-cover-title .home-cover-title-line')];
+    expect(lines.map(l => l.textContent)).toEqual(['ಶೀರ್ಷಿಕೆ', 'ಉಪಶೀರ್ಷಿಕೆ', 'Title', 'Subtitle']);
+    expect(lines.map(l => l.classList.contains('is-subtitle'))).toEqual([false, true, false, true]);
 });

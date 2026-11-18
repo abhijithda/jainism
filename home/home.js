@@ -54,10 +54,12 @@ function renderCover() {
     const activeLangs = getActiveLangs();
     title.innerHTML = '';
     activeLangs.forEach(lang => {
+        // First line of a language is the title, the next one the subtitle (see core/book-title.js).
+        let n = 0;
         (coverBlock?.content?.[lang] || []).forEach(line => {
             if (!line.trim()) return;
             const el = document.createElement('div');
-            el.className = `home-cover-title-line lang-${lang}`;
+            el.className = `home-cover-title-line lang-${lang}${n++ > 0 ? ' is-subtitle' : ''}`;
             el.textContent = line;
             title.appendChild(el);
         });

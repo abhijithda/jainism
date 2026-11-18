@@ -7,7 +7,7 @@
 // is ever committed. (Test fixtures are never rendered or published.)
 //
 // Both views (continuous, book) are rendered at each paper size:
-//   Jina-Pooja-Questions-and-Answers-<View>-<Size>-<YYYY-MM-DD>.pdf
+//   <Title-from-data.json>-<View>-<Size>-<YYYY-MM-DD>.pdf   e.g. Jainism-FAQs-Book-A4-2026-10-10.pdf
 // Paper sizes: a4 and a3. (The app's 'dynamic' paper size prints exactly like
 // A4 — confirmed over several runs — so it isn't rendered separately.)
 //
@@ -37,9 +37,8 @@ const { waitForImages } = require('./wait-for-images');
 
 const ROOT = path.join(__dirname, '..');
 const OUT_DIR = path.join(ROOT, 'prints');
-const TITLE = 'Jina Pooja Questions & Answers';
-const IMAGE_WAIT_MS = 30000;
-const FILE_TITLE = 'Jina-Pooja-Questions-and-Answers';   // no spaces or "&" in file names
+// The title (and the file-name form of it) is read from data.json by the app's own
+// core/book-title.js — see bookTitleFromPage() — so nothing here is hard-coded.
 
 const ALL_SIZES = ['a4', 'a3'];
 const argSizes = process.argv.find(a => a.startsWith('--sizes='));
@@ -118,12 +117,20 @@ function footerTemplate(showPageNumbers) {
     </div>`;
 }
 
-// Waits until every image has settled, INCLUDING the second try a video thumbnail
-// makes after its local file is missing (local -> YouTube -> plain tile); see
-// scripts/wait-for-images.js. A stalled request gives up after 30 s with a warning.
-async function imagesLoaded(page, label) {
-    const stuck = await page.evaluate(waitForImages, IMAGE_WAIT_MS);
-    if (stuck.length) console.warn(`warning: ${label}: ${stuck.length} image(s) still loading after ${IMAGE_WAIT_MS / 1000}s: ${stuck.slice(0, 3).join(', ')}`);
+// The English title and its file-name form, from the loaded page (core/book-title.js + data.json).
+async function bookTitleFromPage(page) {
+    return page.evaluate(async () => {
+        const m = await import('./core/book-title.js');
+        const data = await (await fetch('data.json')).json();
+        const title = m.getBookTitle(data).en.title;
+        return { title, slug: m.titleSlug(title) };
+    });
+}
+
+async function imagesLoaded(page) {
+    await page.evaluate(() => Promise.all(
+        [...document.images].map(img => img.complete ? null : new Promise(r => { img.onload = img.onerror = r; }))
+    ));
 }
 
 (async () => {
@@ -150,6 +157,8 @@ async function imagesLoaded(page, label) {
                 await imagesLoaded(page, `${view.label} ${paperSize.toUpperCase()}`);
 
                 const sizeLabel = paperSize.toUpperCase();
+                const { title: TITLE, slug: FILE_TITLE } = await bookTitleFromPage(page);
+                if (!FILE_TITLE) throw new Error('data.json has no English cover title to name the PDFs after');
                 // Chrome uses document.title as the PDF's title (what a viewer
                 // shows in its title bar).
                 await page.evaluate(t => { document.title = t; },
