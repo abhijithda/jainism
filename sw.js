@@ -12,7 +12,7 @@
 //     time (best effort: a missing image never breaks the rest) and reports
 //     progress to the page, which shows it on Home.
 //   • Just before those, it saves the video thumbnails kept in the project
-//     (images/thumbs/<videoId>.jpg), also best effort. They are NOT counted in
+//     (assets/images/thumbs/<videoId>.jpg), also best effort. They are NOT counted in
 //     that progress: a video whose thumbnail isn't in the project (newly added,
 //     or YouTube has none) simply shows the plain "Video" tile, so a missing
 //     one must never make the copy look incomplete.
@@ -150,7 +150,7 @@ function imageUrlsFromData(text) {
     return [...urls];
 }
 
-// Video thumbnails kept in the project: images/thumbs/<videoId>.jpg (see
+// Video thumbnails kept in the project: assets/images/thumbs/<videoId>.jpg (see
 // scripts/fetch-thumbs.js and core/media.js). The id is the 11-character
 // youtubeId data.json stores on each video; anything else is ignored.
 function thumbnailUrlsFromData(text) {
@@ -162,7 +162,7 @@ function thumbnailUrlsFromData(text) {
             for (const video of block.videos || []) {
                 const id = video && video.youtubeId;
                 if (typeof id !== 'string' || !/^[A-Za-z0-9_-]{11}$/.test(id)) continue;
-                urls.add(new URL(`images/thumbs/${id}.jpg`, SCOPE).href);
+                urls.add(new URL(`assets/images/thumbs/${id}.jpg`, SCOPE).href);
             }
         }
     }

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // scripts/fetch-thumbs.js — keeps a copy of every video's thumbnail in the repo
-// (images/thumbs/<videoId>.jpg), so thumbnails work in the offline copy, the
+// (assets/images/thumbs/<videoId>.jpg), so thumbnails work in the offline copy, the
 // print builds don't depend on YouTube being reachable, and a video that is later
 // deleted keeps the picture that shows what it was.
 //
@@ -10,7 +10,7 @@
 //   node scripts/fetch-thumbs.js --force            download everything again
 //   npm run thumbs                                  same as the first line
 //
-// It reads every video id from data.json and test/data.json (the e2e fixture, so
+// It reads every video id from assets/data.json and test/data.json (the e2e fixture, so
 // the screenshot tests are as deterministic as the real pages) and only
 // downloads what is missing. YouTube answers a deleted or private video with
 // either a 404 or a small grey placeholder picture; those are NOT saved. The
@@ -26,7 +26,7 @@ const fs = require('fs');
 const path = require('path');
 
 const DEFAULT_ROOT = path.join(__dirname, '..');
-const DEFAULT_DATA_FILES = ['data.json', 'test/data.json'];
+const DEFAULT_DATA_FILES = ['assets/data.json', 'test/data.json'];
 const DEFAULT_BASE_URL = 'https://img.youtube.com/vi';
 const FETCH_TIMEOUT_MS = 20000;
 const CONCURRENCY = 4;
@@ -135,7 +135,7 @@ async function run({
     const force = args.includes('--force');
     const retryUnavailable = args.includes('--retry-unavailable');
 
-    const thumbDir = path.join(rootDir, 'images', 'thumbs');
+    const thumbDir = path.join(rootDir, 'assets', 'images', 'thumbs');
     const unavailableFile = path.join(rootDir, 'thumbs-unavailable.json');
 
     const dataSets = dataFiles

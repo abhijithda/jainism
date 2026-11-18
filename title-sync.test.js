@@ -34,7 +34,7 @@ test('syncIndexHtml refuses data without a cover title', () => {
 
 test('no other place in the shipped code hard-codes the title', () => {
     const { en, kn } = getBookTitle(data);
-    const files = ['app.js', 'views/book/book-view.js', 'home/home.js', 'scripts/render-prints.js', '.github/workflows/publish-pooja-prints.yml'];
+    const files = ['src/app.js', 'src/views/book/book-view.js', 'src/home/home.js', 'scripts/render-prints.js', '.github/workflows/publish-pooja-prints.yml'];
     files.forEach(f => {
         const src = fs.readFileSync(path.join(__dirname, f), 'utf8');
         expect([f, src.includes(en.title)]).toEqual([f, false]);

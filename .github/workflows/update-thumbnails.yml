@@ -2,7 +2,7 @@ name: Update Thumbnails
 
 # Manual only — never runs on push/PR. Trigger it from the Actions tab
 # ("Run workflow"), pick the branch and a delivery mode:
-#   commit   — saves any new video thumbnails to images/thumbs/ and pushes them
+#   commit   — saves any new video thumbnails to assets/images/thumbs/ and pushes them
 #              to the branch (and records videos YouTube has no thumbnail for in
 #              thumbs-unavailable.json)
 #   artifact — uploads them as a downloadable zip for you to review first,
@@ -57,7 +57,7 @@ jobs:
       run: |
         git config user.name "github-actions[bot]"
         git config user.email "github-actions[bot]@users.noreply.github.com"
-        git add -A images/thumbs thumbs-unavailable.json
+        git add -A assets/images/thumbs thumbs-unavailable.json
         if git diff --cached --quiet; then
           echo "No thumbnail changes to commit."
         else
@@ -71,7 +71,7 @@ jobs:
       with:
         name: video-thumbnails
         path: |
-          images/thumbs/
+          assets/images/thumbs/
           thumbs-unavailable.json
         retention-days: 14
         if-no-files-found: warn

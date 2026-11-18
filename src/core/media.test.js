@@ -155,7 +155,7 @@ describe('buildQrUrl / thumbnail urls', () => {
         expect(buildQrUrl('https://example.com/a')).not.toBe(buildQrUrl('https://example.com/b'));
     });
 
-    test('the local thumbnail is images/thumbs/<id>.jpg', () => {
+    test('the local thumbnail is assets/images/thumbs/<id>.jpg', () => {
         expect(buildLocalThumbnailUrl('dQw4w9WgXcQ')).toBe('assets/images/thumbs/dQw4w9WgXcQ.jpg');
     });
 
@@ -177,7 +177,7 @@ describe('createVideoCard', () => {
 
     test('the thumbnail is the local copy first, with YouTube as the fallback', () => {
         const html = createVideoCard(watch);
-        expect(html).toContain('src="images/thumbs/dQw4w9WgXcQ.jpg"');
+        expect(html).toContain('src="assets/images/thumbs/dQw4w9WgXcQ.jpg"');
         expect(html).toContain('data-fallback-src="https://img.youtube.com/vi/dQw4w9WgXcQ/0.jpg"');
     });
 
@@ -189,7 +189,7 @@ describe('createVideoCard', () => {
 
     test('the thumbnail is wrapped in a link to the video, opened in a new tab (the play badge hangs off this anchor)', () => {
         const html = createVideoCard(watch);
-        expect(html).toMatch(/<a href="https:\/\/www\.youtube\.com\/watch\?v=dQw4w9WgXcQ" target="_blank">\s*<img src="images\/thumbs\//);
+        expect(html).toMatch(/<a href="https:\/\/www\.youtube\.com\/watch\?v=dQw4w9WgXcQ" target="_blank">\s*<img src="assets\/images\/thumbs\//);
     });
 
     test('returns an empty string for a non-YouTube URL', () => {
@@ -220,7 +220,7 @@ describe('thumbnail fallback (local file -> YouTube -> plain tile)', () => {
     });
 
     test('images that are not video thumbnails are left alone', () => {
-        document.body.innerHTML = '<img id="photo" src="images/x.jpg" data-fallback-src="y.jpg">';
+        document.body.innerHTML = '<img id="photo" src="assets/images/x.jpg" data-fallback-src="y.jpg">';
         const photo = document.getElementById('photo');
         handleThumbnailError(photo);
         expect(photo.getAttribute('src')).toBe('assets/images/x.jpg');

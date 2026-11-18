@@ -120,8 +120,8 @@ function footerTemplate(showPageNumbers) {
 // The English title and its file-name form, from the loaded page (core/book-title.js + data.json).
 async function bookTitleFromPage(page) {
     return page.evaluate(async () => {
-        const m = await import('./core/book-title.js');
-        const data = await (await fetch('data.json')).json();
+        const m = await import('./src/core/book-title.js');
+        const data = await (await fetch('assets/data.json')).json();
         const title = m.getBookTitle(data).en.title;
         return { title, slug: m.titleSlug(title) };
     });
