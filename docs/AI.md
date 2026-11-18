@@ -16,68 +16,86 @@ not a description of present behaviour.
 
 ```
 jainism/
-├── index.html, data.json, schema.json, images/
-├── app.js                      ← entry point; composes everything below
-├── core/                       ← shared by every view
-│   ├── blocks.js                 (ID formatting, reference resolution, block indexing)
-│   ├── langs.js                  (KNOWN_LANGS — supported languages)
-│   ├── media.js / media.css      (video/QR utilities + styles)
-│   ├── read-tracking.js / .css   (read/unread state, incl. isBlockTrackable)
-│   ├── card-types.css            (card/block colour coding)
-│   ├── settings.js               (the one unified `settings` object — schema/validation)
-│   ├── layout-signal.js          (`pooja:layout-changed` event — see Paper Size & Font Scaling)
-│   ├── paper-size.js / (css lives per-view, see below)  (Dynamic/A4/A3 setting)
-│   └── font-scale.js / font-scale.css                   (font-size multiplier setting)
-├── header/
-│   └── header.js / header.css / header.test.js  ← header UI only (settings dropdown,
-│       lang picker, toggle wiring); the settings it toggles live in core/, see below
-├── views/
-│   ├── continuous/
-│   │   └── continuous-view.js / .css / .test.js
-│   └── book/
-│       └── book-view.js / .css / .test.js
-├── test/e2e/                   ← Playwright, mirrors views/ (see below)
-│   ├── book/                     (book-view.test.js, book-view-print.test.js,
-│   │                              book-view-screenshots.test.js + -snapshots/,
-│   │                              book-print-regressions.test.js)
-│   ├── continuous/                (continuous-view-print.test.js,
-│   │                              continuous-view-screenshots.test.js + -snapshots/,
-│   │                              language-filter.test.js, media-visibility.test.js,
-│   │                              read-tracking.test.js, reply-excerpt.test.js,
-│   │                              site-preview.spec.js)
-│   └── core/                     (paper-size-font-scale.test.js, zen-mode.test.js —
-│                                  header-level features exercised across both views)
-├── data.test.js                ← validates data.json against schema.json
-├── babel.config.js, playwright.config.js, package.json
-└── AI.md, README.md
+├── index.html                  ← the page
+├── sw.js                       ← service worker; must sit next to index.html to control the whole site
+├── assets/                     ← what the site loads at run time
+│   ├── data.json, schema.json
+│   └── images/
+├── src/                        ← the app: plain ES modules, served as-is (no build step)
+│   ├── app.js                    ← entry point; composes everything below
+│   ├── core/                     ← shared by every view
+│   │   ├── blocks.js                 (ID formatting, reference resolution, block indexing)
+│   │   ├── langs.js                  (KNOWN_LANGS — supported languages)
+│   │   ├── media.js / media.css      (video/QR utilities + styles)
+│   │   ├── read-tracking.js / .css   (read/unread state, incl. isBlockTrackable)
+│   │   ├── card-types.css            (card/block colour coding)
+│   │   ├── settings.js               (the one unified `settings` object — schema/validation)
+│   │   ├── layout-signal.js          (`pooja:layout-changed` event — see Paper Size & Font Scaling)
+│   │   ├── paper-size.js / (css lives per-view, see below)  (Dynamic/A4/A3 setting)
+│   │   └── font-scale.js / font-scale.css                   (font-size multiplier setting)
+│   ├── header/
+│   │   └── header.js / header.css / header.test.js  ← header UI only (settings dropdown,
+│   │       lang picker, toggle wiring); the settings it toggles live in core/, see below
+│   ├── home/                     ← the landing page
+│   ├── views/
+│   │   ├── continuous/
+│   │   │   └── continuous-view.js / .css / .test.js
+│   │   └── book/
+│   │       └── book-view.js / .css / .test.js
+│   └── ai/                       ← the assistant: retrieval, RAG, prompt, engines, panel
+├── proxy/                      ← Cloudflare Worker for the Cloud engine (deployed separately)
+├── scripts/                    ← render-prints.js, impose-booklet.js, new-id.js
+├── test/
+│   ├── unit/                     (data vs schema, og-image, service-worker crawl, app boot)
+│   ├── data.json                 (small fixture the e2e tests serve)
+│   └── e2e/                    ← Playwright, mirrors views/ (see below)
+│       ├── book/                     (book-view.test.js, book-view-print.test.js,
+│       │                              book-view-screenshots.test.js + -snapshots/,
+│       │                              book-print-regressions.test.js)
+│       ├── continuous/                (continuous-view-print.test.js,
+│       │                              continuous-view-screenshots.test.js + -snapshots/,
+│       │                              language-filter.test.js, media-visibility.test.js,
+│       │                              read-tracking.test.js, reply-excerpt.test.js,
+│       │                              site-preview.spec.js)
+│       └── core/                     (paper-size-font-scale.test.js, zen-mode.test.js —
+│                                      header-level features exercised across both views)
+├── docs/                       ← AI.md (this file), PRINTING.md, REQUIREMENTS.md
+├── notes/                      ← older notes and song texts (source material)
+├── .github/workflows/
+├── LICENSE, LICENSE-CONTENT.md, README.md
+└── babel.config.js, playwright.config.js, package.json
 ```
 
-Grouped by feature (`core/`, `header/`, `views/<name>/`) rather than by file
-type (no `src/`) — deliberately: this is a no-build static site shipped as
-raw ES modules straight to the browser via `<script type="module">`, and
-`src/` is a bundler-project convention that would misleadingly imply a build
-step exists. The by-feature grouping instead mirrors how the code is
-actually reasoned about: a shared layer, plus one folder per view.
+Code lives in `src/`, the data and pictures it loads in `assets/`. `src/` here
+only means "the app's own code": there is still **no build step** — it is raw ES
+modules served as-is via `<script type="module">`, and `sw.js` stays beside
+`index.html` because a service worker can only control the folder it is in.
+(An earlier version of this file argued against a `src/` folder because the name
+can suggest a bundler; the README and this page both say there is none, and
+separating code from data and docs gives readers an obvious place to start.)
+Inside `src/` the grouping is by feature (`src/core/`, `src/header/`, `src/views/<name>/`)
+rather than by file type, which mirrors how the code is actually reasoned about:
+a shared layer, plus one folder per view.
 
 **Deleting or adding a view should cost exactly one folder, not a hunt
 through mixed-concern files.** This is true on both sides now:
 - *Source*: `book-view.js` and `continuous-view.js` never import from each
   other — only `app.js` (the composition root) imports from both (see
   **Module boundaries** below for the history of this). Removing
-  `views/book/` entirely means deleting that folder plus book-related
+  `src/views/book/` entirely means deleting that folder plus book-related
   lines in `app.js` and `index.html` (one file each, not a search across
-  the codebase) — nothing under `core/` or `header/` references book view
+  the codebase) — nothing under `src/core/` or `src/header/` references book view
   by name.
-- *Tests*: `test/e2e/` mirrors `views/` for exactly this reason —
+- *Tests*: `test/e2e/` mirrors `src/views/` for exactly this reason —
   `test/e2e/book/` holds every book-view-specific Playwright test,
   `test/e2e/continuous/` every continuous-view-specific one. Deleting
-  `views/book/` means deleting `test/e2e/book/` too, full stop — no
+  `src/views/book/` means deleting `test/e2e/book/` too, full stop — no
   book-view assertions live outside that folder. `test/e2e/core/` is the
   deliberate exception: paper size, font scale, and zen mode are
   header-level settings whose effect spans both views by design, so their
   tests legitimately need to exercise both in one file rather than being
   split in a way that would just duplicate setup — same reasoning as
-  `core/` existing alongside `views/` on the source side. Playwright's
+  `src/core/` existing alongside `src/views/` on the source side. Playwright's
   default `testMatch` already recursively discovers tests in subfolders,
   so this reorganization needed no `playwright.config.js` changes.
 
@@ -88,7 +106,7 @@ through mixed-concern files.** This is true on both sides now:
   actually verify (localStorage persistence of read state, the Settings
   visibility toggle, the base print CSS rule, the language-picker's
   trigger/search/"at least one active"/persistence/click-outside behavior)
-  is the shared `header.js`/`core/read-tracking.js` mechanism itself, not
+  is the shared `header.js`/`src/core/read-tracking.js` mechanism itself, not
   continuous-view rendering — it's the exact same DOM and code regardless
   of which view happens to be showing, with continuous view used only as
   the simplest vehicle to reach it. Deleting `continuous/` would have
@@ -106,19 +124,19 @@ through mixed-concern files.** This is true on both sides now:
   view's media-visibility has its own separate tests in `book/`.
   The test: would this test still make sense, unchanged, if the *other*
   view didn't exist? If yes, it's testing something shared and belongs in
-  `core/`; if the assertions are about that view's own specific markup or
+  `src/core/`; if the assertions are about that view's own specific markup or
   behavior, it belongs with that view.
 
-`header/` is kept deliberately thin — it's specifically the header **UI**
+`src/header/` is kept deliberately thin — it's specifically the header **UI**
 (the settings dropdown, the lang picker, wiring the toggle controls), not a
 place for cross-cutting logic to accumulate just because its control lives
 in the header. A setting whose *effect* is used/rendered across views
-belongs in `core/` even though `header.js` wires its control — same
+belongs in `src/core/` even though `header.js` wires its control — same
 precedent as `read-tracking.js` (its checkbox lives in `header.js`, but the
-actual read/unread logic and `updateProgressDisplay()` live in `core/`).
+actual read/unread logic and `updateProgressDisplay()` live in `src/core/`).
 Paper size and font scale followed an earlier, wrong instinct of nesting
-them under `header/` since that's where their controls are — moved to
-`core/` once that mismatch was noticed, matching `read-tracking.js`'s
+them under `src/header/` since that's where their controls are — moved to
+`src/core/` once that mismatch was noticed, matching `read-tracking.js`'s
 precedent instead.
 
 Every module resolves its own imports with relative paths (`../../core/x.js`
@@ -134,26 +152,26 @@ to a real file) as part of building this structure.
 | File | Responsibility | Status |
 |---|---|---|
 | `app.js` | Entry point; composes modules; owns `setViewMode()` | ✅ Current |
-| `header/header.js` | Settings dropdown, lang picker, media/read-tracking toggle wiring | ✅ Current |
-| `views/continuous/continuous-view.js` | Continuous scroll view rendering (verbatim from original `script.js`) | ✅ Current |
-| `views/book/book-view.js` | Book spread view: pagination (CSS columns), card creation, navigation | ✅ Current |
-| `core/blocks.js` | Pure data-model helpers shared by both views: `formatIdForDisplay`, `buildBlockIndex`, `resolveReference`, the content helpers (`hasLangText`, `langsWithText`, `hasAnyText`, `imageUrl`) and `classifyInsert()` | ✅ Current |
-| `core/langs.js` | `KNOWN_LANGS` / `LANG_CODES` — single source of truth for supported languages; `activeLangCodes()` turns continuous view's `'kn'\|'en'\|'all'` into a list | ✅ Current |
-| `core/media.js` | Video/QR utilities (`createVideoCard` — THE video markup both views use — `extractYouTubeId`, `escapeHtml`, `linkify`, etc.) and the global photo-size hook (`--ar`/`--nw`) | ✅ Current |
-| `core/read-tracking.js` | Read/unread state functions, incl. `isBlockTrackable` and `countTrackableBlocks` — shared by both views | ✅ Current |
-| `core/read-tick.js` | `buildReadTick()` — the "mark as read" button, built once for both views (`onToggle` hook for view-specific repaint) | ✅ Current |
-| `core/print-vars.css` | Print spacing both views' print blocks read (`--print-orphans`, `--print-ref-gap`, `--print-block-gap`, …) | ✅ Current |
-| `core/settings.js` | The one unified `settings` object — schema, defaults, validation (`loadSettings`/`saveSettings`) for every persisted preference | ✅ Current |
-| `core/layout-signal.js` | `notifyLayoutChanged()` — tells book view to re-measure pagination when a layout-affecting setting changes outside a window resize | ✅ Current |
-| `core/paper-size.js` | Paper size (Dynamic/A4/A3): applies `body[data-paper-size]` + the printed `@page` rule, wires the Settings `<select>` | ✅ Current |
-| `core/font-scale.js` | Font-size scaling multiplier: applies `--font-scale`, wires the increase/decrease control | ✅ Current |
-| `core/card-types.css` | Card type colours — single source of truth for both views | ✅ Current |
-| `core/font-scale.css` | `:root { --font-scale: 1 }` — single source of truth read by both screen and `@media print` rules in both views | ✅ Current |
-| `header/header.css` | App header, search bar, settings dropdown, view toggle, lang picker, paper-size/font-scale control chrome | ✅ Current |
-| `views/continuous/continuous-view.css` | Card layout, block rows, excerpts — scoped to `#continuous-container`; also the paper-size width cap and font-scale sizing for this view's content | ✅ Current |
-| `views/book/book-view.css` | Book spread layout, pages, cards, nav, print reflow — scoped to `#book-container`; also the paper-size physical width and font-scale sizing for this view's content | ✅ Current |
-| `core/media.css` | Video/QR/image styles — scoped to `#continuous-container` (continuous view only; book view has its own media styles inline in `book-view.css`) | ✅ Current |
-| `core/read-tracking.css` | Read tick and progress counter styles | ✅ Current |
+| `src/header/header.js` | Settings dropdown, lang picker, media/read-tracking toggle wiring | ✅ Current |
+| `src/views/continuous/continuous-view.js` | Continuous scroll view rendering (verbatim from original `script.js`) | ✅ Current |
+| `src/views/book/book-view.js` | Book spread view: pagination (CSS columns), card creation, navigation | ✅ Current |
+| `src/core/blocks.js` | Pure data-model helpers shared by both views: `formatIdForDisplay`, `buildBlockIndex`, `resolveReference`, the content helpers (`hasLangText`, `langsWithText`, `hasAnyText`, `imageUrl`) and `classifyInsert()` | ✅ Current |
+| `src/core/langs.js` | `KNOWN_LANGS` / `LANG_CODES` — single source of truth for supported languages; `activeLangCodes()` turns continuous view's `'kn'\|'en'\|'all'` into a list | ✅ Current |
+| `src/core/media.js` | Video/QR utilities (`createVideoCard` — THE video markup both views use — `extractYouTubeId`, `escapeHtml`, `linkify`, etc.) and the global photo-size hook (`--ar`/`--nw`) | ✅ Current |
+| `src/core/read-tracking.js` | Read/unread state functions, incl. `isBlockTrackable` and `countTrackableBlocks` — shared by both views | ✅ Current |
+| `src/core/read-tick.js` | `buildReadTick()` — the "mark as read" button, built once for both views (`onToggle` hook for view-specific repaint) | ✅ Current |
+| `src/core/print-vars.css` | Print spacing both views' print blocks read (`--print-orphans`, `--print-ref-gap`, `--print-block-gap`, …) | ✅ Current |
+| `src/core/settings.js` | The one unified `settings` object — schema, defaults, validation (`loadSettings`/`saveSettings`) for every persisted preference | ✅ Current |
+| `src/core/layout-signal.js` | `notifyLayoutChanged()` — tells book view to re-measure pagination when a layout-affecting setting changes outside a window resize | ✅ Current |
+| `src/core/paper-size.js` | Paper size (Dynamic/A4/A3): applies `body[data-paper-size]` + the printed `@page` rule, wires the Settings `<select>` | ✅ Current |
+| `src/core/font-scale.js` | Font-size scaling multiplier: applies `--font-scale`, wires the increase/decrease control | ✅ Current |
+| `src/core/card-types.css` | Card type colours — single source of truth for both views | ✅ Current |
+| `src/core/font-scale.css` | `:root { --font-scale: 1 }` — single source of truth read by both screen and `@media print` rules in both views | ✅ Current |
+| `src/header/header.css` | App header, search bar, settings dropdown, view toggle, lang picker, paper-size/font-scale control chrome | ✅ Current |
+| `src/views/continuous/continuous-view.css` | Card layout, block rows, excerpts — scoped to `#continuous-container`; also the paper-size width cap and font-scale sizing for this view's content | ✅ Current |
+| `src/views/book/book-view.css` | Book spread layout, pages, cards, nav, print reflow — scoped to `#book-container`; also the paper-size physical width and font-scale sizing for this view's content | ✅ Current |
+| `src/core/media.css` | Video/QR/image styles — scoped to `#continuous-container` (continuous view only; book view has its own media styles inline in `book-view.css`) | ✅ Current |
+| `src/core/read-tracking.css` | Read tick and progress counter styles | ✅ Current |
 
 ### Module boundaries (why things live where they do)
 - `blocks.js` and `langs.js` were extracted specifically so `book-view.js`
@@ -162,7 +180,7 @@ to a real file) as part of building this structure.
   `KNOWN_LANGS` (which `header.js` then imported *from* `book-view.js` — an
   inverted dependency) and imported `formatIdForDisplay`/`resolveReference`
   straight out of `continuous-view.js`. Both fixed as part of the book-view
-  merge: `book-view.js` now imports from `core/` like everything else, and
+  merge: `book-view.js` now imports from `src/core/` like everything else, and
   no longer defines or re-exports `KNOWN_LANGS` at all (it never actually
   used the constant internally — `activeLangs` always arrives as a
   parameter — it was only there to be the thing `header.js` pulled from).
@@ -176,10 +194,10 @@ to a real file) as part of building this structure.
   removed as unnecessary complexity once actually checked against the real
   class names in use.
 - `settings.js` / `paper-size.js` / `font-scale.js` / `layout-signal.js`
-  live in `core/`, not `header/` — see the note under **Directory
+  live in `src/core/`, not `src/header/` — see the note under **Directory
   Structure** above. `header.js` imports and re-exports all of them so
   `app.js` still has one import path (`./header/header.js`) for everything
-  header-related; it doesn't need to know these live in `core/` internally.
+  header-related; it doesn't need to know these live in `src/core/` internally.
 - `paper-size.js`/`font-scale.js` each import `loadSettings`/`saveSettings`
   from `settings.js` rather than reading `localStorage` directly — same
   "one unified object" rule as everything else (see **Settings
@@ -328,7 +346,7 @@ to a real file) as part of building this structure.
   in both views — and the book-view cap reserves room for the text.**
   - Continuous view renders a title-style insert's image inside the exact
     same `.block-row.media-only > .col-media.has-images > .image-card > img`
-    markup a normal photo block gets, so `core/media.css` sizes it
+    markup a normal photo block gets, so `src/core/media.css` sizes it
     (screen, mobile, print). An earlier version gave `.title-style-image`
     its own `max-height: 70vh` rule, so the same photo visibly shrank the
     moment it gained a title. The `.title-style-image` class remains only as
@@ -363,7 +381,7 @@ to a real file) as part of building this structure.
   view's standalone-image caption, and both views' title-style text.
 - Excluded from the read-progress denominator entirely, in all three
   places that compute it (`book-view.js`, `continuous-view.js`,
-  `home/home.js`) — by item type, unconditionally, even though an insert's
+  `src/home/home.js`) — by item type, unconditionally, even though an insert's
   block may carry real title text that would otherwise look "trackable" by
   the generic per-block rule (`isBlockTrackable` only looks at
   text/video presence, not item type). In practice this changes nothing
@@ -413,7 +431,7 @@ to a real file) as part of building this structure.
 
 
 ## Home Surface — ✅ Current
-- A full-page landing page (`#home-view`, `home/home.js`, `home/home.css`),
+- A full-page landing page (`#home-view`, `src/home/home.js`, `src/home/home.css`),
   not a modal and not a third value of `viewMode` — `localStorage`'s
   `viewMode` only ever holds `book`/`continuous`, same as before.
   Visibility of `#home-view`/`#book-container`/`#continuous-container` is
@@ -484,7 +502,7 @@ to a real file) as part of building this structure.
   the active-language list — nothing here is specific to any one book's
   data.
 - Below the cover: an overall read-progress summary
-  (`computeProgress`/`getReadBlocks` from `core/read-tracking.js`, same
+  (`computeProgress`/`getReadBlocks` from `src/core/read-tracking.js`, same
   total-block-count formula as both views), then two side-by-side option
   cards explaining Book vs. Continuous in plain language (page-by-page vs.
   one long scroll) with a button into each, then settings.
@@ -520,14 +538,14 @@ to a real file) as part of building this structure.
   used by both views (book view has no lang picker of its own).
 - Collapsed by default, showing a summary (e.g. "Kannada, English"); clicking
   the trigger opens a panel with a search box and checkbox list.
-- Defined in `header/header.js`; languages sourced from `KNOWN_LANGS` in
-  `core/langs.js`.
+- Defined in `src/header/header.js`; languages sourced from `KNOWN_LANGS` in
+  `src/core/langs.js`.
 - At least one language must remain selected — unchecking the last active
   language reverts instead of leaving zero active.
 - A selection made while the list is search-filtered is preserved once the
   search is cleared.
 - Selection persisted as part of the unified `settings` object (see below).
-- Adding a new language: append to `KNOWN_LANGS` in `core/langs.js` and add
+- Adding a new language: append to `KNOWN_LANGS` in `src/core/langs.js` and add
   translation data to `data.json` blocks. No other code changes needed —
   both views read `activeLangs` generically.
 
@@ -537,7 +555,7 @@ to a real file) as part of building this structure.
 
 All settings — languages, videos, QR codes, read-tracking, paper size, font
 scale — live under one `localStorage` key (`settings`), as a single object,
-schema owned by `core/settings.js`:
+schema owned by `src/core/settings.js`:
 
 ```json
 {
@@ -552,8 +570,8 @@ schema owned by `core/settings.js`:
   change (`saveSettings({ qrs: true })`) without needing to know about, or
   risk clobbering, the others.
 - `getActiveLangs()`/`saveActiveLangs()` and `applySettings()` (both in
-  `header/header.js`) are thin wrappers over this for callers that only
-  care about one slice; `core/paper-size.js` and `core/font-scale.js` are
+  `src/header/header.js`) are thin wrappers over this for callers that only
+  care about one slice; `src/core/paper-size.js` and `src/core/font-scale.js` are
   the equivalent wrappers for their own field.
 - Book view doesn't read `settings` directly — `app.js` calls
   `getActiveLangs()` fresh each time a view is activated (boot or toggle
@@ -561,7 +579,7 @@ schema owned by `core/settings.js`:
   and both views' media toggles wire through the same `toggle-videos`/
   `toggle-qrs` checkboxes. `header.js`'s `updateMediaVisibility()` is the
   only code that reacts to them: it sets `body.show-videos`/`show-qrs` and
-  `core/media.css` does the rest, for both views (book view used to carry its
+  `src/core/media.css` does the rest, for both views (book view used to carry its
   own per-element toggle function; it is gone).
 
 No backward-compat migration was built for an even older two-key design
@@ -573,8 +591,8 @@ key — accepted as fine for a single-user project, nothing to preserve.
 ## Paper Size & Font Scaling — ✅ Current
 
 Two related Settings-dropdown controls, both persisted in the one unified
-`settings` object above (`paperSize`, `fontScale`) — see `core/paper-size.js`
-and `core/font-scale.js`.
+`settings` object above (`paperSize`, `fontScale`) — see `src/core/paper-size.js`
+and `src/core/font-scale.js`.
 
 **Paper size** (`Dynamic` / `A4` / `A3`), applied via `body[data-paper-size]`:
 - *Continuous view*: a live width cap previewing print width only — cosmetic,
@@ -620,7 +638,7 @@ and `core/font-scale.js`.
   `PRINTING.md`.
 
 **Shared code between the two views.** Anything both views need lives in
-`core/`; a view file should only contain what is genuinely about *that view's*
+`src/core/`; a view file should only contain what is genuinely about *that view's*
 layout.
 - **Insert classification** — `classifyInsert(item, activeLangs)` returns
   `{ block, image, hasContent, kind: 'title'|'photo'|'blank', showId }`. Book
@@ -637,13 +655,13 @@ layout.
   Continuous passes an `onToggle` that also marks the row read.
 - **Video card** — one markup, `.media-wrap > .video-card + .qr-code`, from
   `createVideoCard()`; QR source is 200px (printed up to 80px). **The play
-  badge is one rule**, `.video-card a::after` in `core/media.css`, sized by
+  badge is one rule**, `.video-card a::after` in `src/core/media.css`, sized by
   `--play-size` / `--play-inset` / `--play-font` (book view sets them on
   `.book-card`; defaults are continuous view's). To hide or restyle the badge
   everywhere, that is the only place. Each view only *lays out* the shared
   elements (`.book-card .media-wrap` … in `book-view.css`); anything
   continuous-only on the shared classes is scoped under `.col-media`.
-- **Print spacing** — `core/print-vars.css`. Only values that already matched
+- **Print spacing** — `src/core/print-vars.css`. Only values that already matched
   in both views were centralised (orphans/widows, the gap under a Ref strip,
   the gap between blocks); per-view numbers (photo caps, card padding) stay
   with their view.
@@ -658,7 +676,7 @@ layout.
 **Print photo sizing** (both views) — one rule: *as wide as the column/page
 allows, never stretched, never taller than a page, never enlarged past what
 the photo's pixels support*:
-- `core/media.js` listens once (capture-phase `load` on `document`) and
+- `src/core/media.js` listens once (capture-phase `load` on `document`) and
   publishes every `<img>`'s natural size as `--ar` (width/height) and `--nw`
   (pixel width). CSS can't read an image's natural size, and photos are
   created in many places (some via `innerHTML`), so one global hook beats
@@ -682,7 +700,7 @@ the photo's pixels support*:
   element's own base size", not "set every element to some fixed size") —
   so it composes correctly with paper-size width capping: bigger text within
   a fixed physical width naturally reflows to more lines/pages.
-- Default value lives once in `core/font-scale.css`'s `:root` rule;
+- Default value lives once in `src/core/font-scale.css`'s `:root` rule;
   `applyFontScale()` overrides it with an inline style on `<html>`. Both
   screen and `@media print` rules in `continuous-view.css`/`book-view.css`
   read this **same** property (every content font-size there is
@@ -696,7 +714,7 @@ the photo's pixels support*:
 translateX, total page count) is normally only re-measured on the browser's
 native `resize` event. A paper-size or font-scale change resizes/rescales
 the page just like a resize would, but doesn't fire one on its own — both
-`applyPaperSize()` and `applyFontScale()` call `core/layout-signal.js`'s
+`applyPaperSize()` and `applyFontScale()` call `src/core/layout-signal.js`'s
 `notifyLayoutChanged()`, which dispatches a `pooja:layout-changed` event
 that `book-view.js` listens for alongside `resize`, so pagination doesn't go
 stale after either setting changes.
@@ -767,7 +785,7 @@ both views.
 
 ## Read Tracking — ✅ Current
 
-- `isBlockTrackable(block)` in `core/read-tracking.js` is the single rule
+- `isBlockTrackable(block)` in `src/core/read-tracking.js` is the single rule
   for whether a block can be marked read at all, used identically by both
   views:
   - Has text in either language → trackable.
@@ -791,7 +809,7 @@ both views.
 
 ---
 
-## Card Type Colours (`core/card-types.css`) — ✅ Current
+## Card Type Colours (`src/core/card-types.css`) — ✅ Current
 
 | Type | Continuous border/bg | Book border/bg |
 |---|---|---|
@@ -971,11 +989,11 @@ leaking into print without a strong-enough print-side override:**
 ## Testing — ✅ Current
 
 - **Unit** (Jest + jsdom, via `babel.config.js` for ES module syntax):
-  `data.test.js` (root), `core/blocks.test.js`, `core/media.test.js`,
-  `core/read-tracking.test.js`, `core/settings.test.js`,
-  `core/paper-size.test.js`, `core/font-scale.test.js`, `header/header.test.js`,
-  `views/continuous/continuous-view.test.js`, `views/book/book-view.test.js`.
-- **E2E** (Playwright, `test/e2e/` — mirrors `views/`, see **Directory
+  `test/unit/data.test.js`, `src/core/blocks.test.js`, `src/core/media.test.js`,
+  `src/core/read-tracking.test.js`, `src/core/settings.test.js`,
+  `src/core/paper-size.test.js`, `src/core/font-scale.test.js`, `src/header/header.test.js`,
+  `src/views/continuous/continuous-view.test.js`, `src/views/book/book-view.test.js`.
+- **E2E** (Playwright, `test/e2e/` — mirrors `src/views/`, see **Directory
   Structure** above for why):
   - `test/e2e/book/`: `book-view.test.js`, `book-view-print.test.js`
     (Video/QR/read-tracking "state" tests each pair a precise assertion
@@ -1108,9 +1126,9 @@ the core requirement without needing a separate render pass.
 
 - Link = page address + `#/s/<id>[,<id>…]` (hash routing: the site is static, no server to route paths). An **item id**
   shows the whole card; a **block id** shows just that block. Ids only — never numbers — so reordering never breaks links.
-- `core/share.js` (pure: parse/build links, what a link resolves to), `core/share-ui.js` (the share icon and the sheet:
+- `src/core/share.js` (pure: parse/build links, what a link resolves to), `src/core/share-ui.js` (the share icon and the sheet:
   bottom sheet on phones, popover beside the icon on wide screens; Copy link, native "Share…" where the browser has it),
-  `core/share.css`. Icons: every block in both views, plus one per card in continuous view. Hidden in print.
+  `src/core/share.css`. Icons: every block in both views, plus one per card in continuous view. Hidden in print.
 - The page a link opens (`renderSharedView` in `app.js`) is the continuous renderer fed only the shared items, with
   `opts.indexData` = full data so labels (A-3.2) and the question excerpt above a shared answer still resolve. It has a
   plain-text title bar and **no header, Home, book view or links** — and it never touches the visitor's saved
@@ -1125,7 +1143,7 @@ the core requirement without needing a separate render pass.
 ## AI assistant ("Ask the book") — ✅ Phase 1 current
 
 Opt-in (**Settings → 💬 AI assistant: Off | Cloud | Local**, setting `aiEngine`
-in `core/settings.js`, default `off`). A header **Ask** button appears only when
+in `src/core/settings.js`, default `off`). A header **Ask** button appears only when
 the chosen engine is usable; it opens an overlay drawer (an overlay, never a
 column, so book pagination is unaffected; hidden in print).
 
@@ -1179,7 +1197,7 @@ ai/
   memory: choosing another size frees the old one. **Not yet tuned:** medium and large still use the small model's rules in
   `rag.js` (two-sentence pointer, 4 passages); loosen them only after judging real answers from the bigger models.
   Arbitrary model ids from WebLLM's full list are not offered (a conscious choice: each id needs checking).
-- **Cloud proxy (`ai/proxy/`, deploy steps in `ai/proxy/README.md`):** `worker.js` + `wrangler.toml`, deployed by the
+- **Cloud proxy (`proxy/`, deploy steps in `proxy/README.md`):** `worker.js` + `wrangler.toml`, deployed by the
   manual *Deploy AI proxy* workflow (the site itself is still served straight from the repo). **Free by default:**
   backend `workers-ai` (Cloudflare Workers AI through the `AI` binding, model Gemma 4 26B A4B, thinking turned off
   because it can use up the answer budget). Needs no API key and no card; the free plan gives 10,000 neurons a day and
@@ -1193,7 +1211,7 @@ ai/
   skipping the cap. Refusals carry `{ error: <code> }` (`rate`, `busy`, `ip-daily`, `budget`, `unavailable`) and
   `engines/cloud.js` maps each to a plain message. **An empty model answer is not an error:** the Worker logs why
   (`empty answer ...`, never the question) and returns empty text, and `rag.js` treats it like any uncited answer (shows
-  the matching passages). Covered by `ai/proxy/worker.test.js`. **Not verified against the real service:** the Workers AI
+  the matching passages). Covered by `proxy/worker.test.js`. **Not verified against the real service:** the Workers AI
   call itself (its binding needs a live Cloudflare login even for local runs, so only a fake binding built from Cloudflare's
   documented response shape is tested) and Gemma 4's answer quality on Kannada: judge from real questions.
 - **Configure shows only the chosen engine's settings:** Cloud opens the choice between this site's assistant and the reader's
@@ -1279,7 +1297,7 @@ ai/
   (recall@5 86% -> 81% at 1.15x, 70% at 3x), so retrieval weights are unchanged.
 - **Known gaps:** Cloud (either source) is non-streaming; Local needs WebGPU and a pinned WebLLM
   version/model id that must be re-verified before deploy.
-- **Retrieval eval (`ai/eval/`, run `npx jest ai/eval --verbose`):** 41 draft questions (English, Kannada, Kannada in
+- **Retrieval eval (`src/ai/eval/`, run `npx jest ai/eval --verbose`):** 41 draft questions (English, Kannada, Kannada in
   English letters, one-word queries, and some the book doesn't cover). Gold answers are permanent block ids, so
   renumbering doesn't break them (the test flags stale labels). Baseline when drafted: recall@5 86%
   (en 83%, kn 100% on 8 questions, translit 83% on 6), recall@1 68%. `floors.json` makes a regression fail the build;

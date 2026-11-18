@@ -8,7 +8,7 @@ jest.mock('./engines/index.js', () => ({ getEngine: () => (mockOff ? null : mock
 const { initAi, openDrawer, closeDrawer } = require('./ai-panel');
 const { saveSettings } = require('../core/settings');
 
-const data = JSON.parse(require('fs').readFileSync(require('path').join(__dirname, '..', 'data.json'), 'utf8'));
+const data = JSON.parse(require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'assets', 'data.json'), 'utf8'));
 const $ = id => document.getElementById(id);
 const dom = () => {
     document.body.innerHTML = '<button id="ai-btn" hidden></button><select id="ai-engine-select"><option value="cloud"></option></select><span id="ai-engine-note"></span>';

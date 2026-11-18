@@ -156,7 +156,7 @@ describe('buildQrUrl / thumbnail urls', () => {
     });
 
     test('the local thumbnail is images/thumbs/<id>.jpg', () => {
-        expect(buildLocalThumbnailUrl('dQw4w9WgXcQ')).toBe('images/thumbs/dQw4w9WgXcQ.jpg');
+        expect(buildLocalThumbnailUrl('dQw4w9WgXcQ')).toBe('assets/images/thumbs/dQw4w9WgXcQ.jpg');
     });
 
     test('builds the standard YouTube thumbnail url from a video id', () => {
@@ -223,7 +223,7 @@ describe('thumbnail fallback (local file -> YouTube -> plain tile)', () => {
         document.body.innerHTML = '<img id="photo" src="images/x.jpg" data-fallback-src="y.jpg">';
         const photo = document.getElementById('photo');
         handleThumbnailError(photo);
-        expect(photo.getAttribute('src')).toBe('images/x.jpg');
+        expect(photo.getAttribute('src')).toBe('assets/images/x.jpg');
     });
 
     test('installThumbnailFallback listens for failed loads anywhere in the document', () => {

@@ -1,6 +1,6 @@
-// ai/proxy/worker.js — Cloudflare Worker that sits between the site and the AI model
+// proxy/worker.js — Cloudflare Worker that sits between the site and the AI model
 // for the Cloud engine. NOT part of the site: it is deployed separately (see
-// ai/proxy/README.md) and its URL goes in ai/config.js.
+// proxy/README.md) and its URL goes in ai/config.js.
 //
 // Why it exists: the model must be reached from a server (no key in the browser, and a
 // place to enforce limits), and anyone who finds this URL must not be able to run up a bill.

@@ -14,30 +14,30 @@
          the standard wants an absolute https URL. If the site moves, change
          only that line. og:url is optional (the app already knows the address it
          fetched) and X falls back to the og: title/description/image, so none
-         of those are repeated. Keep images/og-image.jpg at 1200x630 and under ~300 KB or
+         of those are repeated. Keep assets/images/og-image.jpg at 1200x630 and under ~300 KB or
          WhatsApp may skip it. Apps remember a link's preview, so an already
          shared link can keep the old one for a while after a change. -->
     <meta property="og:type" content="website">
     <meta property="og:site_name" content="Jainism F.A.Q.s">
     <meta property="og:title" content="ಜೈನ ಧರ್ಮ — ಪ್ರಶ್ನೋತ್ತರ | Jainism F.A.Q.s">
     <meta property="og:description" content="Questions and answers on Jaina pooja and aradhana, in Kannada and English. Read it as a book or as one long page; works offline.">
-    <meta property="og:image" content="https://abhijithda.github.io/jainism/images/og-image.jpg">
+    <meta property="og:image" content="https://abhijithda.github.io/jainism/assets/images/og-image.jpg">
     <meta property="og:image:type" content="image/jpeg">
     <meta property="og:image:width" content="1200">
     <meta property="og:image:height" content="630">
     <meta property="og:image:alt" content="Jainism F.A.Q.s: a carved stone relief of a seated Tirthankara">
     <meta name="twitter:card" content="summary_large_image">
-    <link rel="stylesheet" href="header/header.css">
-    <link rel="stylesheet" href="home/home.css">
-    <link rel="stylesheet" href="core/media.css">
-    <link rel="stylesheet" href="core/print-vars.css">
-    <link rel="stylesheet" href="core/read-tracking.css">
-    <link rel="stylesheet" href="core/share.css">
-    <link rel="stylesheet" href="core/card-types.css">
-    <link rel="stylesheet" href="core/font-scale.css">
-    <link rel="stylesheet" href="ai/ai-panel.css">
-    <link rel="stylesheet" id="css-continuous" href="views/continuous/continuous-view.css">
-    <link rel="stylesheet" id="css-book"       href="views/book/book-view.css">
+    <link rel="stylesheet" href="src/header/header.css">
+    <link rel="stylesheet" href="src/home/home.css">
+    <link rel="stylesheet" href="src/core/media.css">
+    <link rel="stylesheet" href="src/core/print-vars.css">
+    <link rel="stylesheet" href="src/core/read-tracking.css">
+    <link rel="stylesheet" href="src/core/share.css">
+    <link rel="stylesheet" href="src/core/card-types.css">
+    <link rel="stylesheet" href="src/core/font-scale.css">
+    <link rel="stylesheet" href="src/ai/ai-panel.css">
+    <link rel="stylesheet" id="css-continuous" href="src/views/continuous/continuous-view.css">
+    <link rel="stylesheet" id="css-book"       href="src/views/book/book-view.css">
     <!-- @page can't be scoped to a body attribute/class in plain CSS, so the
          effective print paper size + orientation is written here as text by
          header.js's applyPaperSize() — kept last in <head> so it wins over
@@ -250,7 +250,7 @@
         ← Back to Message
     </button>
 
-    <script type="module" src="app.js"></script>
+    <script type="module" src="src/app.js"></script>
 </body>
 
 </html>

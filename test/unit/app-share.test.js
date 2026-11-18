@@ -3,8 +3,9 @@
 // page load must be unchanged.
 const fs = require('fs');
 const path = require('path');
-const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
-const data = JSON.parse(fs.readFileSync(path.join(__dirname, 'data.json'), 'utf8'));
+const ROOT = path.join(__dirname, '..', '..');
+const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+const data = JSON.parse(fs.readFileSync(path.join(ROOT, 'assets', 'data.json'), 'utf8'));
 
 function boot(hash) {
   document.documentElement.innerHTML = html.replace(/<script[\s\S]*?<\/script>/g, '');
@@ -13,7 +14,7 @@ function boot(hash) {
   Element.prototype.scrollIntoView = jest.fn();
   window.scrollTo = jest.fn();
   window.matchMedia = window.matchMedia || (() => ({ matches: false, addEventListener() {}, addListener() {} }));
-  jest.isolateModules(() => { require('./app.js'); });
+  jest.isolateModules(() => { require('../../src/app.js'); });
   return new Promise(r => setTimeout(r, 50));
 }
 

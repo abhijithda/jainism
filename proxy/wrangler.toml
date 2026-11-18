@@ -1,4 +1,4 @@
-# ai/proxy/wrangler.toml — config for the Cloud engine proxy (worker.js).
+# proxy/wrangler.toml — config for the Cloud engine proxy (worker.js).
 # Deploy from this folder:  npx wrangler@4 deploy   (or the "Deploy AI proxy" workflow)
 # The default backend is Cloudflare Workers AI: free, no API key, no card.
 

@@ -4,7 +4,7 @@ const { createIndex } = require('./retrieval');
 const { answerQuestion, NO_RELIABLE_ANSWER, FOLLOW_UP_LOCAL } = require('./rag');
 const { NOT_COVERED } = require('./prompt');
 
-const index = createIndex(JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data.json'), 'utf8')));
+const index = createIndex(JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'assets', 'data.json'), 'utf8')));
 const fakeEngine = (reply, id = 'local') => ({ id, generate: jest.fn(async (_m, { onToken } = {}) => { onToken && onToken(reply); return reply; }) });
 
 test('retrieves, calls the engine once with the passages, and returns valid citations', async () => {

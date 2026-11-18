@@ -149,8 +149,8 @@ describe('hasLangText / langsWithText / hasAnyText', () => {
 });
 
 describe('imageUrl', () => {
-    test('a bare file name lives in images/', () => {
-        expect(imageUrl('Tatha Ajji.jpg')).toBe('images/Tatha Ajji.jpg');
+    test('a bare file name lives in assets/images/', () => {
+        expect(imageUrl('Tatha Ajji.jpg')).toBe('assets/images/Tatha Ajji.jpg');
     });
 
     test('an absolute URL is used as-is', () => {

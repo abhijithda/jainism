@@ -24,10 +24,10 @@ search and Local mode keep working. Edit the numbers in `wrangler.toml` and rede
    `CLOUDFLARE_ACCOUNT_ID`. No AI key is needed.
 3. **Put the workflow at the repo root.** GitHub only runs workflows from `.github/workflows/` at the very top of the
    repository (`.github/workflows/deploy-ai-proxy.yml`). The
-   workflow's `PROXY_DIR` (`ai/proxy`) says where the proxy is inside the repo; commit and push both.
+   workflow's `PROXY_DIR` (`proxy`) says where the proxy is inside the repo; commit and push both.
 4. **Run** Actions -> *Deploy AI proxy* -> Run workflow. The log prints the Worker URL
    (`https://pooja-ai-proxy.<your-subdomain>.workers.dev`).
-5. Paste that URL into `CLOUD_ENDPOINT` in `ai/config.js`, commit, push. Settings -> AI assistant -> Cloud now works.
+5. Paste that URL into `CLOUD_ENDPOINT` in `src/ai/config.js`, commit, push. Settings -> AI assistant -> Cloud now works.
 
 If the deploy fails mentioning the AI binding or permissions, edit the token and add a **Workers AI** permission
 (Read is probably enough; Edit if it still complains). That is the first thing to check, because the default
@@ -42,7 +42,7 @@ Without GitHub Actions: from this folder, `npx wrangler@4 deploy`.
   question or the book passages.
 - **Usage:** Workers & Pages -> Workers AI shows neurons used today.
 - Rate limit: ask more than 5 questions in a minute -> "Too many questions right now".
-- `npx jest ai/proxy` covers every limit, both backends, and failing closed.
+- `npx jest proxy` covers every limit, both backends, and failing closed.
 
 ## Testing Cloud from your own computer
 

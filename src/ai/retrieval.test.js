@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { tokenize, foldLatin, createIndex, search, getContext, moreMatches } = require('./retrieval');
 
-const data = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data.json'), 'utf8'));
+const data = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'assets', 'data.json'), 'utf8'));
 const index = createIndex(data);
 const labels = hits => hits.map(h => h.chunk.label);
 

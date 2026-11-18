@@ -52,7 +52,7 @@ npm run impose:booklet -- path/to/book.pdf out.pdf --sheets-per-signature=6
   For a full-width A4 column (about 178mm) it needs roughly **1050 px**.
 - A photo and its captions stay together on one page.
 
-The numbers live in the CSS as `--min-dpi` and `--img-cap` (see `views/book/book-view.css` and `views/continuous/continuous-view.css`).
+The numbers live in the CSS as `--min-dpi` and `--img-cap` (see `src/views/book/book-view.css` and `src/views/continuous/continuous-view.css`).
 
 ## Checking a PDF yourself
 

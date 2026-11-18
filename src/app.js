@@ -190,7 +190,7 @@ async function init() {
     applySettings();
 
     try {
-        data = await fetch('data.json').then(r => r.json());
+        data = await fetch('assets/data.json').then(r => r.json());
     } catch (err) {
         console.error('Error loading data:', err);
         return;

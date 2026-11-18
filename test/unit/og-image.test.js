@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const ROOT = path.join(__dirname, '..', '..');
 
 // The link-preview picture (WhatsApp, Facebook, Telegram, X). Those apps skip
 // pictures that are the wrong shape or too heavy, and silently show a plain
@@ -9,7 +10,7 @@ const MAX_BYTES = 300 * 1024;          // WhatsApp may ignore much larger previe
 const WIDTH = 1200;
 const HEIGHT = 630;
 
-const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
+const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
 
 function metaContent(name) {
     const tag = html.match(new RegExp(`<meta\\s+(?:property|name)="${name}"\\s+content="([^"]*)"`));
@@ -43,7 +44,7 @@ describe('link preview image (og:image)', () => {
         expect(new URL(imageUrl).pathname).toMatch(/\/images\/[^/]+\.jpg$/);
     });
 
-    const file = path.join(__dirname, 'images', path.basename(new URL(imageUrl).pathname));
+    const file = path.join(ROOT, 'assets', 'images', path.basename(new URL(imageUrl).pathname));
 
     test('that file exists in images/', () => {
         expect(fs.existsSync(file)).toBe(true);

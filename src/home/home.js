@@ -48,7 +48,7 @@ function renderCover() {
         img.hidden = false;
         // object-fit: contain (in home.css) — the whole image is shown,
         // not cropped top/bottom to fill a fixed box.
-        img.src = imgData.src.includes('://') ? imgData.src : `images/${imgData.src}`;
+        img.src = imgData.src.includes('://') ? imgData.src : `assets/images/${imgData.src}`;
     }
 
     const activeLangs = getActiveLangs();

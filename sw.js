@@ -42,7 +42,7 @@ const SLOW_NETWORK_WINDOW_MS = 30000;
 
 const SCOPE = new URL(self.registration.scope);
 const INDEX_URL = new URL('index.html', SCOPE).href;
-const DATA_URL = new URL('data.json', SCOPE).href;
+const DATA_URL = new URL('assets/data.json', SCOPE).href;
 
 let precacheRunning = false;
 let slowUntil = 0;
@@ -143,7 +143,7 @@ function imageUrlsFromData(text) {
             for (const img of block.images || []) {
                 if (!img || typeof img.src !== 'string') continue;
                 if (img.src.includes('://')) continue;      // remote images are not saved
-                urls.add(new URL(`images/${img.src}`, SCOPE).href);
+                urls.add(new URL(`assets/images/${img.src}`, SCOPE).href);
             }
         }
     }

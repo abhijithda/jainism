@@ -2,14 +2,15 @@ const Ajv = require("ajv");
 const addFormats = require("ajv-formats");
 const fs = require("fs");
 const path = require("path");
+const ROOT = path.join(__dirname, '..', '..');
 
 describe('Data Layer Validation', () => {
   test('data.json exactly matches the schema', () => {
     const ajv = new Ajv({ allErrors: true });
     addFormats(ajv);
 
-    const schemaPath = path.join(__dirname, 'schema.json');
-    const dataPath = path.join(__dirname, 'data.json');
+    const schemaPath = path.join(ROOT, 'assets', 'schema.json');
+    const dataPath = path.join(ROOT, 'assets', 'data.json');
 
     const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
     const data = JSON.parse(fs.readFileSync(dataPath, 'utf8'));
@@ -29,7 +30,7 @@ describe('Data Layer Validation', () => {
   });
 
   test('the first item, when it is an insert, has both an image and content (it is the book\'s cover) and hideId set', () => {
-    const data = JSON.parse(fs.readFileSync(path.join(__dirname, 'data.json'), 'utf8'));
+    const data = JSON.parse(fs.readFileSync(path.join(ROOT, 'assets', 'data.json'), 'utf8'));
     if (data[0]?.type !== 'insert') return; // no cover — nothing to check
     const block = data[0].blocks?.[0];
     expect(block?.images?.[0]?.src).toBeTruthy();
@@ -40,7 +41,7 @@ describe('Data Layer Validation', () => {
   test('schema requires blocks on every item except insert, and accepts hideId', () => {
     const ajv = new Ajv({ allErrors: true });
     addFormats(ajv);
-    const schema = JSON.parse(fs.readFileSync(path.join(__dirname, 'schema.json'), 'utf8'));
+    const schema = JSON.parse(fs.readFileSync(path.join(ROOT, 'assets', 'schema.json'), 'utf8'));
     const validate = ajv.compile(schema);
 
     const withInsert = [{
@@ -59,7 +60,7 @@ describe('Data Layer Validation', () => {
   });
 
   test('every local image in data.json follows the naming convention and exists in images/', () => {
-    const data = JSON.parse(fs.readFileSync(path.join(__dirname, 'data.json'), 'utf8'));
+    const data = JSON.parse(fs.readFileSync(path.join(ROOT, 'assets', 'data.json'), 'utf8'));
     const srcs = [];
     for (const item of data) {
       for (const block of item.blocks || []) {
@@ -73,14 +74,14 @@ describe('Data Layer Validation', () => {
     const badNames = local.filter((s) => !/^[a-z0-9-]+\.(jpg|jpeg|png|webp)$/.test(s));
     expect(badNames).toEqual([]);
 
-    const missing = local.filter((s) => !fs.existsSync(path.join(__dirname, 'images', s)));
+    const missing = local.filter((s) => !fs.existsSync(path.join(ROOT, 'assets', 'images', s)));
     expect(missing).toEqual([]);
   });
 
   describe('permanent ids (shared links depend on these never changing)', () => {
-    const { ID_PATTERN, hasId, FILL_COMMAND } = require('./scripts/new-id');
-    const { itemNumber } = require('./core/blocks');
-    const data = JSON.parse(fs.readFileSync(path.join(__dirname, 'data.json'), 'utf8'));
+    const { ID_PATTERN, hasId, FILL_COMMAND } = require('../../scripts/new-id');
+    const { itemNumber } = require('../../src/core/blocks');
+    const data = JSON.parse(fs.readFileSync(path.join(ROOT, 'assets', 'data.json'), 'utf8'));
     const entries = data.flatMap((item, i) => [
       { where: `item #${i + 1} (${item.type})`, obj: item },
       ...(item.blocks || []).map((b, j) => ({ where: `item #${i + 1} (${item.type}), block #${j + 1}`, obj: b })),
@@ -144,7 +145,7 @@ describe('Data Layer Validation', () => {
 // in the offline copy and the print builds don't depend on YouTube. A video with
 // no thumbnail yet is caught here, before readers see an empty box.
 describe('Video thumbnails', () => {
-  const data = JSON.parse(fs.readFileSync(path.join(__dirname, 'data.json'), 'utf8'));
+  const data = JSON.parse(fs.readFileSync(path.join(ROOT, 'assets', 'data.json'), 'utf8'));
   const ids = [...new Set(data.flatMap((i) => (i.blocks || []).flatMap((b) => (b.videos || []).map((v) => v.youtubeId))))];
   let unavailable = [];
   try {
@@ -152,7 +153,7 @@ describe('Video thumbnails', () => {
   } catch (e) { /* no list yet */ }
 
   test('every video has a saved thumbnail, or is listed as unavailable', () => {
-    const missing = ids.filter((id) => !unavailable.includes(id) && !fs.existsSync(path.join(__dirname, 'images', 'thumbs', `${id}.jpg`)));
+    const missing = ids.filter((id) => !unavailable.includes(id) && !fs.existsSync(path.join(ROOT, 'assets', 'images', 'thumbs', `${id}.jpg`)));
     if (missing.length) {
       console.error(`Videos without a thumbnail in images/thumbs/: ${missing.join(', ')}\n`
         + 'Fix: run  npm run thumbs   (or the "Update Thumbnails" GitHub workflow) and commit the result.');

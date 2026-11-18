@@ -66,7 +66,7 @@ MB, which matters on mobile data, so nothing is downloaded until the reader
 turns on **Settings → 📴 Offline copy** (the switch in the header menu, and the
 same switch on Home). Turning it off unregisters the worker and deletes
 everything it saved. The setting is `offline` in the `settings` object
-(`core/settings.js`).
+(`src/core/settings.js`).
 
 With the switch on, `sw.js` (a service worker) lets the book open with no
 signal. What it does:
@@ -93,7 +93,7 @@ signal. What it does:
   switch turned off and on again in the same tab), turning on or retrying re-saves
   them as well as the pictures. It retries at most twice per page load and then
   says how to try again (*turn the switch off and on*) instead of looping.
-- **Saves the video thumbnails kept in the project** (`images/thumbs/<videoId>.jpg`),
+- **Saves the video thumbnails kept in the project** (`assets/images/thumbs/<videoId>.jpg`),
   best effort and just before the pictures. They are not counted in the
   "Saving… 4/11" progress, so a video without one never makes the copy look
   incomplete: it shows the plain "Video" tile.
@@ -121,11 +121,11 @@ Things to know:
 ### Link preview (WhatsApp, Facebook, Telegram, X)
 
 The `<meta property="og:…">` tags in `index.html` give shared links a title,
-description and picture, using `images/og-image.jpg` (1200×630, about 210 KB: WhatsApp
+description and picture, using `assets/images/og-image.jpg` (1200×630, about 210 KB: WhatsApp
 may ignore images much over ~300 KB). Chat apps read these tags from the raw
 HTML and never run JavaScript, so they can't be generated in the browser. The
 only address that has to be written out is the one in `og:image`, which must be
-an absolute https URL (`https://abhijithda.github.io/jainism/images/og-image.jpg`).
+an absolute https URL (`https://abhijithda.github.io/jainism/assets/images/og-image.jpg`).
 If the site moves, change that one line. `og:url` is left out on purpose
 (optional), and X reuses the `og:` title, description and image.
 
@@ -135,32 +135,32 @@ block of `data.json` (`data[0].blocks[0].content`: the first line of `kn` and
 running head, the browser/print title, the share bar, the print file names and
 the release name all read it from there. Two things cannot, so after a change:
 run `npm run sync:title` (rewrites the four link-preview spots in `index.html`;
-the tests fail until you do), and redo `images/og-image.jpg`, which has the title
+the tests fail until you do), and redo `assets/images/og-image.jpg`, which has the title
 drawn into the picture. Check the printed page header of the Book view once,
-since its spacing is estimated from the title lengths (`core/book-title.js`).
+since its spacing is estimated from the title lengths (`src/core/book-title.js`).
 
-Chat apps remember a link's preview. After changing `images/og-image.jpg` or the text,
+Chat apps remember a link's preview. After changing `assets/images/og-image.jpg` or the text,
 an already-shared link can keep the old preview for days; sharing the link with
 a changed ending (`…/jainism/?v=2`) shows the new one straight away.
 
 ## Video thumbnails and QR codes
 
-**QR codes are drawn in the browser** (`core/qr.js`, used by `createVideoCard` in
-`core/media.js`) from the video link already in `data.json`: no files to keep in
+**QR codes are drawn in the browser** (`src/core/qr.js`, used by `createVideoCard` in
+`src/core/media.js`) from the video link already in `data.json`: no files to keep in
 step, no third-party service, and they work offline and as vector shapes in the
 PDFs. The encoder handles QR versions 1-20 (a link needs 10 at most). It was
 checked by decoding its output with OpenCV: every version at all four error
 correction levels, the first and last text length of each version, all the video
-links in `data.json`, and Kannada text. `core/qr.test.js` keeps three
+links in `data.json`, and Kannada text. `src/core/qr.test.js` keeps three
 known-answer codes.
 
-**Thumbnails are kept in the repo** as `images/thumbs/<videoId>.jpg`, so they
+**Thumbnails are kept in the repo** as `assets/images/thumbs/<videoId>.jpg`, so they
 work in the offline copy, the print builds don't depend on YouTube being
 reachable, and a video that is later deleted keeps the picture that shows what
 it was.
 
 - Add or change a video in `data.json`, then run `npm run thumbs` (needs
-  internet; downloads only what is missing) and commit `images/thumbs/` and
+  internet; downloads only what is missing) and commit `assets/images/thumbs/` and
   `thumbs-unavailable.json`. Or run the **Update Thumbnails** GitHub workflow
   (Actions tab; `commit` pushes them to the branch, `artifact` gives you a zip to
   review first). It is quick: it only needs Node, no `npm ci`, no browsers.
@@ -186,7 +186,7 @@ it was.
 
 A web address typed into a block's text (for example the Google Form link in a
 "PS:" note) becomes a real link in Book, Continuous and shared-link views
-(`appendLinkedText` in `core/media.js`). Text is added as DOM text, never as
+(`appendLinkedText` in `src/core/media.js`). Text is added as DOM text, never as
 HTML, so nothing in `data.json` can turn into markup. A link ends at a space,
 trailing punctuation or a non-ASCII letter (so `…/abc123ನಲ್ಲಿ` links only
 `…/abc123`).
@@ -196,3 +196,15 @@ trailing punctuation or a non-ASCII letter (so `…/abc123ನಲ್ಲಿ` links
 Code: [MIT](LICENSE)
 
 Photos, videos and thumbnails from other sources belong to their owners. If you own something here and want it credited or removed, please open an issue.
+## Project layout
+
+| Path | What it is |
+| --- | --- |
+| `index.html`, `sw.js` | The page and its service worker (offline use) |
+| `src/` | The app: plain ES modules served as-is, no build step |
+| `assets/` | `data.json` (the questions and answers), `schema.json`, `images/` |
+| `proxy/` | Cloudflare Worker for the optional Cloud AI engine |
+| `scripts/` | Print rendering, booklet imposition, id generation |
+| `test/` | Unit tests (`test/unit/`) and Playwright tests (`test/e2e/`) |
+| `docs/` | [Architecture and design notes](docs/AI.md), [printing](docs/PRINTING.md), [requirements](docs/REQUIREMENTS.md) |
+| `notes/` | Older notes and song texts, kept as source material |

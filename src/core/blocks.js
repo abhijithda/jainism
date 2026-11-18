@@ -141,12 +141,12 @@ export function hasAnyText(block, langs = LANG_CODES) {
 
 /**
  * URL for an image entry's `src`: absolute URLs are used as-is, anything
- * else is a file name in the images/ folder.
+ * else is a file name in the assets/images/ folder.
  * @param {string} src
  * @returns {string}
  */
 export function imageUrl(src) {
-    return src.includes('://') ? src : `images/${src}`;
+    return src.includes('://') ? src : `assets/images/${src}`;
 }
 
 /**

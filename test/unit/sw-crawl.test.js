@@ -9,7 +9,7 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 
-const ROOT = __dirname;
+const ROOT = path.join(__dirname, '..', '..');
 const SCOPE = 'http://localhost/jainism/';
 
 function loadWorkerHelpers() {
@@ -58,7 +58,7 @@ describe('service worker crawl', () => {
 
     test('it reaches the assistant\u2019s modules through the app\u2019s imports, so offline copies include them', () => {
         const rels = [...seen.values()].map(f => path.relative(ROOT, f).split(path.sep).join('/'));
-        ['ai/ai-panel.js', 'ai/retrieval.js', 'ai/rag.js', 'ai/prompt.js', 'ai/engines/local.js', 'ai/engines/cloud.js', 'ai/ai-panel.css']
+        ['src/ai/ai-panel.js', 'src/ai/retrieval.js', 'src/ai/rag.js', 'src/ai/prompt.js', 'src/ai/engines/local.js', 'src/ai/engines/cloud.js', 'src/ai/ai-panel.css']
             .forEach(f => expect(rels).toContain(f));
     });
 

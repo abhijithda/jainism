@@ -15,7 +15,7 @@ const fs = require('fs');
 const path = require('path');
 const { createIndex, search, getContext } = require('./retrieval');
 
-const data = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data.json'), 'utf8'));
+const data = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'assets', 'data.json'), 'utf8'));
 const { questions } = JSON.parse(fs.readFileSync(path.join(__dirname, 'eval', 'questions.json'), 'utf8'));
 const index = createIndex(data);
 const labelOf = new Map(index.chunks.map(c => [c.id, c.label]));

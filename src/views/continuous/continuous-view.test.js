@@ -182,7 +182,7 @@ describe('renderContinuousView', () => {
 
         const card = document.getElementById('ins_001_b_1'); // block id, not item id — see jumpToReference note
         expect(card.classList.contains('title-style')).toBe(true);
-        expect(card.querySelector('.title-style-image').src).toContain('images/x.jpg');
+        expect(card.querySelector('.title-style-image').src).toContain('assets/images/x.jpg');
         expect(card.querySelector('.title-style-text-line.lang-kn').textContent).toBe('ಶೀರ್ಷಿಕೆ');
         expect(card.querySelector('.title-style-text-line.lang-en').textContent).toBe('Title');
         // An insert's block has no text/video by isBlockTrackable's rule, so it must not count toward read progress.
@@ -197,7 +197,7 @@ describe('renderContinuousView', () => {
         renderContinuousView(data, container, 'all');
         const img = document.querySelector('#ins_010_b_1 .block-row.media-only .col-media.has-images .image-card img');
         expect(img).not.toBeNull();
-        expect(img.src).toContain('images/x.jpg');
+        expect(img.src).toContain('assets/images/x.jpg');
     });
 
     test('an insert with an image + per-image caption but no content (a plain standalone photo) falls through to the normal per-block row — not the big centered title-style card', () => {
@@ -213,7 +213,7 @@ describe('renderContinuousView', () => {
         expect(row.classList.contains('title-style')).toBe(false);
         expect(row.querySelector('.block-id')).not.toBeNull(); // left-aligned id, same as any other block row
         const card = row.querySelector('.image-card');
-        expect(card.querySelector('img').src).toContain('images/x.jpg');
+        expect(card.querySelector('img').src).toContain('assets/images/x.jpg');
         // Each language on its own line, never joined with "/".
         expect(card.querySelector('.image-caption.lang-kn').textContent).toBe('ಶೀ');
         expect(card.querySelector('.image-caption.lang-en').textContent).toBe('Caption');
@@ -231,7 +231,7 @@ describe('renderContinuousView', () => {
         const card = document.querySelector('#continuous-container .card');
         expect(card).not.toBeNull();
         expect(card.querySelector('.block-id')).toBeNull();
-        expect(card.querySelector('.title-style-image').src).toContain('images/x.jpg');
+        expect(card.querySelector('.title-style-image').src).toContain('assets/images/x.jpg');
         expect(card.querySelector('.title-style-text-line.lang-en').textContent).toBe('Title');
     });
 
@@ -265,7 +265,7 @@ describe('renderContinuousView', () => {
 });
 
 describe('renderContinuousView against the real test/data.json fixture', () => {
-    const fixtureData = require('../../test/data.json');
+    const fixtureData = require('../../../test/data.json');
 
     test('renders without throwing and resolves a_001\'s reference to q_001', () => {
         const container = document.getElementById('continuous-container');

@@ -25,7 +25,7 @@ test.describe('model files: save to a folder, load back into the cache', () => {
     test('round trip with real browser objects', async ({ page }) => {
         test.setTimeout(60000);
         const result = await page.evaluate(async MODEL_ID => {
-            const m = await import('/ai/engines/model-files.js');
+            const m = await import('/src/ai/engines/model-files.js');
             const record = {
                 model_id: MODEL_ID,
                 model: `https://huggingface.co/mlc-ai/${MODEL_ID}`,

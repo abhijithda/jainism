@@ -10,7 +10,7 @@ jest.mock('./engines/index.js', () => ({ getEngine: () => (mockOff ? null : mock
 
 const { initAi } = require('./ai-panel');
 const { saveSettings } = require('../core/settings');
-const data = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data.json'), 'utf8'));
+const data = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'assets', 'data.json'), 'utf8'));
 
 const flush = () => new Promise(r => setTimeout(r, 0));
 async function ask(question) {
