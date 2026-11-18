@@ -155,7 +155,7 @@ describe('Video thumbnails', () => {
   test('every video has a saved thumbnail, or is listed as unavailable', () => {
     const missing = ids.filter((id) => !unavailable.includes(id) && !fs.existsSync(path.join(ROOT, 'assets', 'images', 'thumbs', `${id}.jpg`)));
     if (missing.length) {
-      console.error(`Videos without a thumbnail in images/thumbs/: ${missing.join(', ')}\n`
+      console.error(`Videos without a thumbnail in assets/images/thumbs/: ${missing.join(', ')}\n`
         + 'Fix: run  npm run thumbs   (or the "Update Thumbnails" GitHub workflow) and commit the result.');
     }
     expect(missing).toEqual([]);

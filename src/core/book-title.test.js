@@ -18,7 +18,7 @@ describe('getBookTitle', () => {
         expect(getBookTitle(cover({ kn: 'not a list', en: [null, 5] })).en.title).toBe('5');
     });
     test('the real data.json has a cover title and subtitle in both languages', () => {
-        const t = getBookTitle(require('../data.json'));
+        const t = getBookTitle(require('../../assets/data.json'));
         ['kn', 'en'].forEach(l => { expect(t[l].title).not.toBe(''); expect(t[l].subtitle).not.toBe(''); });
     });
 });

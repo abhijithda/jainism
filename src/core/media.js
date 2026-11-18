@@ -121,7 +121,7 @@ export function buildQrUrl(destinationUrl) {
  * fetched by scripts/fetch-thumbs.js). Same-origin, so it is part of the saved
  * offline copy and the print builds don't depend on YouTube being reachable.
  */
-export const THUMBNAIL_DIR = 'images/thumbs';
+export const THUMBNAIL_DIR = 'assets/images/thumbs';
 
 export function buildLocalThumbnailUrl(videoId) {
     return `${THUMBNAIL_DIR}/${videoId}.jpg`;

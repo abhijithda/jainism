@@ -82,10 +82,10 @@ describe('service worker thumbnails', () => {
         { blocks: [] },
     ]);
 
-    test('saves images/thumbs/<id>.jpg for every video id, once each', () => {
+    test('saves assets/images/thumbs/<id>.jpg for every video id, once each', () => {
         expect(thumbnailUrlsFromData(data)).toEqual([
-            `${SCOPE}images/thumbs/aaaaaaaaaaa.jpg`,
-            `${SCOPE}images/thumbs/b-_B1234567.jpg`,
+            `${SCOPE}assets/images/thumbs/aaaaaaaaaaa.jpg`,
+            `${SCOPE}assets/images/thumbs/b-_B1234567.jpg`,
         ]);
     });
 
@@ -101,6 +101,6 @@ describe('service worker thumbnails', () => {
     });
 
     test('thumbnails are kept apart from the counted pictures (so a missing one never shows \u201cincomplete\u201d)', () => {
-        expect(imageUrlsFromData(data)).toEqual([`${SCOPE}images/a.jpg`]);
+        expect(imageUrlsFromData(data)).toEqual([`${SCOPE}assets/images/a.jpg`]);
     });
 });
