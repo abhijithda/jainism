@@ -16,7 +16,7 @@ function loadWorkerHelpers() {
     const source = fs.readFileSync(path.join(ROOT, 'sw.js'), 'utf8');
     const sandbox = { self: { registration: { scope: SCOPE }, addEventListener() {}, clients: {}, skipWaiting() {} }, URL, console };
     // The worker's top-level consts aren't visible outside it, so return what we need.
-    return vm.runInNewContext(`${source}\n;({ referencesIn, inScope, keyFor, isImageUrl, INDEX_URL, DATA_URL })`, sandbox);
+    return vm.runInNewContext(`${source}\n;({ referencesIn, inScope, keyFor, isImageUrl, imageUrlsFromData, thumbnailUrlsFromData, INDEX_URL, DATA_URL })`, sandbox);
 }
 
 function fileFor(href) {
@@ -65,5 +65,42 @@ describe('service worker crawl', () => {
     test('the CDN model library is left alone (not crawled, not saved)', () => {
         const hrefs = [...seen.keys()];
         expect(hrefs.some(h => /web-llm|jsdelivr/.test(h))).toBe(false);
+    });
+});
+
+describe('service worker thumbnails', () => {
+    const helpers = loadWorkerHelpers();
+    // The worker runs in its own vm context, so its arrays are from another realm: copy them.
+    const imageUrlsFromData = text => Array.from(helpers.imageUrlsFromData(text));
+    const thumbnailUrlsFromData = text => Array.from(helpers.thumbnailUrlsFromData(text));
+    const data = JSON.stringify([
+        { blocks: [
+            { images: [{ src: 'a.jpg' }], videos: [{ url: 'https://youtu.be/aaaaaaaaaaa', youtubeId: 'aaaaaaaaaaa' }] },
+            { videos: [{ url: 'x', youtubeId: 'aaaaaaaaaaa' }, { url: 'y', youtubeId: 'b-_B1234567' }] },
+        ] },
+        { blocks: [{ videos: [{ url: 'z' }, { url: 'w', youtubeId: 'short' }, { url: 'v', youtubeId: '../../x.js1' }, null] }] },
+        { blocks: [] },
+    ]);
+
+    test('saves images/thumbs/<id>.jpg for every video id, once each', () => {
+        expect(thumbnailUrlsFromData(data)).toEqual([
+            `${SCOPE}images/thumbs/aaaaaaaaaaa.jpg`,
+            `${SCOPE}images/thumbs/b-_B1234567.jpg`,
+        ]);
+    });
+
+    test('ignores videos without a proper 11-character id (no odd paths are ever fetched)', () => {
+        const urls = thumbnailUrlsFromData(data);
+        expect(urls.some(u => /short|\.\.|x\.js/.test(u))).toBe(false);
+    });
+
+    test('bad or empty data gives nothing instead of throwing', () => {
+        expect(thumbnailUrlsFromData('not json')).toEqual([]);
+        expect(thumbnailUrlsFromData('{}')).toEqual([]);
+        expect(thumbnailUrlsFromData('[]')).toEqual([]);
+    });
+
+    test('thumbnails are kept apart from the counted pictures (so a missing one never shows \u201cincomplete\u201d)', () => {
+        expect(imageUrlsFromData(data)).toEqual([`${SCOPE}images/a.jpg`]);
     });
 });

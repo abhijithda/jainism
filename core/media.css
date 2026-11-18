@@ -223,3 +223,33 @@ body:not(.show-videos).show-qrs .col-media .qr-code {
         right: 0 !important;
     }
 }
+
+/* A web address typed in a block's text (see appendLinkedText in media.js).
+   Long addresses may wrap anywhere so they can never push a card wider than the
+   screen; the underline keeps them recognisable on a black-and-white printout. */
+a.text-link {
+    color: #0b57d0;
+    text-decoration: underline;
+    overflow-wrap: anywhere;
+}
+
+/* A video whose thumbnail couldn't be loaded from the project or from YouTube
+   (offline, or the video was deleted): a plain dark tile with the usual play
+   badge, instead of a broken-image box. media.js adds .thumb-failed. */
+.video-card.thumb-failed a {
+    aspect-ratio: 4 / 3;
+    background: #2b3a47;
+    border-radius: 8px;
+}
+.video-card.thumb-failed img { display: none; }
+.video-card.thumb-failed a::before {
+    content: 'Video';
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #cfd8dc;
+    font: 600 12px/1 system-ui, sans-serif;
+    letter-spacing: 0.06em;
+}

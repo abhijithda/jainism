@@ -11,13 +11,19 @@
 //   • After activating it also saves every image data.json uses, one at a
 //     time (best effort: a missing image never breaks the rest) and reports
 //     progress to the page, which shows it on Home.
+//   • Just before those, it saves the video thumbnails kept in the project
+//     (images/thumbs/<videoId>.jpg), also best effort. They are NOT counted in
+//     that progress: a video whose thumbnail isn't in the project (newly added,
+//     or YouTube has none) simply shows the plain "Video" tile, so a missing
+//     one must never make the copy look incomplete.
 //   • Pages, scripts, styles and data.json are NETWORK-FIRST: online readers
 //     always get the latest, and the saved copy is used when the network is
 //     down or slower than NETWORK_TIMEOUT_MS. (Cache-first would be quicker but
 //     can serve a new app.js next to an old module from the previous visit.)
 //   • Images are cache-first and quietly re-checked with the server.
-//   • Anything outside this folder (YouTube thumbnails, the QR code service) is
-//     left alone: it needs the network and is not saved.
+//   • Anything outside this folder (the YouTube fallback for a thumbnail) is
+//     left alone: it needs the network and is not saved. (QR codes are drawn by
+//     the page itself, so they work offline with nothing to save.)
 //
 // Changing this file makes browsers fetch a new worker. Change VERSION to make
 // every device throw away its saved copy and download everything again.
@@ -144,6 +150,25 @@ function imageUrlsFromData(text) {
     return [...urls];
 }
 
+// Video thumbnails kept in the project: images/thumbs/<videoId>.jpg (see
+// scripts/fetch-thumbs.js and core/media.js). The id is the 11-character
+// youtubeId data.json stores on each video; anything else is ignored.
+function thumbnailUrlsFromData(text) {
+    let data;
+    try { data = JSON.parse(text); } catch { return []; }
+    const urls = new Set();
+    for (const item of Array.isArray(data) ? data : []) {
+        for (const block of item.blocks || []) {
+            for (const video of block.videos || []) {
+                const id = video && video.youtubeId;
+                if (typeof id !== 'string' || !/^[A-Za-z0-9_-]{11}$/.test(id)) continue;
+                urls.add(new URL(`images/thumbs/${id}.jpg`, SCOPE).href);
+            }
+        }
+    }
+    return [...urls];
+}
+
 async function shellPresent() {
     if (!(await caches.has(SHELL_CACHE))) return false;
     const shell = await caches.open(SHELL_CACHE);
@@ -155,6 +180,13 @@ async function savedImageUrls() {
     const shell = await caches.open(SHELL_CACHE);
     const res = await shell.match(DATA_URL);
     return res ? imageUrlsFromData(await res.text()) : [];
+}
+
+async function savedThumbnailUrls() {
+    if (!(await caches.has(SHELL_CACHE))) return [];
+    const shell = await caches.open(SHELL_CACHE);
+    const res = await shell.match(DATA_URL);
+    return res ? thumbnailUrlsFromData(await res.text()) : [];
 }
 
 // caches.open() quietly creates a cache that doesn't exist, so check with
@@ -181,6 +213,20 @@ async function broadcast(message) {
     }
 }
 
+// Best effort, and silent: no progress is reported and nothing here can make the
+// copy "incomplete". A thumbnail that isn't there (404) or can't be fetched is
+// skipped; the page then falls back to YouTube, then to the plain tile.
+async function precacheThumbnails(cache) {
+    for (const url of await savedThumbnailUrls()) {
+        if (disabled) return;
+        try {
+            if (await cache.match(url)) continue;
+            const res = await fetch(url, { credentials: 'same-origin' });
+            if (res.ok && !disabled) await cache.put(url, res);
+        } catch { /* offline or missing: carry on */ }
+    }
+}
+
 async function precacheImages() {
     if (precacheRunning || disabled) return;
     precacheRunning = true;
@@ -188,6 +234,9 @@ async function precacheImages() {
         const urls = await savedImageUrls();
         const cache = await caches.open(IMAGE_CACHE);
         await broadcast(await status());
+        // Thumbnails first, so the "Ready" report (sent after the counted
+        // pictures) really is the last thing to happen.
+        await precacheThumbnails(cache);
         for (const url of urls) {
             if (disabled) break;
             if (!(await cache.match(url))) {

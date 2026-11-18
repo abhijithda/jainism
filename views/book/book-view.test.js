@@ -511,8 +511,9 @@ describe('video markup in book cards', () => {
         const wrap = document.querySelector('#book-container #book-a_200_b_1 .media-wrap');
         expect(wrap).not.toBeNull();
         expect(wrap.querySelector('.video-card a').getAttribute('href')).toBe(videoUrl);
-        expect(wrap.querySelector('.video-card img').src).toContain('img.youtube.com/vi/abc12345678/0.jpg');
-        expect(wrap.querySelector('.qr-code img').src).toContain('size=200x200');
+        expect(wrap.querySelector('.video-card img').getAttribute('src')).toBe('images/thumbs/abc12345678.jpg');
+        expect(wrap.querySelector('.video-card img').getAttribute('data-fallback-src')).toContain('img.youtube.com/vi/abc12345678/0.jpg');
+        expect(wrap.querySelector('.qr-code img').getAttribute('src')).toContain('data:image/svg+xml');
     });
 
     test('a non-YouTube URL renders nothing, and only video blocks get a media row', () => {

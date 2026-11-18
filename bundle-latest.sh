@@ -40,10 +40,10 @@ npx --yes tiged "${REPO}#${BRANCH}" "${BRANCH}"
 # Build and execute the tar command based on the media option
 if [ "${MEDIA_OPTION}" = "with-media" ] || [ "${MEDIA_OPTION}" = "all" ]; then
     echo "Bundling branch: ${BRANCH} (including all media files)"
-    tar -czf "pooja-${BRANCH}.tar.gz" "${BRANCH}"
+    tar -czf "$(basename ${REPO})-${BRANCH}.tar.gz" "${BRANCH}"
 else
     echo "Bundling branch: ${BRANCH} (excluding media files)"
-    tar -czf "pooja-${BRANCH}.tar.gz" \
+    tar -czf "$(basename ${REPO})-${BRANCH}.tar.gz" \
         --exclude="*.png" \
         --exclude="*.jpg" \
         --exclude="*.jpeg" \
@@ -51,6 +51,7 @@ else
         --exclude="*.webp" \
         --exclude="*.mp4" \
         --exclude="*.mp3" \
+        --exclude="notes" \
         "${BRANCH}"
 fi
 
