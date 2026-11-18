@@ -1,3 +1,6 @@
+/** @jest-environment node */
+// The script uses Node's own fetch, which the default jsdom environment doesn't have.
+
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
