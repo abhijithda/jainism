@@ -19,6 +19,7 @@
     "render:prints": "node scripts/render-prints.js",
     "thumbs": "node scripts/fetch-thumbs.js",
     "thumbs:check": "node scripts/fetch-thumbs.js --check",
+    "sync:title": "node scripts/sync-title.js",
     "impose:booklet": "node scripts/impose-booklet.js"
   },
   "jest": {

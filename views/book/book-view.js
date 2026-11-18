@@ -1,6 +1,7 @@
 // book-view.js — Book spread view powered by CSS Multi-column Layout.
 
 import { createVideoCard, appendLinkedText } from '../../core/media.js';
+import { getBookTitle } from '../../core/book-title.js';
 import { getReadBlocks, isBlockTrackable, countTrackableBlocks, updateProgressDisplay } from '../../core/read-tracking.js';
 import { buildReadTick } from '../../core/read-tick.js';
 import { buildShareButton } from '../../core/share-ui.js';
@@ -419,8 +420,8 @@ export function initBookView(data, activeLangs, containerId = 'book-container') 
         <div class="book-shell">
             <div class="book-spread" id="book-spread">
                 <div class="book-spine"></div>
-                <div class="book-static-head left">ಜಿನ ಪೂಜೆ ಪ್ರಶ್ನೋತ್ತರಗಳು</div>
-                <div class="book-static-head right">Jina Pooja Questions &amp; Answers</div>
+                <div class="book-static-head left"></div>
+                <div class="book-static-head right"></div>
 
                 <div class="book-columns" id="book-columns"></div>
 
@@ -439,6 +440,11 @@ export function initBookView(data, activeLangs, containerId = 'book-container') 
                 <button class="book-nav-btn" id="book-next">Next →</button>
             </div>
         </div>`;
+
+    // Running heads: the title comes from data.json, never hard-coded.
+    const bookTitle = getBookTitle(data);
+    container.querySelector('.book-static-head.left').textContent = bookTitle.kn.title;
+    container.querySelector('.book-static-head.right').textContent = bookTitle.en.title;
 
     document.getElementById('book-prev').addEventListener('click', goToPrevSpread);
     document.getElementById('book-next').addEventListener('click', goToNextSpread);

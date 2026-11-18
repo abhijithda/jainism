@@ -9,7 +9,7 @@ name: Publish Pooja Prints
 #              (no expiry), ready to share
 # Always renders the repo's real data.json; test data is never rendered or
 # published. Output is six PDFs, named like
-#   Jina-Pooja-Questions-and-Answers-Book-A4-2026-10-10.pdf
+#   Jainism-FAQs-Book-A4-2026-10-10.pdf   (the title comes from data.json)
 #   Continuous-A4 / Continuous-A3  whole-page layout, for reading
 #   Book-A4 / Book-A3              one numbered book page per PDF page
 #                                  (A4 sheet = A5 pages, A3 sheet = A4 pages)
@@ -48,6 +48,7 @@ jobs:
     outputs:
       artifact_name: ${{ steps.meta.outputs.artifact_name }}
       date: ${{ steps.meta.outputs.date }}
+      title: ${{ steps.meta.outputs.title }}
 
 
     steps:
@@ -60,6 +61,8 @@ jobs:
       run: |
         echo "date=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
         echo "artifact_name=pooja-prints-$(date -u +%Y%m%d)-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+        # The book's English title, read from data.json (first English line of the cover block).
+        echo "title=$(node -p "((require('./data.json')[0].blocks[0].content.en||[]).map(s=>s.trim()).filter(Boolean)[0])||'Prints'")" >> "$GITHUB_OUTPUT"
 
     - name: ⚙️ Setup Node.js
       uses: actions/setup-node@v4
@@ -119,12 +122,13 @@ jobs:
     - name: 🏷️ Create release with the prints attached
       env:
         GH_TOKEN: ${{ github.token }}
+        BOOK_TITLE: ${{ needs.render-prints.outputs.title }}
       run: |
         DATE="${{ needs.render-prints.outputs.date }}"
         gh release create "prints-${DATE}-${{ github.run_number }}" prints/*.pdf \
           --repo "${{ github.repository }}" \
           --target "${{ github.sha }}" \
-          --title "Jina Pooja Questions & Answers — Prints (${DATE})" \
+          --title "${BOOK_TITLE} — Prints (${DATE})" \
           --notes "Generated on ${DATE}. In every file name, A4 / A3 is the sheet of paper you print on.
 
         **Booklet-A4 / Booklet-A3: print these to make a folded book.** Print double-sided, flip on SHORT edge, actual size (100%, not fit-to-page), then fold the stack in half (Booklet-A4 gives an A5 book, Booklet-A3 an A4 book). Longer books are split into 16-page signatures to fold and sew separately.

@@ -9,6 +9,7 @@ import { initHomeControls, refreshHomeView } from './home/home.js';
 import { initOffline } from './core/offline.js';
 import { initAi, collapseToPill, revealTargetWhenSettled } from './ai/ai-panel.js';
 import { buildBlockIndex } from './core/blocks.js';
+import { getBookTitle, joinTitle, bookHeaderTitle } from './core/book-title.js';
 import { parseShareHash, resolveShared } from './core/share.js';
 import { setShareData } from './core/share-ui.js';
 import { getReadBlocks, saveReadBlocks, pruneUnknownReadIds } from './core/read-tracking.js';
@@ -86,14 +87,12 @@ function setViewMode(mode) {
     if (cssContinuous) cssContinuous.disabled = isBook;
     if (cssBook)       cssBook.disabled       = !isBook;
 
-    // Dynamically swap the <title> for perfect printing!
-    if (isBook) {
-        // Book View (Landscape): Uses Unicode Em Spaces (\u2003) to push English to the right
-        document.title = "ಜಿನ ಪೂಜೆ ಪ್ರಶ್ನೋತ್ತರಗಳು \u2003\u2003\u2003\u2003\u2003\u2003\u2003\u2003\u2003\u2003\u2003\u2003\u2003\u2003\u2003\u2003\u2003\u2003\u2003\u2003\u2003\u2003\u2003\u2003\u2003\u2003\u2003\u2003\u2003\u2003\u2003\u2003\u2003\u2003\u2003\u2003\u2003\u2003\u2003\u2003 Jina Pooja Questions & Answers";
-    } else {
-        // Continuous View (Portrait): Uses a clean pipe separator for narrower paper
-        document.title = "ಜಿನ ಪೂಜೆ ಪ್ರಶ್ನೋತ್ತರಗಳು | Jina Pooja Questions & Answers";
-    }
+    // Dynamically swap the <title> for perfect printing! (Chrome prints it as the page header.)
+    // The title comes from data.json (core/book-title.js), never hard-coded here.
+    const bookTitle = getBookTitle(data);
+    // Book View (Landscape): Kannada at the left, English pushed to the right with Unicode Em Spaces.
+    // Continuous View (Portrait): a clean pipe separator for narrower paper.
+    document.title = isBook ? bookHeaderTitle(bookTitle) : joinTitle(bookTitle);
 
     // The .active class on the toggle buttons/Home icon is already handled
     // by setActiveScreen() above — nothing more to do here.
@@ -149,7 +148,7 @@ function renderSharedView(ids) {
     const cssBook = document.getElementById('css-book');
     if (cssBook) cssBook.disabled = true;
     const bar = document.getElementById('shared-bar');
-    if (bar) bar.hidden = false;
+    if (bar) { bar.textContent = joinTitle(getBookTitle(data)); bar.hidden = false; }
 
     const container = continuous();
     container.style.display = 'flex';
