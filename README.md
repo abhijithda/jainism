@@ -193,5 +193,6 @@ trailing punctuation or a non-ASCII letter (so `…/abc123ನಲ್ಲಿ` links
 
 ## License
 
-- Code: [MIT](LICENSE)
-- Written content (questions, answers, stories): [CC BY-NC-SA 4.0](LICENSE-CONTENT.md). Third-party media (for example linked YouTube videos) is not covered.
+Code: [MIT](LICENSE)
+
+Photos, videos and thumbnails from other sources belong to their owners. If you own something here and want it credited or removed, please open an issue.
