@@ -14,7 +14,7 @@
 // the screenshot tests are as deterministic as the real pages) and only
 // downloads what is missing. YouTube answers a deleted or private video with
 // either a 404 or a small grey placeholder picture; those are NOT saved. The
-// id goes into thumbs-unavailable.json instead, so they aren't retried on every
+// id goes into assets/images/thumbs/unavailable.json instead, so they aren't retried on every
 // run, and the page falls back to YouTube's own answer at view time.
 //
 // Needs Node 18+ (built-in fetch), nothing else, so the GitHub workflow that runs
@@ -89,6 +89,7 @@ function writeUnavailable(file, ids) {
             + 'skipped on later runs unless --retry-unavailable is used.',
         ids: [...ids].sort(),
     };
+    fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.writeFileSync(file, JSON.stringify(body, null, 2) + '\n');
 }
 
@@ -136,7 +137,7 @@ async function run({
     const retryUnavailable = args.includes('--retry-unavailable');
 
     const thumbDir = path.join(rootDir, 'assets', 'images', 'thumbs');
-    const unavailableFile = path.join(rootDir, 'thumbs-unavailable.json');
+    const unavailableFile = path.join(rootDir, 'assets', 'images', 'thumbs', 'unavailable.json');
 
     const dataSets = dataFiles
         .map(f => path.join(rootDir, f))

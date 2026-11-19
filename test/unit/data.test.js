@@ -149,7 +149,7 @@ describe('Video thumbnails', () => {
   const ids = [...new Set(data.flatMap((i) => (i.blocks || []).flatMap((b) => (b.videos || []).map((v) => v.youtubeId))))];
   let unavailable = [];
   try {
-    unavailable = JSON.parse(fs.readFileSync(path.join(ROOT, 'thumbs-unavailable.json'), 'utf8')).ids || [];
+    unavailable = JSON.parse(fs.readFileSync(path.join(ROOT, 'assets', 'images', 'thumbs', 'unavailable.json'), 'utf8')).ids || [];
   } catch (e) { /* no list yet */ }
 
   test('every video has a saved thumbnail, or is listed as unavailable', () => {
@@ -161,7 +161,7 @@ describe('Video thumbnails', () => {
     expect(missing).toEqual([]);
   });
 
-  test('thumbs-unavailable.json only lists ids that are really used by a video', () => {
+  test('assets/images/thumbs/unavailable.json only lists ids that are really used by a video', () => {
     expect(unavailable.filter((id) => !ids.includes(id))).toEqual([]);
   });
 });
