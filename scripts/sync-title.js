@@ -10,7 +10,7 @@
 //
 // title-sync.test.js runs the same check, so a changed title that was not synced
 // fails the tests. og-image.jpg has the title drawn into the picture and has to be
-// redone by hand (see README, "Link preview").
+// redone by hand (see docs/LINK-PREVIEW.md).
 
 const fs = require('fs');
 const path = require('path');
