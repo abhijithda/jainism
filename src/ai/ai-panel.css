@@ -40,6 +40,19 @@ body.ai-resizing { user-select: none; cursor: ew-resize; }
 .ai-passage-text { margin-top: 4px; font-size: .92em; line-height: 1.45; }
 .ai-passage-text + .ai-passage-text { color: #444; }
 
+/* "Watch": the moment in a linked video (see video-nav.js) */
+.ai-videos { margin-top: 10px; border-top: 1px solid #ddd; padding-top: 6px; }
+.ai-videos-title { font-size: .85em; color: #555; }
+.ai-moment { margin-top: 8px; padding: 8px; background: #fff; border: 1px solid #e3e3e3; border-radius: 6px; }
+.ai-watch {
+    display: inline-block; margin-right: 8px; padding: 2px 10px; font: inherit; font-size: .9em;
+    border: 1px solid #1565c0; border-radius: 12px; background: #e3f2fd; color: #0d47a1; cursor: pointer;
+}
+.ai-watch:hover, .ai-watch:focus-visible { background: #bbdefb; outline: none; }
+.ai-moment-label { font-size: .85em; color: #444; }
+.ai-moment-snippet { margin-top: 4px; font-size: .9em; line-height: 1.4; color: #333; }
+.ai-moment-note { margin-top: 2px; font-size: .75em; color: #777; }
+
 .ai-status { padding: 0 12px; font-size: .85em; color: #555; min-height: 1.2em; }
 .ai-form { display: flex; gap: 8px; padding: 8px 12px; border-top: 1px solid #ddd; }
 .ai-form textarea { flex: 1; resize: none; font: inherit; padding: 6px; }
