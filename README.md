@@ -1,6 +1,45 @@
-# F.A.Q.s Collection
+# Jainism F.A.Q.s
 
-## Vison
+[![CI](https://github.com/abhijithda/jainism/actions/workflows/ci.yml/badge.svg)](https://github.com/abhijithda/jainism/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
+**Read it online: <https://abhijithda.github.io/jainism/>**
+
+*Commonly confused concepts, clarified.* A bilingual (Kannada and English)
+question-and-answer book about Jaina pooja and related ideas. A question is
+answered, and follow-up questions build on parts of those answers. Reference
+videos, shlokas, mantras, notes and pictures sit alongside, so you can read at
+your own pace and come back to it.
+
+<!-- Add screenshots here, for example:
+![Book view](docs/screenshots/book-view.png)
+![Continuous view](docs/screenshots/continuous-view.png)
+-->
+
+## What you can do
+
+- **Read it your way.** The *Book* view shows numbered pages; the *Continuous*
+  view is one long page you scroll.
+- **Choose your language.** Kannada, English, or both side by side.
+- **Watch the reference videos.** Videos play on YouTube. Switch on 🎬 Videos for
+  thumbnails and 📱 QR Codes to scan a code with your phone, or use both.
+- **Keep track of what you have read**, and make the text bigger or smaller.
+- **Share one question or answer.** Every card and paragraph has a link of its own.
+- **Read without internet.** Turn on **Settings → 📴 Offline copy** once while
+  online. It is off by default because it saves a few MB on your device
+  ([how it works](docs/OFFLINE.md)).
+- **Print it as a book.** Fold-and-staple booklet PDFs in A4 and A3 are made from
+  the same content ([printing guide](docs/PRINTING.md)). New sets are attached to
+  the [Releases](https://github.com/abhijithda/jainism/releases) page when I
+  publish them.
+- **Ask a question.** An optional AI panel can answer from the book's own content.
+
+## Spotted a mistake, or want something credited or removed?
+
+Please [open an issue](https://github.com/abhijithda/jainism/issues). Photos,
+videos and thumbnails from other sources belong to their owners.
+
+## Vision and goals
 
 A Jain Pooja (or confusing Jainism Concepts related to that) F.A.Q.s style based website - where a question would be answered, and then follow-up questions on parts of those answers could be asked. In other words, a topic would be shared, and follow-ups questions will be asked, or more follow-up details will be added emphasizing the points of the previous ones.
 
@@ -10,7 +49,7 @@ So, I kind of somewhat like to present topics and follow-ups not grouped togethe
 1. One may like to read in their own language of choice, and/or maybe take printouts in multiple (maybe 2 or 3 ) languages to share it with others.
 2. All the reference videos are linked to emphasize the content.
 3. Shloka, Mantra, Notes would also accompany.
-4. A follow-up question could be actually be referring to 1, 2 or more previous topics asking how can those be happenning? (Like, if this is the case, then how can that be?), or a follow-up answer could address multiple items.
+4. A follow-up question could be actually be referring to 1, 2 or more previous topics asking how can those be happening? (Like, if this is the case, then how can that be?), or a follow-up answer could address multiple items.
 5. Part of an answer could be followed up (say when there are multiple points/paras).
 6. Same item could be have multiple followups over a period of time.
 7. Add in images (and maybe with captions, or maybe few words describing about that). Include stories like Manatunga acharya story that came up as an example to one of the questions. Similarly, there'll be few stories not part of any follow-up, but that later would lead to follow-ups/questions!
@@ -23,180 +62,66 @@ So, I kind of somewhat like to present topics and follow-ups not grouped togethe
 14. In web-view I should be able to see what's the follow-up for, so an excerpt (that can be expanded in place?) attached to the follow-up in a Whatsapp reply style would be great. (Not talking about Whatsapp theme, colors or styling. Just the reply-excerpt giving the content, and having ability to jump to that context to read more).
 15. I also want to include photos/images that are kind of randomly inserted without relevant to a topic (and not attached to a topic, and could be treated as separate topic if required, and could have follow-ups much later!). Some may be like my grandparents or parents photos, and some related to Jain Idols. (Some images will be related to follow-up, but not all of them.)
 16. NOTE: The data that was parsed from Google Docs/pdfs is in json format, but the Docs/Pdfs is still not organized. I.e., it starts out randomly. So, the starting point still needs to be updated, and need to add some context - maybe like preface in a book?!. (But those will come much later. Should I say low priority due to time & energy constraints?!)
-nitially I got  Print mode implemented  to show QR-code only without videos, and later removed it so that I can take printouts in different ways to share it with others who need it probably differently. (Older people may not scan QR-code, and may just want to see the thumbnail!)
 
-### UI
+*A note on printing:* initially I had a print mode that showed only the QR code (no videos), and later removed it so that I can take printouts in different ways to share it with others who need it probably differently. (Older people may not scan QR-code, and may just want to see the thumbnail!)
 
-1. Core Layout Structure
+---
 
-Container: A max-width 1000px chat-style interface.
-Cards: Distinct "Question" (Red) and "Answer" (Green) cards.
-Content Rows: Paragraphs are structured as .block-row containing:
-.block-id: Unique identifier (e.g., A-1.1).
-.col-kn: Kannada text column.
-.col-en: English text column.
-.col-media: Multimedia column (200px width).
+## For developers
 
-2. Multimedia & "One Control" Logic
+Everything above is for readers. The rest of this page is for anyone who wants to
+run, test or change the site.
 
-Global Toggles: User can toggle 🎬 Videos and 📱 QR Codes via header switches. These add show-videos and show-qrs classes to the <body>.
-Picture-in-Picture Overlay: When both are active, the QR code (85px) must sit exactly in the bottom-right corner of the video thumbnail.
-Scanability: QR code must be 85px for reliable smartphone scanning, especially on printouts.
-Smart Expansion: If a paragraph has no media content (empty .col-media), the text columns must expand to fill 100% of the card width to save space.
+### Highlights
 
-3. Visual & Aesthetic Rules
+- **No build step.** Plain ES modules in `src/`, served as-is. It is hosted on
+  GitHub Pages straight from the repository.
+- **Two ways to read.** A paged *Book* view and a *Continuous* view, with a
+  Kannada/English language picker, font scaling, paper size, read tracking and
+  links that point to a specific block of text.
+- **Opt-in offline copy.** A service worker (`sw.js`) crawls the app and the
+  pictures itself, so there is no file list to maintain, and online readers
+  always get the latest files ([details](docs/OFFLINE.md)).
+- **QR codes drawn in the browser.** Our own encoder (`src/core/qr.js`, checked
+  against OpenCV's decoder) turns each video link into a QR code, so they work
+  offline and print as vector shapes ([details](docs/THUMBNAILS.md)).
+- **Real print output.** A GitHub workflow renders six PDFs (Continuous, Book and
+  imposed Booklet, each in A4 and A3) with Playwright and pdf-lib, ready to print
+  double-sided and fold ([printing guide](docs/PRINTING.md)).
+- **Optional AI question panel** (`src/ai/`) that answers from the book's own
+  content, with cloud, local and custom engines. The cloud engine goes through a
+  Cloudflare Worker (`proxy/`) with rate limits and an exact daily budget
+  ([design notes](docs/AI.md), [proxy](proxy/README.md)).
+- **Tested.** `assets/data.json` is validated against `assets/schema.json` (Ajv),
+  hundreds of Jest unit tests cover the logic, and Playwright end-to-end tests
+  include screenshot baselines. CI runs all of it on every push and pull request.
 
-Adjacent Borders: Inner block borders (for Shlokas/Notes) must be adjacent to the main card border with no white gap.
-Interactive Elements: The reply-excerpt bar must show a pointer (hand) cursor and be non-selectable to signify it is a clickable UI element.
-Alignment: Media containers must use line-height: 0 to prevent the common browser "gap" at the bottom of images, ensuring the QR code is perfectly flush.
+### Run it locally
 
-4. Printing Requirements (Paper Saving)
+```bash
+npm ci
+npx http-server -p 8080      # then open http://localhost:8080/
+npm run test:unit            # Jest unit tests
+npm test                     # unit tests + Playwright end-to-end tests
+```
 
-Compact View: Hide header, search bar, and UI toggles.
-Column Preservation: Force text to stay in row format (display: flex) even on paper, but ensure a min-width so words don't break into single characters.
-Ink Optimization: Hide media columns for paragraphs that don't have active Video/QR content to reduce total page count.
+`npm ci` also installs the Playwright browsers (the `postinstall` script). The
+offline copy only works over https or `localhost`.
 
+### Content and scripts
 
-## Offline use and link preview
+All content lives in `assets/data.json` (questions, answers, follow-ups, videos,
+images). Useful commands after changing it:
 
-### Offline use (opt-in)
+| Command | What it does |
+| --- | --- |
+| `npm run thumbs` | Downloads missing video thumbnails into `assets/images/thumbs/` (needs internet) |
+| `npm run thumbs:check` | Lists missing thumbnails without using the network |
+| `npm run sync:title` | Rewrites the link-preview title in `index.html` after the book title changes |
+| `npm run render:prints` | Renders the print PDFs |
+| `npm run impose:booklet` | Arranges Book pages in booklet order |
 
-Offline use is **off by default**: saving the book on a device downloads a few
-MB, which matters on mobile data, so nothing is downloaded until the reader
-turns on **Settings → 📴 Offline copy** (the switch in the header menu, and the
-same switch on Home). Turning it off unregisters the worker and deletes
-everything it saved. The setting is `offline` in the `settings` object
-(`src/core/settings.js`).
-
-With the switch on, `sw.js` (a service worker) lets the book open with no
-signal. What it does:
-
-- **Saves the app itself.** It crawls `index.html` → its `<script>` and `<link>`
-  tags → every module each script imports → every `url()` in the CSS, and saves
-  all of it plus `data.json`. There is no file list to maintain; a new module is
-  picked up the next time the worker updates.
-- **Saves the pictures.** After activating, it saves every image `data.json`
-  uses, one at a time. A missing image is reported but never breaks the rest.
-- **Shows progress on Home**, under the switch: *Saving a copy…*, *Ready to use
-  offline (about 2.2 MB)*, *Offline copy incomplete*, or *You're offline —
-  showing the copy saved on this device*.
-- **Data use.** Turning it on downloads the app and the pictures once (about
-  2 MB at the time of writing). Afterwards a visit sends a few dozen tiny "has
-  this changed?" requests that come back "no" with no content, and downloads
-  only the files that actually changed. Turning it off removes the saved copy.
-- **Online readers always get the latest.** Pages, scripts, styles and
-  `data.json` are network-first; the saved copy is used when offline or when
-  the network does not answer within 3 seconds. After one timeout the saved
-  copy is used straight away for 30 seconds (otherwise each file in the page's
-  load chain would wait its own 3 seconds).
-- **Repairs itself.** If the saved app files go missing (storage cleared, or the
-  switch turned off and on again in the same tab), turning on or retrying re-saves
-  them as well as the pictures. It retries at most twice per page load and then
-  says how to try again (*turn the switch off and on*) instead of looping.
-- **Saves the video thumbnails kept in the project** (`assets/images/thumbs/<videoId>.jpg`),
-  best effort and just before the pictures. They are not counted in the
-  "Saving… 4/11" progress, so a video without one never makes the copy look
-  incomplete: it shows the plain "Video" tile.
-- **Leaves other sites alone.** The YouTube fallback for a thumbnail is not saved
-  (offline the card shows the plain tile); videos need a connection anyway. QR codes
-  are drawn by the page itself, so they work offline with nothing to save.
-
-Things to know:
-
-- A device has to open the site **once online** with the switch on, and stay on
-  Home until the line says *Ready*. That is the whole setup.
-- **iPhone/iPad:** Safari may delete a website's saved data after about a week
-  of not using it (unless the site is added to the Home Screen). Offline can
-  therefore quietly disappear for someone who opens the book rarely.
-- Change `VERSION` at the top of `sw.js` to make every device discard its saved
-  copy and download everything again. Normal content changes don't need it.
-- It only runs over https or `localhost` (in other browsers the switch is
-  disabled with an explanation), and is skipped under automation (Playwright,
-  Puppeteer, `scripts/render-prints.js`) so it can't interfere with mocked
-  requests or print rendering. Tests that need it open `/?sw=on`
-  (`test/e2e/core/offline.test.js`).
-- To reset while developing: turn the switch off, or DevTools → Application →
-  Service Workers → *Unregister*, and Storage → *Clear site data*.
-
-### Link preview (WhatsApp, Facebook, Telegram, X)
-
-The `<meta property="og:…">` tags in `index.html` give shared links a title,
-description and picture, using `assets/images/og-image.jpg` (1200×630, about 210 KB: WhatsApp
-may ignore images much over ~300 KB). Chat apps read these tags from the raw
-HTML and never run JavaScript, so they can't be generated in the browser. The
-only address that has to be written out is the one in `og:image`, which must be
-an absolute https URL (`https://abhijithda.github.io/jainism/assets/images/og-image.jpg`).
-If the site moves, change that one line. `og:url` is left out on purpose
-(optional), and X reuses the `og:` title, description and image.
-
-**Changing the book's title or subtitle.** They are written once, in the cover
-block of `data.json` (`data[0].blocks[0].content`: the first line of `kn` and
-`en` is the title, the second the subtitle). The Home cover, the book view's
-running head, the browser/print title, the share bar, the print file names and
-the release name all read it from there. Two things cannot, so after a change:
-run `npm run sync:title` (rewrites the four link-preview spots in `index.html`;
-the tests fail until you do), and redo `assets/images/og-image.jpg`, which has the title
-drawn into the picture. Check the printed page header of the Book view once,
-since its spacing is estimated from the title lengths (`src/core/book-title.js`).
-
-Chat apps remember a link's preview. After changing `assets/images/og-image.jpg` or the text,
-an already-shared link can keep the old preview for days; sharing the link with
-a changed ending (`…/jainism/?v=2`) shows the new one straight away.
-
-## Video thumbnails and QR codes
-
-**QR codes are drawn in the browser** (`src/core/qr.js`, used by `createVideoCard` in
-`src/core/media.js`) from the video link already in `data.json`: no files to keep in
-step, no third-party service, and they work offline and as vector shapes in the
-PDFs. The encoder handles QR versions 1-20 (a link needs 10 at most). It was
-checked by decoding its output with OpenCV: every version at all four error
-correction levels, the first and last text length of each version, all the video
-links in `data.json`, and Kannada text. `src/core/qr.test.js` keeps three
-known-answer codes.
-
-**Thumbnails are kept in the repo** as `assets/images/thumbs/<videoId>.jpg`, so they
-work in the offline copy, the print builds don't depend on YouTube being
-reachable, and a video that is later deleted keeps the picture that shows what
-it was.
-
-- Add or change a video in `data.json`, then run `npm run thumbs` (needs
-  internet; downloads only what is missing) and commit `assets/images/thumbs/` and
-  `assets/images/thumbs/unavailable.json`. Or run the **Update Thumbnails** GitHub workflow
-  (Actions tab; `commit` pushes them to the branch, `artifact` gives you a zip to
-  review first). It is quick: it only needs Node, no `npm ci`, no browsers.
-- `npm run thumbs:check` lists missing thumbnails without using the network. The
-  Jest test in `data.test.js` runs the same check, so CI fails (naming the video
-  ids) instead of readers seeing an empty box.
-- YouTube answers a deleted or private video with a 404 or a small grey stand-in
-  picture. Those are not saved; the id is recorded in `assets/images/thumbs/unavailable.json`
-  so it isn't retried on every run (`--retry-unavailable` looks again). The page
-  then falls back to whatever YouTube itself returns.
-- In the page, a thumbnail that fails to load tries YouTube once, and if that
-  fails too (offline) the card shows a plain dark "Video" tile
-  (`.video-card.thumb-failed`) instead of a broken-image box.
-- The print run (`scripts/render-prints.js`) waits for that whole chain to settle
-  (`scripts/wait-for-images.js`), including the second try, before it makes each PDF.
-- The e2e fixture's videos (`test/data.json`) are fetched too, so the screenshot
-  tests don't depend on the internet.
-- **Order matters after changing either:** the print/e2e screenshot baselines
-  contain thumbnails and QR codes. Run *Update Thumbnails* first, then *Update
-  Playwright Snapshots*.
-
-## Links in text
-
-A web address typed into a block's text (for example the Google Form link in a
-"PS:" note) becomes a real link in Book, Continuous and shared-link views
-(`appendLinkedText` in `src/core/media.js`). Text is added as DOM text, never as
-HTML, so nothing in `data.json` can turn into markup. A link ends at a space,
-trailing punctuation or a non-ASCII letter (so `…/abc123ನಲ್ಲಿ` links only
-`…/abc123`).
-
-## License
-
-Code: [MIT](LICENSE)
-
-Photos, videos and thumbnails from other sources belong to their owners. If you own something here and want it credited or removed, please open an issue.
-## Project layout
+### Project layout
 
 | Path | What it is |
 | --- | --- |
@@ -206,5 +131,22 @@ Photos, videos and thumbnails from other sources belong to their owners. If you 
 | `proxy/` | Cloudflare Worker for the optional Cloud AI engine |
 | `scripts/` | Print rendering, booklet imposition, id generation |
 | `test/` | Unit tests (`test/unit/`) and Playwright tests (`test/e2e/`) |
-| `docs/` | [Architecture and design notes](docs/AI.md), [printing](docs/PRINTING.md), [requirements](docs/REQUIREMENTS.md) |
+| `docs/` | Offline, link preview, thumbnails, UI notes, [printing](docs/PRINTING.md), [architecture](docs/AI.md), [requirements](docs/REQUIREMENTS.md): see [More documentation](#more-documentation) |
 | `notes/` | Older notes and song texts, kept as source material |
+
+### More documentation
+
+| Page | What it covers |
+| --- | --- |
+| [docs/OFFLINE.md](docs/OFFLINE.md) | The opt-in offline copy: what the service worker saves, data use, iPhone caveats, resetting while developing |
+| [docs/LINK-PREVIEW.md](docs/LINK-PREVIEW.md) | The preview shown when the link is shared, and how to change the book title |
+| [docs/THUMBNAILS.md](docs/THUMBNAILS.md) | Video thumbnails and QR codes: adding videos, the unavailable list, print and test order |
+| [docs/UI-NOTES.md](docs/UI-NOTES.md) | Layout, media and print rules; how links in text work |
+| [docs/PRINTING.md](docs/PRINTING.md) | Making the folded booklet |
+| [docs/AI.md](docs/AI.md), [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md) | Architecture and design notes, requirements |
+
+## License
+
+Code: [MIT](LICENSE)
+
+Photos, videos and thumbnails from other sources belong to their owners. If you own something here and want it credited or removed, please open an issue.
