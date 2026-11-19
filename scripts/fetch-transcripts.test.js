@@ -96,13 +96,14 @@ describe('index and CLI, on a temporary copy of the project', () => {
     const silence = () => { jest.spyOn(console, 'log').mockImplementation(() => {}); jest.spyOn(console, 'warn').mockImplementation(() => {}); jest.spyOn(console, 'error').mockImplementation(() => {}); };
 
     beforeEach(() => {
+        process.env.POOJA_PAUSE_MS = '0';
         root = fs.mkdtempSync(path.join(os.tmpdir(), 'pooja-tr-'));
         fs.mkdirSync(path.join(root, 'assets'), { recursive: true });
         fs.writeFileSync(path.join(root, 'assets', 'data.json'), JSON.stringify([{ blocks: [{ videos: [{ url: `https://youtu.be/${ID}`, youtubeId: ID }, { url: `https://youtu.be/${ID2}`, youtubeId: ID2 }] }] }]));
         dir = path.join(root, 'assets', 'transcripts');
         silence();
     });
-    afterEach(() => { jest.restoreAllMocks(); fs.rmSync(root, { recursive: true, force: true }); });
+    afterEach(() => { delete process.env.POOJA_PAUSE_MS; jest.restoreAllMocks(); fs.rmSync(root, { recursive: true, force: true }); });
 
     test('--import-whisper saves the transcript and lists it in index.json', async () => {
         const whisper = path.join(root, 'w.json');
@@ -110,7 +111,7 @@ describe('index and CLI, on a temporary copy of the project', () => {
         expect(await main(['--import-whisper', ID, whisper], root)).toBe(0);
         const saved = JSON.parse(fs.readFileSync(path.join(dir, `${ID}.json`), 'utf8'));
         expect(saved).toMatchObject({ videoId: ID, lang: 'kn', source: 'whisper', segments: [[3, 'ಒಂದು'], [70, 'ಎರಡು']] });
-        expect(JSON.parse(fs.readFileSync(path.join(dir, 'index.json'), 'utf8'))).toEqual({ [ID]: { lang: 'kn', source: 'whisper', cues: 2, minutes: 1 } });
+        expect(JSON.parse(fs.readFileSync(path.join(dir, 'index.json'), 'utf8'))).toEqual({ [ID]: { lang: 'kn', source: 'whisper', cues: 2, minutes: 1, alt: [] } });
     });
 
     test('--import-whisper refuses a bad id, a missing file name and an empty transcript', async () => {
@@ -139,7 +140,7 @@ describe('index and CLI, on a temporary copy of the project', () => {
         fs.writeFileSync(path.join(dir, 'notes.json'), JSON.stringify({ segments: [[0, 'x']] }));      // not a video id
         fs.writeFileSync(path.join(dir, 'unavailable.json'), '{}');
         expect(await main(['--reindex'], root)).toBe(0);
-        expect(JSON.parse(fs.readFileSync(path.join(dir, 'index.json'), 'utf8'))).toEqual({ [ID]: { lang: 'en', source: 'captions', cues: 2, minutes: 2 } });
+        expect(JSON.parse(fs.readFileSync(path.join(dir, 'index.json'), 'utf8'))).toEqual({ [ID]: { lang: 'en', source: 'captions', cues: 2, minutes: 2, alt: [] } });
         expect(console.warn.mock.calls.join(' ')).toMatch(/notes\.json/);
     });
 
@@ -153,7 +154,7 @@ describe('index and CLI, on a temporary copy of the project', () => {
 
     test('with everything already fetched there is nothing to do (and no yt-dlp needed)', async () => {
         fs.mkdirSync(dir, { recursive: true });
-        for (const id of [ID, ID2]) fs.writeFileSync(path.join(dir, `${id}.json`), JSON.stringify({ videoId: id, segments: [[0, 'x']] }));
+        for (const id of [ID, ID2]) fs.writeFileSync(path.join(dir, `${id}.json`), JSON.stringify({ videoId: id, altChecked: '2026-11-19', segments: [[0, 'x']] }));
         expect(await main(['--yt-dlp', 'definitely-not-installed-yt-dlp'], root)).toBe(0);
         expect(console.log.mock.calls.map(c => c[0]).join('\n')).toMatch(/Nothing to fetch/);
     });
@@ -167,48 +168,176 @@ describe('index and CLI, on a temporary copy of the project', () => {
 
     // A stand-in for yt-dlp (a small script that writes the same files yt-dlp does), so the whole fetch path runs
     // without the network. Skipped on Windows, where a script can't be run as a command this way.
+    //   manual captions: none, unless the settings file says { manual: '<lang>' }.   machine captions: hi-orig (spoken), kn and en (translated).
+    //   { rateLimitEn: true }: asking for the English translation is refused (HTTP 429). { rateLimitAll: true }: everything is.
+    //   { rateLimitAfter: n }: every call after the n-th is refused.  { breakAuto: true }: machine captions fail with an unexplained ERROR.
+    //   A refusal is a WARNING and a clean exit with no file, as in real yt-dlp: that is what once looked like "no captions".
+    //   The second video does not exist. (Settings go in a file: Jest's process.env is a copy a child process never sees.)
     const stubTest = process.platform === 'win32' ? test.skip : test;
     function writeStub() {
         const stub = path.join(root, 'fake-yt-dlp');
         fs.writeFileSync(stub, `#!/usr/bin/env node
 const args = process.argv.slice(2);
 if (args[0] === '--version') { console.log('2099.01.01'); process.exit(0); }
+const fs = require('fs');
 const out = args[args.indexOf('--output') + 1];
 const langs = args[args.indexOf('--sub-langs') + 1].split(',');
+const auto = args.includes('--write-auto-subs');
 const id = args[args.length - 1].split('v=')[1];
-const fs = require('fs');
-if (id === '${ID2}') { console.error('ERROR: Video unavailable'); process.exit(1); }
-const lang = langs.includes('hi') ? 'hi' : langs[0];
-const events = [{ tStartMs: 1000, segs: [{ utf8: 'first words' }] }, { tStartMs: 70000, segs: [{ utf8: 'a minute later' }] }];
-fs.writeFileSync(out.replace('%(id)s', id).replace('%(ext)s', lang + '.json3'), JSON.stringify({ events }));
+const fail = msg => { console.error(msg); process.exit(1); };
+const refuse = lang => { console.error("WARNING: [youtube] Unable to download video subtitles for '" + lang + "': HTTP Error 429: Too Many Requests"); process.exit(0); };
+let cfg = {};
+try { cfg = JSON.parse(fs.readFileSync(__dirname + '/stub-settings.json', 'utf8')); } catch (_) {}
+let calls = 0;
+try { calls = Number(fs.readFileSync(__dirname + '/stub-calls.txt', 'utf8')) || 0; } catch (_) {}
+fs.writeFileSync(__dirname + '/stub-calls.txt', String(++calls));
+console.error('WARNING: [youtube] No supported JavaScript runtime could be found.');
+if (id === '${ID2}') fail('ERROR: [youtube] ${ID2}: Video unavailable');
+if (cfg.rateLimitAll || (cfg.rateLimitAfter !== undefined && calls > cfg.rateLimitAfter)) refuse(langs[0]);
+const events = text => [{ tStartMs: 1000, segs: [{ utf8: text + ' one' }] }, { tStartMs: 70000, segs: [{ utf8: text + ' two' }] }];
+const write = lang => fs.writeFileSync(out.replace('%(id)s', id).replace('%(ext)s', lang + '.json3'), JSON.stringify({ events: events(lang) }));
+if (!auto) { if (cfg.manual && langs.includes(cfg.manual)) write(cfg.manual); process.exit(0); }
+if (langs.includes('en') && cfg.rateLimitEn) refuse('en');
+if (cfg.breakAuto) fail('ERROR: Unable to download webpage: boom');
+for (const l of ['hi-orig', 'kn', 'en']) if (langs.includes(l)) { write(l); break; }
 `);
         fs.chmodSync(stub, 0o755);
         return stub;
     }
+    const stubSettings = settings => {
+        fs.writeFileSync(path.join(root, 'stub-settings.json'), JSON.stringify(settings));
+        fs.rmSync(path.join(root, 'stub-calls.txt'), { force: true });          // the call counter starts again
+    };
+    const file = id => path.join(dir, `${id}.json`);
+    const saved = id => JSON.parse(fs.readFileSync(file(id), 'utf8'));
+    const said = () => console.log.mock.calls.map(c => c[0]).join('\n');
 
-    stubTest('fetches captions through yt-dlp, saves them, records the video that had none, and indexes the rest', async () => {
+    stubTest('fetches the spoken-language captions plus the Kannada and English translations, and records the video that does not exist', async () => {
         const stub = writeStub();
         expect(await main(['--yt-dlp', stub], root)).toBe(0);
-        const saved = JSON.parse(fs.readFileSync(path.join(dir, `${ID}.json`), 'utf8'));
-        expect(saved).toMatchObject({ videoId: ID, lang: 'hi', source: 'captions', segments: [[1, 'first words'], [70, 'a minute later']] });
-        expect(fs.existsSync(path.join(dir, `${ID2}.json`))).toBe(false);
+        const t = saved(ID);
+        expect(t).toMatchObject({ videoId: ID, lang: 'hi-orig', source: 'captions', segments: [[1, 'hi-orig one'], [70, 'hi-orig two']] });
+        expect(t.alt.map(a => [a.lang, a.source])).toEqual([['kn', 'translated'], ['en', 'translated']]);
+        expect(t.alt[0].segments).toEqual([[1, 'kn one'], [70, 'kn two']]);
+        expect(t.altChecked).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+        expect(fs.existsSync(file(ID2))).toBe(false);
         const unavailable = JSON.parse(fs.readFileSync(path.join(dir, 'unavailable.json'), 'utf8'));
         expect(Object.keys(unavailable)).toEqual([ID2]);
-        expect(unavailable[ID2].why).toMatch(/unavailable/i);
-        expect(Object.keys(JSON.parse(fs.readFileSync(path.join(dir, 'index.json'), 'utf8')))).toEqual([ID]);
+        expect(unavailable[ID2].why).toMatch(/Video unavailable/);            // yt-dlp's own words, not a vague "no captions"
+        expect(JSON.parse(fs.readFileSync(path.join(dir, 'index.json'), 'utf8'))).toEqual({ [ID]: { lang: 'hi-orig', source: 'captions', cues: 2, minutes: 1, alt: ['kn', 'en'] } });
     });
 
-    stubTest('--ids limits it to those videos, and --force fetches again', async () => {
+    stubTest('captions someone uploaded win over YouTube\u2019s machine ones, and are marked as such', async () => {
+        stubSettings({ manual: 'hi' });
+        expect(await main(['--ids', ID, '--yt-dlp', writeStub()], root)).toBe(0);
+        expect(saved(ID)).toMatchObject({ lang: 'hi', source: 'manual', segments: [[1, 'hi one'], [70, 'hi two']] });
+    });
+
+    stubTest('a translation YouTube refuses (429) is reported, what was got is kept, and the video is not marked done: a rerun adds the rest', async () => {
+        stubSettings({ rateLimitEn: true });
         const stub = writeStub();
         expect(await main(['--ids', ID, '--yt-dlp', stub], root)).toBe(0);
-        expect(fs.existsSync(path.join(dir, 'unavailable.json'))).toBe(true);
-        expect(JSON.parse(fs.readFileSync(path.join(dir, 'unavailable.json'), 'utf8'))).toEqual({});     // ID2 was never asked about
-        const file = path.join(dir, `${ID}.json`);
-        fs.writeFileSync(file, JSON.stringify({ videoId: ID, lang: 'x', source: 'manual', segments: [[0, 'hand made']] }));
+        expect(said()).toMatch(/refused by YouTube/);
+        let t = saved(ID);
+        expect(t.alt.map(a => a.lang)).toEqual(['kn']);
+        expect(t.altChecked).toBeUndefined();
+
+        stubSettings({});
+        console.log.mockClear();
+        expect(await main(['--ids', ID, '--yt-dlp', stub], root)).toBe(0);
+        t = saved(ID);
+        expect(t.alt.map(a => a.lang)).toEqual(['kn', 'en']);                  // main track untouched, translations completed
+        expect(t.segments).toEqual([[1, 'hi-orig one'], [70, 'hi-orig two']]);
+        expect(t.altChecked).toBeDefined();
+        expect(said()).toMatch(/extras:/);
+    });
+
+    stubTest('a main-track request that YouTube refuses is NOT recorded as "no captions"', async () => {
+        stubSettings({ rateLimitAll: true });
+        expect(await main(['--ids', ID, '--yt-dlp', writeStub()], root)).toBe(0);
+        expect(fs.existsSync(file(ID))).toBe(false);
+        expect(JSON.parse(fs.readFileSync(path.join(dir, 'unavailable.json'), 'utf8'))).toEqual({});
+        expect(said()).toMatch(/refused by YouTube.*not recorded/);
+    });
+
+    stubTest('--alt-langs none keeps only the main track; a video that already has one is then left alone', async () => {
+        const stub = writeStub();
+        expect(await main(['--ids', ID, '--alt-langs', 'none', '--yt-dlp', stub], root)).toBe(0);
+        expect(saved(ID).alt).toBeUndefined();
+        expect(saved(ID).altChecked).toBeUndefined();
+        console.log.mockClear();
+        expect(await main(['--ids', ID, '--alt-langs', 'none', '--yt-dlp', stub], root)).toBe(0);
+        expect(said()).toMatch(/Nothing to fetch/);
+    });
+
+    stubTest('a transcript made before translated tracks existed gets them added, without refetching the main track', async () => {
+        fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(file(ID), JSON.stringify({ videoId: ID, lang: 'hi-orig', source: 'captions', fetched: '2026-11-18', segments: [[1, 'old hindi']] }));
+        expect(await main(['--check'], root)).toBe(1);                         // ID2 is still missing
+        expect(said()).toMatch(/could still get Kannada\/English translated tracks/);
+        expect(await main(['--ids', ID, '--yt-dlp', writeStub()], root)).toBe(0);
+        const t = saved(ID);
+        expect(t.segments).toEqual([[1, 'old hindi']]);
+        expect(t.fetched).toBe('2026-11-18');
+        expect(t.alt.map(a => a.lang)).toEqual(['kn', 'en']);
+    });
+
+    stubTest('--force fetches everything again, and a Whisper transcript keeps the translated tracks the video already had', async () => {
+        const stub = writeStub();
         await main(['--ids', ID, '--yt-dlp', stub], root);
-        expect(JSON.parse(fs.readFileSync(file, 'utf8')).source).toBe('manual');                         // present: left alone
+        const whisper = path.join(root, 'w.json');
+        fs.writeFileSync(whisper, JSON.stringify({ language: 'hi', segments: [{ start: 5, text: 'whisper words' }] }));
+        await main(['--import-whisper', ID, whisper], root);
+        expect(saved(ID)).toMatchObject({ source: 'whisper', segments: [[5, 'whisper words']] });
+        expect(saved(ID).alt.map(a => a.lang)).toEqual(['kn', 'en']);
         await main(['--ids', ID, '--force', '--yt-dlp', stub], root);
-        expect(JSON.parse(fs.readFileSync(file, 'utf8')).source).toBe('captions');
+        expect(saved(ID).source).toBe('captions');
+    });
+
+    stubTest('YouTube refusing requests stops the run at the first refusal; what was fetched is already saved, and a rerun finishes the rest', async () => {
+        const [ID3, ID4] = ['AAAAAAAAAAA', 'BBBBBBBBBBB'];
+        fs.writeFileSync(path.join(root, 'assets', 'data.json'), JSON.stringify([{ blocks: [{ videos: [ID, ID3, ID4].map(id => ({ url: `https://youtu.be/${id}`, youtubeId: id })) }] }]));
+        const stub = writeStub();
+        stubSettings({ rateLimitAfter: 2 });                  // the first video's two requests succeed, the next is refused
+        expect(await main(['--alt-langs', 'none', '--yt-dlp', stub], root)).toBe(0);
+        expect(fs.existsSync(file(ID))).toBe(true);
+        expect(fs.existsSync(file(ID3))).toBe(false);
+        expect(fs.existsSync(file(ID4))).toBe(false);                      // never asked: it stopped
+        expect(JSON.parse(fs.readFileSync(path.join(dir, 'unavailable.json'), 'utf8'))).toEqual({});   // a refusal is not "no captions"
+        expect(Object.keys(JSON.parse(fs.readFileSync(path.join(dir, 'index.json'), 'utf8')))).toEqual([ID]);   // saved as it went
+        expect(said()).toMatch(/refused by YouTube/);
+        expect(said()).toMatch(/run the same command again/);
+
+        stubSettings({});
+        console.log.mockClear();
+        expect(await main(['--yt-dlp', stub], root)).toBe(0);
+        for (const id of [ID, ID3, ID4]) expect(saved(id).alt.map(a => a.lang)).toEqual(['kn', 'en']);
+        expect(saved(ID).segments).toEqual([[1, 'hi-orig one'], [70, 'hi-orig two']]);
+    });
+
+    stubTest('main tracks of every video come before any translated extras', async () => {
+        const ID3 = 'AAAAAAAAAAA';
+        fs.writeFileSync(path.join(root, 'assets', 'data.json'), JSON.stringify([{ blocks: [{ videos: [ID, ID3].map(id => ({ url: `https://youtu.be/${id}`, youtubeId: id })) }] }]));
+        const written = [];
+        jest.spyOn(process.stdout, 'write').mockImplementation(chunk => { written.push(String(chunk)); return true; });
+        expect(await main(['--yt-dlp', writeStub()], root)).toBe(0);
+        const order = written.map(l => l.match(/^\[(main|extras)/)).filter(Boolean).map(m => m[1]);
+        expect(order).toEqual(['main', 'main', 'extras', 'extras']);
+    });
+
+    stubTest('an unexplained yt-dlp failure is shown, and is not recorded as "no captions"', async () => {
+        stubSettings({ breakAuto: true });
+        expect(await main(['--ids', ID, '--yt-dlp', writeStub()], root)).toBe(0);
+        expect(said()).toMatch(/failed \(ERROR: Unable to download webpage: boom\)/);
+        expect(JSON.parse(fs.readFileSync(path.join(dir, 'unavailable.json'), 'utf8'))).toEqual({});
+        expect(fs.existsSync(file(ID))).toBe(false);
+    });
+
+    stubTest('--verbose shows what yt-dlp says (but not its JavaScript-runtime nag)', async () => {
+        stubSettings({ rateLimitEn: true });
+        await main(['--ids', ID, '--verbose', '--yt-dlp', writeStub()], root);
+        expect(said()).toMatch(/yt-dlp \(auto en\):.*429/);
+        expect(said()).not.toMatch(/JavaScript runtime/);
     });
 
     test('buildIndex on a folder that does not exist is empty', () => {

@@ -163,6 +163,7 @@ export function renderPassages(container, passages, onCite, { title, open, more 
 const SOURCE_NOTES = {
     captions: 'From YouTube\u2019s captions, which can be wrong. Check by listening.',
     whisper: 'From speech-to-text, which can be wrong. Check by listening.',
+    translated: 'Machine-translated from YouTube\u2019s captions, so it can be rough or wrong. Check by listening.',
 };
 
 function trimMoments(list) {

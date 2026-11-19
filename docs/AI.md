@@ -1333,7 +1333,12 @@ Three kinds of evidence, best first (`src/ai/video-nav.js`):
    `t` is seconds or a clock time (`754`, `"12:34"`, `"1:02:03"`). Most reliable; needs no transcript. Validated by the schema.
 2. **Transcript windows** — `assets/transcripts/<videoId>.json`, searched in ~30 s windows that share one
    cue with the next. Same tokenizer and BM25 as the passage search (`retrieval.js`), so Kannada trigrams and
-   transliteration folding work here too. The result starts 2 s early so the first word isn't cut off.
+   transliteration folding work here too (Devanagari is indexed as trigrams as well, for the Hindi transcripts).
+   The result starts 2 s early so the first word isn't cut off.
+   A file holds a **main track** (the language that is spoken; most of the book's videos are Hindi) and optional
+   **translated tracks** (`alt`: YouTube's machine translation into Kannada and English). Every track is searched by its
+   own words and times, so a Kannada or English question can find a second in a Hindi-spoken video. A hit from a
+   translated track is labelled "Machine-translated ... check by listening".
 3. **The passage's own video** — a video attached to a block the answer shows is always offered, from its start
    (or the `?t=` already in its link), even if no word of the question matched inside it.
 
@@ -1349,11 +1354,19 @@ dropped (a common word in a long line is not the right video); one result per vi
 **Transcripts** are made offline and committed (a static site can't read YouTube captions from the browser):
 
 ```
-node scripts/fetch-transcripts.js            # captions via yt-dlp (free, open source), only videos without one
+node scripts/fetch-transcripts.js            # spoken-language captions (+ Kannada/English translations) via yt-dlp, only what is missing
 node scripts/fetch-transcripts.js --check    # no network: which videos have none; exit 1 if any
 node scripts/fetch-transcripts.js --import-whisper <videoId> out.json --lang kn   # Whisper output (free, local)
 node scripts/fetch-transcripts.js --reindex  # rebuild assets/transcripts/index.json from the files there
 ```
+
+The run goes in two phases (main tracks of every video first, then the translated extras) and saves after every
+video, so Ctrl-C is safe. YouTube refuses subtitle requests that come too fast (HTTP 429), and yt-dlp reports that
+only as a *warning* with a clean exit and no file: an earlier version hid warnings and read that as "no captions".
+Now warnings are read, a refusal stops the run at the first one (rerun later; it asks only for what is missing), and
+neither a refusal nor an unexplained failure is ever recorded as "no captions". `--verbose` shows what yt-dlp says;
+`--cookies-from-browser edge` can help when YouTube keeps refusing. (yt-dlp also nags about a missing JavaScript
+runtime; if downloads keep failing, `winget install DenoLand.Deno` is what it recommends. Unverified here.)
 
 `index.json` lists what exists so the page never asks for videos that have none; videos without captions go in
 `unavailable.json` so they aren't retried every run. Files are compact (`[seconds, "text"]` per cue) and are loaded
@@ -1361,8 +1374,10 @@ the first time a question is asked, not at page load, and are **not** part of th
 network anyway; offline, the passage's own video is still named).
 
 **Limits, stated plainly:**
-- YouTube makes automatic captions for few languages, and Kannada is probably not among them: expect most Kannada
-  pravachanas to have **no captions**. Whisper handles Kannada reasonably but not perfectly, and no automatic system
+- YouTube recognises Hindi (`hi-orig`) reasonably well but, as far as seen, not Kannada: the few Kannada-spoken videos
+  may be mis-labelled Hindi or have no captions. The Kannada/English tracks are machine translations of the Hindi
+  captions: rough, but only there to give questions in those languages something to match. YouTube sometimes refuses
+  translated tracks (HTTP 429): the script says so, keeps what it got, and a rerun fetches only what is missing. Whisper handles Kannada reasonably but not perfectly, and no automatic system
   gets Sanskrit/Prakrit shlokas right. Spot-check timestamps by listening before trusting a transcript; for the
   shlokas that matter most, write a **mark** by hand.
 - Some linked videos no longer exist (see the TODO notes in the data). They simply have no transcript; their

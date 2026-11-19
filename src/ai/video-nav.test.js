@@ -82,6 +82,52 @@ describe('normalizeTranscript', () => {
     });
 });
 
+describe('translated tracks (alt)', () => {
+    const hindi = { lang: 'hi-orig', source: 'captions', segments: [[0, 'नमस्कार'], [60, 'शासन देवता की पूजा भगवान के समान नहीं की जाती']],
+        alt: [
+            { lang: 'en', source: 'translated', segments: [[0, 'greetings'], [60, 'shasana devata is not worshipped as equal to the lord']] },
+            { lang: 'kn', source: 'translated', segments: [[60, 'ಶಾಸನ ದೇವತೆಯನ್ನು ಭಗವಂತನ ಸಮಾನವಾಗಿ ಪೂಜಿಸುವುದಿಲ್ಲ']] },
+            { lang: 'ta', source: 'translated', segments: [] },
+        ] };
+
+    test('normalizeTranscript keeps the main track and each non-empty alt track', () => {
+        const t = normalizeTranscript(hindi);
+        expect(t.lang).toBe('hi-orig');
+        expect(t.alt.map(a => a.lang)).toEqual(['en', 'kn']);          // the empty one is dropped
+        expect(t.alt[0].source).toBe('translated');
+        expect(normalizeTranscript({ segments: [[1, 'x']] }).alt).toEqual([]);
+    });
+
+    test('an English question finds a Hindi-spoken line through its English translation, at that line\u2019s time', () => {
+        const idx = createVideoIndex({ data: fixture(), transcripts: { [V3]: hindi } });
+        const [m] = findMoments(idx, 'is shasana devata worshipped as equal to the lord');
+        expect(m.videoId).toBe(V3);
+        expect(m.kind).toBe('transcript');
+        expect(m.source).toBe('translated');
+        expect(m.start).toBeGreaterThanOrEqual(56);
+        expect(m.start).toBeLessThanOrEqual(60);
+    });
+
+    test('a Kannada question finds it through the Kannada translation', () => {
+        const idx = createVideoIndex({ data: fixture(), transcripts: { [V3]: hindi } });
+        const [m] = findMoments(idx, 'ಶಾಸನ ದೇವತೆಯನ್ನು ಭಗವಂತನ ಸಮಾನವಾಗಿ ಪೂಜಿಸುವುದಿಲ್ಲ');
+        expect(m).toMatchObject({ videoId: V3, kind: 'transcript', source: 'translated' });
+    });
+
+    test('a Hindi question finds the spoken (main) track, whose source is the captions', () => {
+        const idx = createVideoIndex({ data: fixture(), transcripts: { [V3]: hindi } });
+        const [m] = findMoments(idx, 'शासन देवता की पूजा');
+        expect(m).toMatchObject({ videoId: V3, kind: 'transcript', source: 'captions' });
+        expect(m.snippet).toContain('शासन देवता');
+    });
+
+    test('a video still gets one result even though several of its tracks match', () => {
+        const idx = createVideoIndex({ data: fixture(), transcripts: { [V3]: hindi } });
+        const ids = findMoments(idx, 'shasana devata worshipped lord', { k: 5 }).map(m => m.videoId);
+        expect(new Set(ids).size).toBe(ids.length);
+    });
+});
+
 describe('windowSegments', () => {
     const cue = (s, t = `cue${s}`) => ({ s, t });
 

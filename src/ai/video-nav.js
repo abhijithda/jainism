@@ -83,15 +83,9 @@ export function collectVideos(data) {
 
 // ── Transcripts ──────────────────────────────────────────────────────────
 
-/**
- * Accepts the shapes a transcript file may come in and returns one:
- * `{ lang, source, segments: [{ s, t }] }` sorted by time, or null if there is nothing usable.
- * A segment may be `[seconds, "text"]`, `{ s, t }` or `{ start, text }`.
- * @param {Object} raw
- */
-export function normalizeTranscript(raw) {
-    const list = Array.isArray(raw) ? raw : raw?.segments;
-    if (!Array.isArray(list)) return null;
+/** Cues in any of the shapes a file may use -> sorted [{ s, t }] (or []). A cue may be `[seconds, "text"]`, `{ s, t }` or `{ start, text }`. */
+function cuesFrom(list) {
+    if (!Array.isArray(list)) return [];
     const segments = [];
     for (const seg of list) {
         let s; let t;
@@ -101,12 +95,29 @@ export function normalizeTranscript(raw) {
         t = typeof t === 'string' ? t.replace(/\s+/g, ' ').trim() : '';
         if (s != null && t) segments.push({ s, t });
     }
+    return segments.sort((a, b) => a.s - b.s);
+}
+
+/**
+ * Accepts the shapes a transcript file may come in and returns one:
+ * `{ lang, source, segments: [{ s, t }], alt: [{ lang, source, segments }] }`, or null if there is nothing usable.
+ * `segments` is the main track (the language that is spoken); `alt` holds extra tracks, normally YouTube's
+ * machine translations, kept so a question in another language has words to match.
+ * @param {Object} raw
+ */
+export function normalizeTranscript(raw) {
+    const segments = cuesFrom(Array.isArray(raw) ? raw : raw?.segments);
     if (!segments.length) return null;
-    segments.sort((a, b) => a.s - b.s);
+    const alt = [];
+    for (const track of Array.isArray(raw?.alt) ? raw.alt : []) {
+        const cues = cuesFrom(track?.segments);
+        if (cues.length) alt.push({ lang: typeof track.lang === 'string' ? track.lang : '', source: typeof track.source === 'string' ? track.source : 'translated', segments: cues });
+    }
     return {
         lang: typeof raw?.lang === 'string' ? raw.lang : '',
         source: typeof raw?.source === 'string' ? raw.source : 'captions',
         segments,
+        alt,
     };
 }
 
@@ -206,8 +217,12 @@ export function createVideoIndex({ data, transcripts = {} }) {
         const transcript = transcripts[video.videoId] ? normalizeTranscript(transcripts[video.videoId]) : null;
         if (transcript) {
             withTranscript++;
-            for (const w of windowSegments(transcript.segments)) {
-                add({ kind: 'transcript', videoId: video.videoId, start: w.start, blockId: first.blockId, label: first.label, snippet: w.text, source: transcript.source }, w.text);
+            // The main track, then any translated ones: each is searched by its own words and its own times.
+            const tracks = [{ source: transcript.source, segments: transcript.segments }, ...transcript.alt];
+            for (const track of tracks) {
+                for (const w of windowSegments(track.segments)) {
+                    add({ kind: 'transcript', videoId: video.videoId, start: w.start, blockId: first.blockId, label: first.label, snippet: w.text, source: track.source }, w.text);
+                }
             }
         }
     }
