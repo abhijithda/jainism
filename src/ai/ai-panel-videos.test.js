@@ -114,6 +114,12 @@ describe('renderMoments', () => {
         expect(notes[1]).toMatch(/speech-to-text/i);
     });
 
+    test('a machine-translated line says so', () => {
+        const box = document.createElement('div');
+        renderMoments(box, [{ videoId: V1, start: 70, kind: 'transcript', snippet: 'x', source: 'translated', label: 'A-1.1' }], jest.fn());
+        expect(box.querySelector('.ai-moment-note').textContent).toMatch(/machine-translated/i);
+    });
+
     test('a video offered only because it is attached to the passage says so, and plays from the start', () => {
         const box = document.createElement('div');
         const onWatch = jest.fn();

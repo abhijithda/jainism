@@ -28,7 +28,9 @@ import { LANG_CODES } from '../core/langs.js';
 const K1 = 1.2;           // BM25 term-frequency saturation
 const B = 0.75;           // BM25 length normalisation
 const TAG_WEIGHT = 3;     // a tag hit counts as this many body hits
-const KANNADA = /[\u0C80-\u0CFF]/;
+// Kannada and Devanagari (Hindi/Sanskrit/Marathi) are agglutinative or carry vowel signs that Latin folding would
+// strip, so both are indexed as character trigrams. (Devanagari matters for the Hindi video transcripts.)
+const KANNADA = /[\u0C80-\u0CFF\u0900-\u097F]/;
 const WORD = /[\p{L}\p{M}\p{N}]+/gu;
 
 const STOPWORDS = new Set((

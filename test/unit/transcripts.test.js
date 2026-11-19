@@ -32,13 +32,25 @@ describe('assets/transcripts', () => {
             expect(['captions', 'whisper', 'manual']).toContain(file.source);
             expect(Array.isArray(file.segments) && file.segments.length).toBeTruthy();
             expect(info.cues).toBe(file.segments.length);
-            let previous = -1;
-            for (const [s, t] of file.segments) {
-                expect(Number.isInteger(s) && s >= 0).toBe(true);
-                expect(typeof t === 'string' && t.trim() !== '').toBe(true);
-                expect(s).toBeGreaterThanOrEqual(previous);
-                previous = s;
-            }
+            const checkCues = cues => {
+                let previous = -1;
+                for (const [s, t] of cues) {
+                    expect(Number.isInteger(s) && s >= 0).toBe(true);
+                    expect(typeof t === 'string' && t.trim() !== '').toBe(true);
+                    expect(s).toBeGreaterThanOrEqual(previous);
+                    previous = s;
+                }
+            };
+            checkCues(file.segments);
+            // translated tracks (Kannada/English machine translations of the spoken track): same shape, marked as such
+            const alt = file.alt || [];
+            expect(alt.map(a => a.lang)).toEqual(info.alt || []);
+            alt.forEach(a => {
+                expect(typeof a.lang === 'string' && a.lang !== '').toBe(true);
+                expect(a.source).toBe('translated');
+                expect(a.segments.length).toBeGreaterThan(0);
+                checkCues(a.segments);
+            });
         }
     });
 
