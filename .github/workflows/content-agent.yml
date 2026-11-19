@@ -1,0 +1,102 @@
+# Automated Content Pipeline Agent (backend).
+#
+# You draft a new Q&A item (or a new block) in assets/data.json WITHOUT an "id" and push the branch to
+# staging/<anything>, e.g.   git push origin HEAD:staging/new-vastu-questions
+# This workflow then runs scripts/content-agent.js, which
+#   - gives every id-less item/block a permanent opaque 6-character id,
+#   - stamps new items with a timestamp, links a new answer to the question right above it,
+#   - finds related earlier content and adds it to the item's "references" (the app shows "Ref: A-3.1"),
+#   - commits that to the same staging branch, and opens a Pull Request (or comments on the open one)
+#     whose description lists everything it did and what still needs you (e.g. a missing "num"),
+#   - starts the CI test run for the new commit (see the note below).
+# It never merges anything. You review and merge the Pull Request.
+#
+# One-time setup (repo Settings -> Actions -> General -> Workflow permissions):
+#   - "Read and write permissions"
+#   - tick "Allow GitHub Actions to create and approve pull requests"
+# No secrets and no AI key are needed: the matching is the book's own search (src/ai/retrieval.js).
+#
+# Why CI is started by hand below: a commit or Pull Request made with the built-in GITHUB_TOKEN does not
+# trigger other workflows (a GitHub rule that prevents loops), so ci.yml would never run on the agent's commit.
+# ci.yml has workflow_dispatch, so this workflow dispatches it for the branch; the result shows on the
+# Pull Request like any other check, because GitHub attaches checks by commit.
+#
+# After the agent pushes, your local staging branch is one commit behind: run   git pull   before pushing more.
+
+name: Content Agent
+
+on:
+  push:
+    branches: [ "staging/**" ]
+    paths: [ "assets/data.json" ]
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "Staging branch to process (re-run the agent by hand)"
+        required: true
+
+concurrency:
+  group: content-agent-${{ github.event.inputs.branch || github.ref_name }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+
+env:
+  BRANCH: ${{ github.event.inputs.branch || github.ref_name }}
+  BASE: ${{ github.event.repository.default_branch }}
+  GH_TOKEN: ${{ github.token }}
+
+jobs:
+  agent:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # the agent's own commits are made by github-actions[bot]; never re-process them
+    if: github.actor != 'github-actions[bot]'
+    steps:
+      - name: 📥 Checkout the staging branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.BRANCH }}
+          fetch-depth: 0
+
+      - name: ⚙️ Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22        # the agent import()s src/ai/retrieval.js, an ES module (needs Node 22)
+
+      - name: 🤖 Run the content agent
+        id: agent
+        env:
+          NODE_OPTIONS: --no-warnings
+        run: node scripts/content-agent.js --report "$RUNNER_TEMP/agent-report.md"
+
+      - name: 💾 Commit the result to the staging branch
+        id: commit
+        if: steps.agent.outputs.changed == 'true'
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add assets/data.json
+          git commit -m "content-agent: ids, timestamps and cross-references for new items"
+          git push origin "HEAD:${BRANCH}" || { git pull --rebase origin "${BRANCH}" && git push origin "HEAD:${BRANCH}"; }
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: 🔀 Open the Pull Request (or comment on the open one)
+        run: |
+          PR=$(gh pr list --head "$BRANCH" --base "$BASE" --state open --json number --jq '.[0].number // empty')
+          if [ -z "$PR" ]; then
+            gh pr create --base "$BASE" --head "$BRANCH" \
+              --title "Content: ${BRANCH#staging/}" \
+              --body-file "$RUNNER_TEMP/agent-report.md"
+          elif [ "${{ steps.agent.outputs.has_new }}" = "true" ]; then
+            gh pr comment "$PR" --body-file "$RUNNER_TEMP/agent-report.md"
+          else
+            echo "Pull Request #$PR is open and there is nothing new to report."
+          fi
+
+      - name: 🧪 Start CI for the branch
+        if: steps.commit.outputs.sha != ''
+        run: gh workflow run ci.yml --ref "$BRANCH"

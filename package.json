@@ -20,7 +20,8 @@
     "thumbs": "node scripts/fetch-thumbs.js",
     "thumbs:check": "node scripts/fetch-thumbs.js --check",
     "sync:title": "node scripts/sync-title.js",
-    "impose:booklet": "node scripts/impose-booklet.js"
+    "impose:booklet": "node scripts/impose-booklet.js",
+    "agent:content": "node scripts/content-agent.js"
   },
   "jest": {
     "testEnvironment": "jsdom",
