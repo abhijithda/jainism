@@ -7,6 +7,7 @@ import { initBookView, onBookLangChange, searchBookView, jumpToBlock } from './v
 import { initHeaderControls, applySettings, updateMediaVisibility, getActiveLangs, applyPaperSize } from './header/header.js';
 import { initHomeControls, refreshHomeView } from './home/home.js';
 import { initOffline } from './core/offline.js';
+import { installVideoModal, openVideoModal } from './core/video-modal.js';
 import { initAi, collapseToPill, revealTargetWhenSettled } from './ai/ai-panel.js';
 import { buildBlockIndex } from './core/blocks.js';
 import { getBookTitle, joinTitle, bookHeaderTitle } from './core/book-title.js';
@@ -196,6 +197,9 @@ async function init() {
         return;
     }
 
+    // A click on any video thumbnail plays it in a dialog (also on a shared page); modified clicks still open YouTube.
+    installVideoModal();
+
     const sharedIds = parseShareHash(location.hash);
     if (sharedIds) {
         renderSharedView(sharedIds);
@@ -233,6 +237,8 @@ async function init() {
     // opens the last view they had open.
     initAi({
         data,
+        // The assistant's "Watch" buttons: play a linked video at the moment the answer is about.
+        onWatch: ({ videoId, start, label }) => openVideoModal({ videoId, start, label }),
         onCite: (blockId) => {
             const mode = localStorage.getItem('viewMode') === 'continuous' ? 'continuous' : 'book';
             activateView(mode);

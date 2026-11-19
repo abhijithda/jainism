@@ -97,6 +97,24 @@
                   },
                   "youtubeId": {
                     "type": "string"
+                  },
+                  "marks": {
+                    "description": "Moments in the video worth jumping to, noted by hand. t is seconds or a clock time such as 12:34 or 1:02:03.",
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "t": {
+                          "type": ["number", "string"]
+                        },
+                        "label": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      },
+                      "required": ["t", "label"],
+                      "additionalProperties": false
+                    }
                   }
                 },
                 "required": [

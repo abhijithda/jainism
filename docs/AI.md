@@ -20,6 +20,7 @@ jainism/
 ├── sw.js                       ← service worker; must sit next to index.html to control the whole site
 ├── assets/                     ← what the site loads at run time
 │   ├── data.json, schema.json
+│   ├── transcripts/              ← <videoId>.json per linked video + index.json (see "Video navigator")
 │   └── images/
 ├── src/                        ← the app: plain ES modules, served as-is (no build step)
 │   ├── app.js                    ← entry point; composes everything below
@@ -27,6 +28,8 @@ jainism/
 │   │   ├── blocks.js                 (ID formatting, reference resolution, block indexing)
 │   │   ├── langs.js                  (KNOWN_LANGS — supported languages)
 │   │   ├── media.js / media.css      (video/QR utilities + styles)
+│   │   ├── video-modal.js / .css     (the player dialog; thumbnails open it)
+│   │   ├── video-time.js             (start times in links, m:ss, the embed/watch addresses)
 │   │   ├── read-tracking.js / .css   (read/unread state, incl. isBlockTrackable)
 │   │   ├── card-types.css            (card/block colour coding)
 │   │   ├── settings.js               (the one unified `settings` object — schema/validation)
@@ -42,9 +45,9 @@ jainism/
 │   │   │   └── continuous-view.js / .css / .test.js
 │   │   └── book/
 │   │       └── book-view.js / .css / .test.js
-│   └── ai/                       ← the assistant: retrieval, RAG, prompt, engines, panel
+│   └── ai/                       ← the assistant: retrieval, RAG, prompt, engines, panel, video-nav
 ├── proxy/                      ← Cloudflare Worker for the Cloud engine (deployed separately)
-├── scripts/                    ← render-prints.js, impose-booklet.js, new-id.js
+├── scripts/                    ← render-prints.js, impose-booklet.js, new-id.js, fetch-transcripts.js
 ├── test/
 │   ├── unit/                     (data vs schema, og-image, service-worker crawl, app boot)
 │   ├── data.json                 (small fixture the e2e tests serve)
@@ -158,6 +161,10 @@ to a real file) as part of building this structure.
 | `src/core/blocks.js` | Pure data-model helpers shared by both views: `formatIdForDisplay`, `buildBlockIndex`, `resolveReference`, the content helpers (`hasLangText`, `langsWithText`, `hasAnyText`, `imageUrl`) and `classifyInsert()` | ✅ Current |
 | `src/core/langs.js` | `KNOWN_LANGS` / `LANG_CODES` — single source of truth for supported languages; `activeLangCodes()` turns continuous view's `'kn'\|'en'\|'all'` into a list | ✅ Current |
 | `src/core/media.js` | Video/QR utilities (`createVideoCard` — THE video markup both views use — `extractYouTubeId`, `escapeHtml`, `linkify`, etc.) and the global photo-size hook (`--ar`/`--nw`) | ✅ Current |
+| `src/core/video-modal.js` / `.css` | The player dialog: `openVideoModal({videoId, start, label})`; `installVideoModal()` makes a plain click on any video thumbnail open it (modified clicks still open YouTube) | ✅ Current |
+| `src/core/video-time.js` | Pure helpers: `parseStartSeconds` (a link's `?t=`), `parseClock` (`12:34`, `1m30s`), `formatTime`, `buildEmbedUrl` / `buildWatchUrl` (null for anything that isn't a video id) | ✅ Current |
+| `src/ai/video-nav.js` | The video navigator: `collectVideos`, `loadTranscripts`, `createVideoIndex`, `findMoments` — which video, and which second, a question is about | ✅ Current |
+| `scripts/fetch-transcripts.js` | Builds `assets/transcripts/` from YouTube captions (yt-dlp) or Whisper output; `--check`, `--reindex`, `--import-whisper` | ✅ Current |
 | `src/core/read-tracking.js` | Read/unread state functions, incl. `isBlockTrackable` and `countTrackableBlocks` — shared by both views | ✅ Current |
 | `src/core/read-tick.js` | `buildReadTick()` — the "mark as read" button, built once for both views (`onToggle` hook for view-specific repaint) | ✅ Current |
 | `src/core/print-vars.css` | Print spacing both views' print blocks read (`--print-orphans`, `--print-ref-gap`, `--print-block-gap`, …) | ✅ Current |
@@ -1304,4 +1311,68 @@ ai/
   raise the floors when retrieval improves. **The questions and gold labels are my draft: please review them,
   especially the Kannada and transliterated wording.** Measures search only, not answer quality or model cost.
 - **Planned (measured, not assumed):** eval harness, optional agent step
+
+## Video navigator ("Watch") — ✅ built; transcripts still to be generated
+
+The book cites YouTube videos as evidence. Under an answer, **Watch** buttons now open the
+video in a player on the page, at the moment the answer is about. Clicking any video thumbnail
+also plays it in that player instead of a new tab (Ctrl/Cmd/Shift-click and middle-click still
+open YouTube). The player always carries an "Open on YouTube" link: some videos forbid
+embedding, and offline there is no player.
+
+**It is not an agent loop, on purpose.** Nothing here calls a model. The idea that came with this
+feature (an agent that queries transcripts and tells the frontend where to seek) is a retrieval
+problem, and a deterministic search does it with no extra cost, no latency and no new way to be
+wrong: the seconds come from the author's marks or the transcript, never from a model. An agent
+step (phase 3 below) can call `findMoments` as a tool later, if the eval says it helps.
+
+Three kinds of evidence, best first (`src/ai/video-nav.js`):
+
+1. **Marks** — moments you note by hand in `data.json`:
+   `"videos": [{ "url": "...", "youtubeId": "...", "marks": [{ "t": "12:34", "label": "Veeranatha shloka" }] }]`.
+   `t` is seconds or a clock time (`754`, `"12:34"`, `"1:02:03"`). Most reliable; needs no transcript. Validated by the schema.
+2. **Transcript windows** — `assets/transcripts/<videoId>.json`, searched in ~30 s windows that share one
+   cue with the next. Same tokenizer and BM25 as the passage search (`retrieval.js`), so Kannada trigrams and
+   transliteration folding work here too. The result starts 2 s early so the first word isn't cut off.
+3. **The passage's own video** — a video attached to a block the answer shows is always offered, from its start
+   (or the `?t=` already in its link), even if no word of the question matched inside it.
+
+Ranking: a video attached to a passage the answer shows is boosted (x1.5); a result below 30% of the best is
+dropped (a common word in a long line is not the right video); one result per video; at most three.
+
+**Grounding rules kept:**
+- Videos are offered only next to an answer from the book (a question the book doesn't cover offers none).
+- The words that matched are shown under the button, in quotes, with where they came from ("From YouTube's
+  captions, which can be wrong"); the author's marks need no such note. Text only, never markup.
+- If building the video index fails for any reason the answer is shown without Watch rows; it is never held back.
+
+**Transcripts** are made offline and committed (a static site can't read YouTube captions from the browser):
+
+```
+node scripts/fetch-transcripts.js            # captions via yt-dlp (free, open source), only videos without one
+node scripts/fetch-transcripts.js --check    # no network: which videos have none; exit 1 if any
+node scripts/fetch-transcripts.js --import-whisper <videoId> out.json --lang kn   # Whisper output (free, local)
+node scripts/fetch-transcripts.js --reindex  # rebuild assets/transcripts/index.json from the files there
+```
+
+`index.json` lists what exists so the page never asks for videos that have none; videos without captions go in
+`unavailable.json` so they aren't retried every run. Files are compact (`[seconds, "text"]` per cue) and are loaded
+the first time a question is asked, not at page load, and are **not** part of the offline copy (the player needs the
+network anyway; offline, the passage's own video is still named).
+
+**Limits, stated plainly:**
+- YouTube makes automatic captions for few languages, and Kannada is probably not among them: expect most Kannada
+  pravachanas to have **no captions**. Whisper handles Kannada reasonably but not perfectly, and no automatic system
+  gets Sanskrit/Prakrit shlokas right. Spot-check timestamps by listening before trusting a transcript; for the
+  shlokas that matter most, write a **mark** by hand.
+- Some linked videos no longer exist (see the TODO notes in the data). They simply have no transcript; their
+  passage still shows the "Video with A-x.y" row, which will then fail to play: the "Open on YouTube" link is the
+  only recourse.
+- The query is matched word for word. A question in English about a video spoken in Kannada matches through the
+  passage's Latin tags and text, not through the transcript; Whisper can translate to English (`--task translate`)
+  if a second, English transcript is wanted (not built).
+- Verified: the search, the player, the script (with a stand-in for yt-dlp) and the whole path in real Chromium with
+  YouTube blocked. **Not verified here:** real yt-dlp against YouTube, real captions, and the real embedded player
+  playing at the right second (no network access to YouTube from where this was built).
+- **Idea, not built:** a mark editor, i.e. "open the player, press a key to copy the current time" for writing marks.
   (follow-up/search tools for Cloud), embeddings only if the eval shows a gap.

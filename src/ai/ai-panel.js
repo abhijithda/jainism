@@ -13,6 +13,8 @@ import { LOCAL_TIERS } from './config.js';
 import { LOCAL_GPU_FAILED } from './engines/local.js';
 import { destinationHost, isLocalBaseUrl, normalizeBaseUrl } from './engines/custom.js';
 import { openAiConfig } from './ai-config.js';
+import { loadTranscripts, createVideoIndex, findMoments } from './video-nav.js';
+import { formatTime } from '../core/video-time.js';
 
 // Short on purpose: it sits under the picker in the Settings menu.
 function privacyNote(choice, settings) {
@@ -38,7 +40,7 @@ function privacyNote(choice, settings) {
     return '';
 }
 
-let state = { data: null, index: null, onCite: null, history: [], log: [], abort: null, busy: false };
+let state = { data: null, index: null, vindex: null, onCite: null, onWatch: null, history: [], log: [], abort: null, busy: false };
 
 // ── Surviving a reload ───────────────────────────────────────────────────
 // Browsers discard idle background tabs to save memory and reload them when the reader comes back; a reload
@@ -152,6 +154,88 @@ export function renderPassages(container, passages, onCite, { title, open, more 
         details.appendChild(btn);
     }
     container.appendChild(details);
+}
+
+// ── Watch: the moment in a linked video ──────────────────────────────────
+// Videos the book links as evidence. The index (transcripts + the author's marks + the video's own passage)
+// is built the first time a question is asked and kept for the tab. Seconds come only from the author's marks
+// or the transcript, never from a model (see video-nav.js), and the matching words are shown under the button.
+const SOURCE_NOTES = {
+    captions: 'From YouTube\u2019s captions, which can be wrong. Check by listening.',
+    whisper: 'From speech-to-text, which can be wrong. Check by listening.',
+};
+
+function trimMoments(list) {
+    return (list || []).map(m => ({
+        videoId: m.videoId, start: m.start, kind: m.kind, snippet: m.snippet || '', source: m.source || '',
+        label: m.label || '', blockId: m.blockId || '',
+    }));
+}
+
+async function momentsFor(question, result) {
+    // Only next to an answer from the book: a video is never offered for a question the book doesn't cover.
+    if (!result?.passages?.length) return [];
+    try {
+        if (!state.vindex) {
+            state.vindex = loadTranscripts().then(transcripts => createVideoIndex({ data: state.data, transcripts }));
+        }
+        const vindex = await state.vindex;
+        return trimMoments(findMoments(vindex, question, { passages: result.shown || [] }));
+    } catch (_) {
+        state.vindex = null;   // try again next time; the answer itself is never held back by this
+        return [];
+    }
+}
+
+/**
+ * "Watch" buttons under an answer: one row per video, each opening the player at the moment.
+ * Everything is put in as text; nothing is parsed as markup.
+ * @param {HTMLElement} container
+ * @param {{videoId: string, start: number, kind: string, snippet?: string, source?: string, label?: string}[]} moments
+ * @param {(m: {videoId: string, start: number, label: string}) => void} onWatch
+ */
+export function renderMoments(container, moments, onWatch) {
+    if (!moments?.length) return;
+    const box = document.createElement('div');
+    box.className = 'ai-videos';
+    const title = document.createElement('div');
+    title.className = 'ai-videos-title';
+    title.textContent = moments.length === 1 ? 'Watch' : 'Watch (' + moments.length + ')';
+    box.appendChild(title);
+
+    moments.forEach(m => {
+        const row = document.createElement('div');
+        row.className = 'ai-moment';
+
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'ai-watch';
+        btn.textContent = m.start > 0 ? '\u25B6 ' + formatTime(m.start) : '\u25B6 Watch';
+        btn.title = 'Play this video here';
+        btn.addEventListener('click', () => onWatch && onWatch({ videoId: m.videoId, start: m.start, label: m.label }));
+        row.appendChild(btn);
+
+        const what = document.createElement('span');
+        what.className = 'ai-moment-label';
+        what.textContent = m.kind === 'owner' ? 'Video with ' + m.label : 'In the video with ' + m.label;
+        row.appendChild(what);
+
+        if (m.snippet) {
+            const snip = document.createElement('div');
+            snip.className = 'ai-moment-snippet';
+            snip.textContent = '\u201C' + m.snippet + '\u201D';
+            row.appendChild(snip);
+        }
+        const note = SOURCE_NOTES[m.source];
+        if (m.kind === 'transcript' && note) {
+            const n = document.createElement('div');
+            n.className = 'ai-moment-note';
+            n.textContent = note;
+            row.appendChild(n);
+        }
+        box.appendChild(row);
+    });
+    container.appendChild(box);
 }
 
 function addMessage(role, text = '') {
@@ -362,10 +446,12 @@ async function ask(question, { retry = false } = {}) {
         const title = result.fallback ? 'Matching passages in the book' : (engine.id === 'local' ? 'From the book' : 'Passages cited');
         const open = result.fallback || engine.id === 'local';
         renderPassages(reply, result.shown, state.onCite, { title, open, more: result.more });
+        const moments = await momentsFor(question, result);
+        renderMoments(reply, moments, state.onWatch);
         if (result.grounded) {
             state.history.push({ role: 'user', content: question }, { role: 'assistant', content: result.text });
         }
-        logEntry({ r: 'answer', text: result.text, citations: result.citations, shown: trimPassages(result.shown), more: trimPassages(result.more), title, open });
+        logEntry({ r: 'answer', text: result.text, citations: result.citations, shown: trimPassages(result.shown), more: trimPassages(result.more), title, open, moments });
     } catch (err) {
         const failure = err?.name === 'AbortError' ? 'Stopped.' : (err?.message || 'Something went wrong.');
         reply.textContent = failure;
@@ -471,11 +557,13 @@ function buildDrawer() {
 }
 
 /**
- * @param {{data: Array, onCite: (blockId: string) => void}} args
+ * @param {{data: Array, onCite: (blockId: string) => void, onWatch?: (m: {videoId: string, start: number, label: string}) => void}} args
  */
-export function initAi({ data, onCite }) {
+export function initAi({ data, onCite, onWatch }) {
     state.data = data;
     state.onCite = onCite;
+    state.onWatch = onWatch || null;
+    state.vindex = null;
     // Read what a previous load of this tab left behind BEFORE anything below can overwrite it.
     const saved = readSession();
     state.log = [];
@@ -514,6 +602,7 @@ function restoreSession(saved) {
         if (e.r === 'answer') {
             renderAnswer(el, e.text, e.citations || [], state.onCite);
             renderPassages(el, e.shown || [], state.onCite, { title: e.title, open: !!e.open, more: e.more || [] });
+            renderMoments(el, e.moments || [], state.onWatch);
         }
     });
     const box = $('ai-messages');
