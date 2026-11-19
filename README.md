@@ -5,7 +5,7 @@
 
 **Read it online: <https://abhijithda.github.io/jainism/>**
 
-*Commonly confused concepts, clarified.* A bilingual (Kannada and English)
+*Commonly confused concepts, clarified.* A multi-lingual (Kannada, English primarily)
 question-and-answer book about Jaina pooja and related ideas. A question is
 answered, and follow-up questions build on parts of those answers. Reference
 videos, shlokas, mantras, notes and pictures sit alongside, so you can read at
