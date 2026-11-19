@@ -161,14 +161,14 @@ it was.
 
 - Add or change a video in `data.json`, then run `npm run thumbs` (needs
   internet; downloads only what is missing) and commit `assets/images/thumbs/` and
-  `thumbs-unavailable.json`. Or run the **Update Thumbnails** GitHub workflow
+  `assets/images/thumbs/unavailable.json`. Or run the **Update Thumbnails** GitHub workflow
   (Actions tab; `commit` pushes them to the branch, `artifact` gives you a zip to
   review first). It is quick: it only needs Node, no `npm ci`, no browsers.
 - `npm run thumbs:check` lists missing thumbnails without using the network. The
   Jest test in `data.test.js` runs the same check, so CI fails (naming the video
   ids) instead of readers seeing an empty box.
 - YouTube answers a deleted or private video with a 404 or a small grey stand-in
-  picture. Those are not saved; the id is recorded in `thumbs-unavailable.json`
+  picture. Those are not saved; the id is recorded in `assets/images/thumbs/unavailable.json`
   so it isn't retried on every run (`--retry-unavailable` looks again). The page
   then falls back to whatever YouTube itself returns.
 - In the page, a thumbnail that fails to load tries YouTube once, and if that

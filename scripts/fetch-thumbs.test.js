@@ -112,13 +112,13 @@ describe('run (against a local stand-in for YouTube)', () => {
     afterEach(() => { fs.rmSync(root, { recursive: true, force: true }); });
 
     const go = (args = []) => run({ rootDir: root, baseUrl, args, log: () => {} });
-    const saved = () => fs.readdirSync(path.join(root, 'assets', 'images', 'thumbs')).sort();
+    const saved = () => fs.readdirSync(path.join(root, 'assets', 'images', 'thumbs')).filter(f => f.endsWith('.jpg')).sort();
 
     test('saves real thumbnails (including the test fixture\'s), records deleted and grey ones, and reports a server error without recording it', async () => {
         const s = await go();
         expect(saved()).toEqual(['FIXT0000001.jpg', 'GOOD0000001.jpg', 'GOOD0000002.jpg']);
         expect(s.downloaded.sort()).toEqual(['FIXT0000001', 'GOOD0000001', 'GOOD0000002']);
-        expect([...readUnavailable(path.join(root, 'thumbs-unavailable.json'))].sort()).toEqual(['GONE0000000', 'GREY0000000']);
+        expect([...readUnavailable(path.join(root, 'assets', 'images', 'thumbs', 'unavailable.json'))].sort()).toEqual(['GONE0000000', 'GREY0000000']);
         expect(s.failed).toEqual(['BROKEN00000']);                    // a server error says nothing about the video
         expect(fs.statSync(path.join(root, 'assets', 'images', 'thumbs', 'GOOD0000001.jpg')).size).toBe(30000);
     });

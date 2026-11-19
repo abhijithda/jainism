@@ -3,11 +3,12 @@
 // fails when they differ from data.json — fix with `npm run sync:title`.
 const fs = require('fs');
 const path = require('path');
-const { syncIndexHtml, readTitle } = require('./scripts/sync-title');
-const { getBookTitle } = require('./src/core/book-title');
+const ROOT = path.join(__dirname, '..', '..');
+const { syncIndexHtml, readTitle } = require(path.join(ROOT, 'scripts', 'sync-title'));
+const { getBookTitle } = require(path.join(ROOT, 'src', 'core', 'book-title'));
 
-const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
-const data = JSON.parse(fs.readFileSync(path.join(__dirname, 'assets/data.json'), 'utf8'));
+const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+const data = JSON.parse(fs.readFileSync(path.join(ROOT, 'assets', 'data.json'), 'utf8'));
 
 test('index.html link-preview title matches data.json (run: npm run sync:title)', () => {
     expect(syncIndexHtml(html, data)).toBe(html);
@@ -36,7 +37,7 @@ test('no other place in the shipped code hard-codes the title', () => {
     const { en, kn } = getBookTitle(data);
     const files = ['src/app.js', 'src/views/book/book-view.js', 'src/home/home.js', 'scripts/render-prints.js', '.github/workflows/publish-pooja-prints.yml'];
     files.forEach(f => {
-        const src = fs.readFileSync(path.join(__dirname, f), 'utf8');
+        const src = fs.readFileSync(path.join(ROOT, f), 'utf8');
         expect([f, src.includes(en.title)]).toEqual([f, false]);
         expect([f, src.includes(kn.title)]).toEqual([f, false]);
     });
