@@ -22,6 +22,9 @@
     "sync:title": "node scripts/sync-title.js",
     "impose:booklet": "node scripts/impose-booklet.js",
     "agent:content": "node scripts/content-agent.js",
+    "agent:notes": "node scripts/notes-to-blocks.js",
+    "agent:typos": "node scripts/typo-review.js",
+    "agent:followup": "node scripts/video-followup.js",
     "transcripts": "node scripts/fetch-transcripts.js",
     "transcripts:check": "node scripts/fetch-transcripts.js --check"
   },

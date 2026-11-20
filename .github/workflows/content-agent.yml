@@ -14,21 +14,25 @@
 # One-time setup (repo Settings -> Actions -> General -> Workflow permissions):
 #   - "Read and write permissions"
 #   - tick "Allow GitHub Actions to create and approve pull requests"
-# No secrets and no AI key are needed: the matching is the book's own search (src/ai/retrieval.js).
+# No secret is needed for the pipeline itself: the matching is the book's own search (src/ai/retrieval.js).
+# Notes files in content-inbox/ (see content-inbox/README.md) are turned into items and blocks first; that step uses the
+# Gemini API when the repository secret GEMINI_API_KEY is set (smarter split, translations, tag suggestions) and still
+# works without it (blank lines, numbered points and Q/A prefixes decide the blocks; no translation).
+# When the commit is pushed this workflow starts the typo review (typo-review.yml), which makes its OWN second commit.
 #
 # Why CI is started by hand below: a commit or Pull Request made with the built-in GITHUB_TOKEN does not
 # trigger other workflows (a GitHub rule that prevents loops), so ci.yml would never run on the agent's commit.
 # ci.yml has workflow_dispatch, so this workflow dispatches it for the branch; the result shows on the
 # Pull Request like any other check, because GitHub attaches checks by commit.
 #
-# After the agent pushes, your local staging branch is one commit behind: run   git pull   before pushing more.
+# After the agent pushes, your local staging branch is one or two commits behind: run   git pull   before pushing more.
 
 name: Content Agent
 
 on:
   push:
     branches: [ "staging/**" ]
-    paths: [ "assets/data.json" ]
+    paths: [ "assets/data.json", "content-inbox/*.txt" ]
   workflow_dispatch:
     inputs:
       branch:
@@ -67,11 +71,27 @@ jobs:
         with:
           node-version: 22        # the agent import()s src/ai/retrieval.js, an ES module (needs Node 22)
 
+      - name: 📝 Notes to blocks (files in content-inbox/)
+        id: notes
+        env:
+          NODE_OPTIONS: --no-warnings
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
+        run: node scripts/notes-to-blocks.js --report "$RUNNER_TEMP/notes-report.md"
+
       - name: 🤖 Run the content agent
         id: agent
         env:
           NODE_OPTIONS: --no-warnings
-        run: node scripts/content-agent.js --report "$RUNNER_TEMP/agent-report.md"
+        run: |
+          node scripts/content-agent.js --report "$RUNNER_TEMP/agent-report.md"
+          # one description for the PR: the notes report (if any) first, then the pipeline's
+          { [ -f "$RUNNER_TEMP/notes-report.md" ] && cat "$RUNNER_TEMP/notes-report.md" && echo; cat "$RUNNER_TEMP/agent-report.md"; } > "$RUNNER_TEMP/pr-body.md"
+
+      - name: 🖼️ Fetch thumbnails of any new videos
+        # a new YouTube link needs its thumbnail in assets/images/thumbs/ or the data test in CI fails (docs/THUMBNAILS.md)
+        if: steps.agent.outputs.changed == 'true'
+        run: node scripts/fetch-thumbs.js || echo "::warning::could not fetch every thumbnail; run the Update Thumbnails workflow on this branch"
 
       - name: 💾 Commit the result to the staging branch
         id: commit
@@ -79,8 +99,9 @@ jobs:
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add assets/data.json
-          git commit -m "content-agent: ids, timestamps and cross-references for new items"
+          git add -A assets/data.json assets/images/thumbs content-inbox
+          if [ "${{ steps.notes.outputs.notes }}" = "true" ]; then MSG="content-agent: notes to blocks, ids, timestamps and cross-references"; else MSG="content-agent: ids, timestamps and cross-references for new items"; fi
+          git commit -m "$MSG"
           git push origin "HEAD:${BRANCH}" || { git pull --rebase origin "${BRANCH}" && git push origin "HEAD:${BRANCH}"; }
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
@@ -90,9 +111,9 @@ jobs:
           if [ -z "$PR" ]; then
             gh pr create --base "$BASE" --head "$BRANCH" \
               --title "Content: ${BRANCH#staging/}" \
-              --body-file "$RUNNER_TEMP/agent-report.md"
+              --body-file "$RUNNER_TEMP/pr-body.md"
           elif [ "${{ steps.agent.outputs.has_new }}" = "true" ]; then
-            gh pr comment "$PR" --body-file "$RUNNER_TEMP/agent-report.md"
+            gh pr comment "$PR" --body-file "$RUNNER_TEMP/pr-body.md"
           else
             echo "Pull Request #$PR is open and there is nothing new to report."
           fi
@@ -100,3 +121,7 @@ jobs:
       - name: 🧪 Start CI for the branch
         if: steps.commit.outputs.sha != ''
         run: gh workflow run ci.yml --ref "$BRANCH"
+
+      - name: 🔤 Start the typo review (its own second commit)
+        if: steps.commit.outputs.sha != '' || steps.agent.outputs.has_new == 'true'
+        run: gh workflow run typo-review.yml --ref "$BRANCH" -f branch="$BRANCH"
