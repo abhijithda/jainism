@@ -9,6 +9,7 @@ import { initHomeControls, refreshHomeView } from './home/home.js';
 import { initOffline } from './core/offline.js';
 import { installVideoModal, openVideoModal } from './core/video-modal.js';
 import { initAi, collapseToPill, revealTargetWhenSettled } from './ai/ai-panel.js';
+import { initStudy, closeStudy } from './study/study-panel.js';
 import { buildBlockIndex } from './core/blocks.js';
 import { getBookTitle, joinTitle, bookHeaderTitle } from './core/book-title.js';
 import { parseShareHash, resolveShared } from './core/share.js';
@@ -235,22 +236,27 @@ async function init() {
     // ── AI assistant (opt-in; see ai/). A citation chip opens the cited block in
     // the view the reader is already using (Book or Continuous). From Home it
     // opens the last view they had open.
+    // Opens a cited block in the view the reader already uses (shared by the assistant and the study companion).
+    const openCitedBlock = (blockId) => {
+        const mode = localStorage.getItem('viewMode') === 'continuous' ? 'continuous' : 'book';
+        activateView(mode);
+        // Give the view a moment to lay out before scrolling/turning to the block.
+        setTimeout(() => {
+            if (mode === 'continuous') jumpToReference(blockId); else jumpToBlock(blockId);
+            // The drawer steps aside (to a "Back to answer" button) if it would cover the passage.
+            if (window.innerWidth < 700) collapseToPill();
+            else revealTargetWhenSettled(blockId);
+        }, 150);
+    };
     initAi({
         data,
         // The assistant's "Watch" buttons: play a linked video at the moment the answer is about.
         onWatch: ({ videoId, start, label }) => openVideoModal({ videoId, start, label }),
-        onCite: (blockId) => {
-            const mode = localStorage.getItem('viewMode') === 'continuous' ? 'continuous' : 'book';
-            activateView(mode);
-            // Give the view a moment to lay out before scrolling/turning to the block.
-            setTimeout(() => {
-                if (mode === 'continuous') jumpToReference(blockId); else jumpToBlock(blockId);
-                // The drawer steps aside (to a "Back to answer" button) if it would cover the passage.
-                if (window.innerWidth < 700) collapseToPill();
-                else revealTargetWhenSettled(blockId);
-            }, 150);
-        },
+        onCite: openCitedBlock,
     });
+
+    // ── Study companion (opt-in; see study/): questions after a section is marked read.
+    initStudy({ data, onCite: (blockId) => { closeStudy(); openCitedBlock(blockId); } });
     document.getElementById('home-btn')?.addEventListener('click', showHome);
     document.getElementById('home-open-book')?.addEventListener('click', () => activateView('book'));
     document.getElementById('home-open-continuous')?.addEventListener('click', () => activateView('continuous'));
