@@ -34,6 +34,10 @@ const NOT_A_NAME = new Set((
     'these this to was what when where which who why with you your here also only both each any all one two'
 ).split(' '));
 
+// Titles that start a person's name ("Queen Vishalakshi", "Rani Vishalakshi", "Shri Gautama"): two
+// ways of naming one person are not two topics to compare.
+const TITLE_WORDS = new Set('queen king rani raja raaja prince princess shri sri lord mother father saint sage acharya muni swami'.split(' '));
+
 const lower = s => String(s).trim().toLowerCase();
 const lastWord = phrase => String(phrase).trim().split(/\s+/).pop();
 const escapeRe = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -58,6 +62,8 @@ function editDistance(a, b) {
  */
 function sameWord(a, b) {
     const x = foldLatin(lower(a)), y = foldLatin(lower(b));
+    // one name inside the other (Harivamsha / Vamsha) is the same name, shortened
+    if (Math.min(x.length, y.length) >= 4 && (x.includes(y) || y.includes(x))) return true;
     return x === y || editDistance(x, y) <= Math.max(1, Math.floor(Math.min(x.length, y.length) / 5));
 }
 
@@ -115,7 +121,23 @@ export function buildStudyModel(index) {
     // What each block says in English plus its tags, lower-cased, for "named together" checks.
     const mentions = index.chunks.map(c => lower(`${c.text.en || ''} ${c.tags.join(' ')}`));
 
-    return { index, chunkById, blockItem, topics, heads, mentions };
+    const phrases = [...heads.values()].flatMap(group => [...group.values()].map(v => v.name));
+
+    return { index, chunkById, blockItem, topics, heads, mentions, phrases };
+}
+
+/**
+ * The topics a block is about: its tags, then any known topic phrase its English text names
+ * ("Mithya Drishti" is in the text of a passage that is not tagged with it), so reading the
+ * other side of a comparison later brings the comparison up then.
+ */
+export function topicsOf(model, chunk) {
+    const out = [...chunk.tags];
+    const text = lower(chunk.text.en || '');
+    model.phrases.forEach(name => {
+        if (text.includes(lower(name)) && !out.some(t => lower(t) === lower(name))) out.push(name);
+    });
+    return out;
 }
 
 /** Whether some block of the book names both phrases (in its English text or tags). */
@@ -128,8 +150,9 @@ function namedTogether(model, a, b) {
  * Other topics of the same shape as `topic` that make a sensible comparison:
  *  - a tag sharing its last word (Nishchaya Naya / Vyavahara Naya), or
  *  - a phrase of the same shape that the text names but doesn't tag, but only
- *    if some block names it together with the topic (the Moodhata note lists
- *    Deva, Loka and Guru together). That keeps out stray capitalised words.
+ *    if some block names it together with the topic (the Moodhata note lists Deva, Loka and
+ *    Guru together). That keeps out stray capitalised words. A person named two ways
+ *    (Rani / Queen Vishalakshi) is not a comparison: see TITLE_WORDS.
  * Spelling variants of the topic itself are left out. Best first: pairs the
  * book names together, then plain tag siblings.
  * @returns {{name: string, together: boolean}[]}
@@ -142,6 +165,7 @@ export function comparisonsFor(model, topic) {
         .filter(([key]) => key !== lower(topic))
         .map(([, v]) => ({ ...v, together: namedTogether(model, topic, v.name) }))
         .filter(v => !sameWord(firstWord(v.name), firstWord(topic)))
+        .filter(v => !TITLE_WORDS.has(lower(firstWord(v.name))) && !TITLE_WORDS.has(lower(firstWord(topic))))
         .filter(v => v.source === 'tag' || v.together)
         .sort((a, b) => Number(b.together) - Number(a.together))
         .map(({ name, together }) => ({ name, together }));
@@ -157,7 +181,7 @@ function passageOf(chunk, langs, topic) {
 }
 
 /** The book's best passages on a topic; `first` (a block id) goes in front if it has text. */
-function topicPassages(model, topic, langs, { first, skip = new Set() } = {}) {
+function topicPassages(model, topic, langs, { first, skip = new Set(), readSet } = {}) {
     const out = [];
     // A passage is about the topic only if it has every word of it ("Loka Moodhata" needs "Loka", not just
     // "Moodhata"); otherwise a topic the book never mentions would borrow another topic's passages.
@@ -165,10 +189,11 @@ function topicPassages(model, topic, langs, { first, skip = new Set() } = {}) {
     const push = chunk => {
         if (!chunk || chunk.textless || skip.has(chunk.id) || out.some(p => p.id === chunk.id)) return;
         if (!terms.every(t => chunk.tf.has(t))) return;
+        if (readSet && !readSet.has(chunk.id)) return;   // only what the reader has marked as read: never test what they haven't met
         if (out.length < MAX_PASSAGES_PER_TOPIC) out.push(passageOf(chunk, langs, topic));
     };
     if (first) push(model.chunkById.get(first));
-    search(model.index, topic, { k: 8, textOnly: true })
+    search(model.index, topic, { k: 30, textOnly: true })
         .filter(h => h.score >= MIN_SCORE)
         .forEach(h => push(h.chunk));
     return out;
@@ -184,15 +209,16 @@ export const suggestionId = desc =>
  * supports it (content moved or removed since it was saved).
  * @param {Object} model
  * @param {{kind:'compare', topics:[string,string]}|{kind:'recall', itemId:string}} desc
- * @param {{langs?: string[], blockId?: string}} [opts]
+ * @param {{langs?: string[], blockId?: string, readSet?: Set<string>}} [opts]  with `readSet`, a
+ *   comparison only draws on blocks the reader has marked as read, on both sides
  */
-export function buildSuggestion(model, desc, { langs = ['en'], blockId } = {}) {
+export function buildSuggestion(model, desc, { langs = ['en'], blockId, readSet } = {}) {
     if (desc?.kind === 'compare' && Array.isArray(desc.topics) && desc.topics.length === 2) {
         const [a, b] = desc.topics;
         // The other topic picks first: when one note names both (Deva, Loka and Guru Moodhata in one list),
         // it must not be used up by the topic that has many other passages to choose from.
-        const theirs = topicPassages(model, b, langs);
-        const mine = topicPassages(model, a, langs, { first: blockId, skip: new Set(theirs.map(p => p.id)) });
+        const theirs = topicPassages(model, b, langs, { readSet });
+        const mine = topicPassages(model, a, langs, { first: blockId, readSet, skip: new Set(theirs.map(p => p.id)) });
         if (!mine.length || !theirs.length) return null;
         return {
             id: suggestionId(desc), desc, kind: 'compare', title: `${a} vs ${b}`,
@@ -245,32 +271,33 @@ export function suggestionsForRead(model, blockId, { readSet, done = {}, langs =
     const item = model.blockItem.get(blockId);
     if (!chunk || !item || item.type === 'insert') return [];
     const out = [];
-    const offer = (desc) => {
-        if (out.length >= max || done[suggestionId(desc)] || out.some(s => s.id === suggestionId(desc))) return;
-        const s = buildSuggestion(model, desc, { langs, blockId });
-        if (s) out.push(s);
-    };
+    const push = s => { if (s && out.length < max && !done[s.id] && !out.some(o => o.id === s.id)) out.push(s); };
 
-    // Candidate comparisons from every topic of the block: pairs the book names together
-    // first. One comparison per topic, so two cards are never the same question twice.
+    // Per topic of the block, the first sibling the reader has read about too (so both sides can be
+    // answered from what they have read). Pairs the book names together first; one comparison per
+    // topic, so two cards are never the same question twice.
     const candidates = [];
-    chunk.tags.forEach((tag, order) => {
-        const [best] = comparisonsFor(model, tag);
-        if (best) candidates.push({ desc: { kind: 'compare', topics: [tag, best.name] }, together: best.together, order });
+    topicsOf(model, chunk).forEach((tag, order) => {
+        for (const sib of comparisonsFor(model, tag)) {
+            const desc = { kind: 'compare', topics: [tag, sib.name] };
+            if (done[suggestionId(desc)]) continue;
+            const s = buildSuggestion(model, desc, { langs, blockId, readSet });
+            if (s) { candidates.push({ s, together: sib.together, order }); break; }
+        }
     });
     candidates.sort((a, b) => (Number(b.together) - Number(a.together)) || (a.order - b.order));
-    const compares = candidates.map(c => c.desc);
+    const compares = candidates.map(c => c.s);
 
     // A comparison first, then recall of the whole answer (once all of it is read), then any further comparison.
-    if (compares[0]) offer(compares[0]);
+    push(compares[0]);
     if (item.type === 'answer' && (item.blocks || []).filter(isBlockTrackable).every(b => readSet.has(b.id))) {
-        offer({ kind: 'recall', itemId: item.id });
+        push(buildSuggestion(model, { kind: 'recall', itemId: item.id }, { langs, blockId }));
     }
-    compares.slice(1).forEach(offer);
+    compares.slice(1).forEach(push);
     return out;
 }
 
 // CommonJS shim for Jest
 if (typeof module !== 'undefined' && module.exports) {
-    Object.assign(module.exports, { blockText, buildStudyModel, siblingsOf, comparisonsFor, suggestionId, buildSuggestion, suggestionsForRead });
+    Object.assign(module.exports, { blockText, buildStudyModel, topicsOf, siblingsOf, comparisonsFor, suggestionId, buildSuggestion, suggestionsForRead });
 }

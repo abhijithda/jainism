@@ -1,7 +1,8 @@
 # Study companion
 
 Turn it on in **Settings → 🎓 Study companion** (also on Home). It is off by default.
-Turning it on also turns on **Read tracking**, because the questions follow the ✓ ticks.
+Turning it on also turns on **Read tracking** and locks that switch (greyed out, in the menu and on Home) while Study is on, because the questions follow the ✓ ticks. Turning Study off unlocks it; it stays on. Tapping the locked switch does nothing except highlight a note
+that says why (a locked switch is used instead of a disabled one, which would ignore the tap silently).
 
 > Not to be confused with the **⛶ Focus** button in the header: that one is zen mode
 > (hides the header). The study companion is called *Study* everywhere to keep the two apart.
@@ -31,8 +32,17 @@ with the passages. (With AI on, see below.)
 | **Compare** | A block with a multi-word tag is marked read | Siblings of the tag: other tags ending in the same word (Nishchaya Naya / Vyavahara Naya), plus phrases of the same shape that the English text names without tagging them, **only if some block names them together with the topic** (the Moodhata note lists Deva, Loka and Guru together, so Loka Moodhata qualifies; a stray capitalised word does not). Spelling variants (Samyag / Samyak) are ignored. |
 | **Recall** | Every readable block of an *answer* is marked read | The question the answer replies to (`references`), then the answer's own blocks |
 
-Rule: a question is only offered if the book has passages for **both** sides (every word of the
-topic must appear in the passage). It never asks what the book doesn't cover.
+Rules:
+
+* A question is only offered if the book has passages for **both** sides (every word of the topic must
+  appear in the passage). It never asks what the book doesn't cover.
+* **Only what you have read.** Every passage a question shows (and every passage the AI sees) is a block you
+  have marked as read. If the other side of a comparison is in a part you have not read yet, the question is
+  held back and appears when you read that part. A topic counts for a block if it is a tag *or* the block's
+  English text names it (the book mentions "Mithya Drishti" in a passage that is not tagged with it).
+* Titles are not topics: "Queen Vishalakshi" and "Rani Vishalakshi" are one person, so no comparison is made
+  (see `TITLE_WORDS`). Spelling variants (Samyag / Samyak) and shortened names (Harivamsha / Vamsha) are
+  not offered as two things to compare either.
 
 Adding content: nothing to do. Tag new blocks consistently (e.g. "Loka Moodhata" as a tag would make it a
 tag sibling) and the questions follow. Multi-word tags that end in a shared word are what create comparisons.
@@ -45,6 +55,15 @@ Only when a **hosted** engine is usable (this site's Cloud assistant or the read
   passages. Shown only if its model answer cites a real passage.
 * **Check my answer (AI)**: short feedback on the reader's answer. Shown only if it cites a real passage;
   otherwise the passages are shown instead.
+
+Language: **Check my answer** replies in the language you answered in; a new question is in English whenever
+English is among your selected languages (otherwise your first language). The book's own passages are always
+shown in your selected languages.
+
+Each **✨ Another question** uses a different part of what you have read (the section you marked most recently
+first, then the rest in book order), remembers the questions it has already asked and tells the AI not to
+repeat them, and does not add a question that is the same (or nearly) as an earlier one: it tries up to
+three times, then says so.
 
 Both are **on request**, never automatic, so a busy reader cannot use up the Cloud assistant's daily budget.
 The on-device (Local) models are **not** used for these: the assistant's docs record small models

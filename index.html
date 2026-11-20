@@ -108,17 +108,18 @@
                         <span class="slider"></span>
                     </label>
                 </div>
-                <div class="menu-section">
-                    <label for="toggle-offline" title="Save the book on this device so it opens without internet">📴 Offline copy:</label>
-                    <label class="switch">
-                        <input type="checkbox" id="toggle-offline">
-                        <span class="slider"></span>
-                    </label>
-                </div>
+                <div id="rt-lock-note" class="rt-lock-note" role="status" hidden></div>
                 <div class="menu-section">
                     <label for="toggle-study" title="After you mark a section as read, get questions about it. Uses the book's own text; no AI needed.">🎓 Study companion:</label>
                     <label class="switch">
                         <input type="checkbox" id="toggle-study">
+                        <span class="slider"></span>
+                    </label>
+                </div>
+                <div class="menu-section">
+                    <label for="toggle-offline" title="Save the book on this device so it opens without internet">📴 Offline copy:</label>
+                    <label class="switch">
+                        <input type="checkbox" id="toggle-offline">
                         <span class="slider"></span>
                     </label>
                 </div>
@@ -208,6 +209,7 @@
                     <span class="slider"></span>
                 </label>
             </div>
+            <p id="home-rt-lock-note" class="rt-lock-note" role="status" hidden></p>
             <div class="home-section home-row">
                 <label for="home-toggle-study">🎓 Study companion</label>
                 <label class="switch">
@@ -215,7 +217,7 @@
                     <span class="slider"></span>
                 </label>
             </div>
-            <p class="home-offline-hint">After you mark a section as read, you get questions about it, made from the book's own text (turning on read tracking too). With an AI assistant on, it can also write extra questions and check your answers.</p>
+            <p class="home-offline-hint">After you mark a section as read, you get questions about it, made from the book's own text. Read tracking is switched on with it and stays on while Study is on. With an AI assistant on, it can also write extra questions and check your answers.</p>
             <div class="home-section home-row">
                 <label for="home-toggle-offline">📴 Offline copy</label>
                 <label class="switch">

@@ -11,8 +11,13 @@ const data = JSON.parse(fs.readFileSync(DATA, 'utf8'));
 // A block tagged Deva Moodhata that is not also a Shasana Devata one, so the comparison offered is the Moodhata one.
 const devaBlock = data.flatMap(i => i.blocks || []).find(b => (b.tags || []).includes('Deva Moodhata') && !(b.tags || []).includes('Shasana Devata'));
 
+// Questions only use what has been read, so the note that names Loka Moodhata counts as read in these tests
+// (the tests below tick the Deva Moodhata block themselves).
+const lokaNote = data.flatMap(i => i.blocks || []).find(b => /Loka Moodhata/.test((b.content?.en || []).join(' ')));
+
 test.beforeEach(async ({ page }) => {
     await page.route('**/data.json', route => route.fulfill({ path: DATA }));
+    await page.addInitScript(id => { if (!sessionStorage.getItem('seededRead')) { localStorage.setItem('readBlocks', JSON.stringify([id])); sessionStorage.setItem('seededRead', '1'); } }, lokaNote.id);
 });
 
 async function startStudy(page, view) {
@@ -101,4 +106,92 @@ test('off by default, and nothing study-related shows in print', async ({ page }
     await page.emulateMedia({ media: 'print' });
     await expect(page.locator('#study-nudge')).toBeHidden();
     await expect(page.locator('#study-drawer')).toBeHidden();
+});
+
+test('Home page: the Study switch turns Study on, and Read tracking with it (both places show it, and it is locked)', async ({ page }) => {
+    await page.goto('/');
+    await page.locator('#home-btn').click();
+    await page.locator('#home-toggle-study').check();
+    await expect(page.locator('#home-toggle-study')).toBeChecked();
+    await expect(page.locator('#home-toggle-read-tracking')).toBeChecked();
+    await expect(page.locator('#home-toggle-read-tracking')).toHaveAttribute('aria-disabled', 'true');
+    await expect(page.locator('#home-rt-lock-note')).toBeVisible();
+    await expect(page.locator('#toggle-study')).toBeChecked();
+    await expect(page.locator('#toggle-read-tracking')).toBeChecked();
+    await expect(page.locator('#study-btn')).toBeVisible();
+    expect(await page.evaluate(() => document.body.classList.contains('show-read-tracking'))).toBe(true);
+
+    await page.locator('#home-toggle-study').uncheck();                    // off again: Read tracking stays on, unlocked
+    await expect(page.locator('#home-toggle-read-tracking')).toHaveAttribute('aria-disabled', 'false');
+    await expect(page.locator('#home-rt-lock-note')).toBeHidden();
+    await expect(page.locator('#home-toggle-read-tracking')).toBeChecked();
+    await expect(page.locator('#study-btn')).toBeHidden();
+});
+
+test('a saved "Study on, Read tracking off" is repaired on load: ticks show', async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem('settings', JSON.stringify({ studyCompanion: true, readTracking: false })));
+    await page.goto('/');
+    await page.locator('.view-toggle-btn[data-view="continuous"]').click();
+    await expect(page.locator('.read-tick').first()).toBeVisible();
+    await page.locator('#settings-btn').click();
+    await expect(page.locator('#toggle-read-tracking')).toBeChecked();
+    await expect(page.locator('#toggle-read-tracking')).toHaveAttribute('aria-disabled', 'true');
+    await expect(page.locator('#rt-lock-note')).toBeVisible();
+});
+
+test('trying to switch Read tracking off while Study is on: it stays on and a message says why (menu and Home)', async ({ page }) => {
+    await page.addInitScript(() => { if (!sessionStorage.getItem('s2')) { localStorage.setItem('settings', JSON.stringify({ studyCompanion: true, readTracking: true })); sessionStorage.setItem('s2', '1'); } });
+    await page.goto('/');
+    await page.locator('#settings-btn').click();
+    await expect(page.locator('#rt-lock-note')).toContainText('Read tracking stays on while the study companion is on');
+    await page.locator('label.switch:has(#toggle-read-tracking)').click({ force: true });
+    await expect(page.locator('#toggle-read-tracking')).toBeChecked();
+    await expect(page.locator('#rt-lock-note')).toHaveClass(/rt-lock-flash/);
+    await page.screenshot({ path: 'test-results/study-lock-menu.png' });
+    await page.locator('#settings-btn').click();
+    await page.locator('#home-btn').click();
+    await expect(page.locator('#home-rt-lock-note')).toBeVisible();
+    await page.locator('label.switch:has(#home-toggle-read-tracking)').click({ force: true });
+    await expect(page.locator('#home-toggle-read-tracking')).toBeChecked();
+    await expect(page.locator('#home-rt-lock-note')).toHaveClass(/rt-lock-flash/);
+});
+
+test('the Settings menu and the Home page list Study and Offline copy in the same order', async ({ page }) => {
+    await page.goto('/');
+    await page.locator('#settings-btn').click();
+    const menu = await page.locator('input[type="checkbox"][id^="toggle-"]').evaluateAll(els => els.map(e => e.id).filter(id => /^toggle-(videos|qrs|read-tracking|study|offline)$/.test(id)));
+    await page.locator('#settings-btn').click();
+    await page.locator('#home-btn').click();
+    const home = await page.locator('.home-settings input[type="checkbox"]').evaluateAll(els => els.map(e => e.id).filter(id => /^home-toggle-(videos|qrs|read-tracking|study|offline)$/.test(id)));
+    expect(menu.map(i => i.replace('toggle-', ''))).toEqual(['videos', 'qrs', 'read-tracking', 'study', 'offline']);
+    expect(home.map(i => i.replace('home-toggle-', ''))).toEqual(menu.map(i => i.replace('toggle-', '')));
+});
+
+test('book view: arrow keys while typing an answer move the caret and do not turn the page', async ({ page }) => {
+    await startStudy(page, 'book');
+    const tick = page.locator(`#book-${devaBlock.id} .read-tick`);
+    for (let i = 0; i < 80 && !(await tick.isVisible()); i++) await page.keyboard.press('ArrowRight');
+    await tick.click();
+    await page.locator('#study-btn').click();
+    const box = page.locator('#study-body .study-answer').first();
+    await box.click();
+    await box.pressSequentially('helo');
+    const before = await page.locator('#book-page-num-left').textContent();
+    await page.keyboard.press('ArrowLeft');
+    await page.keyboard.press('ArrowLeft');
+    await page.keyboard.press('ArrowRight');
+    await page.keyboard.press('PageDown');
+    expect(await page.locator('#book-page-num-left').textContent()).toBe(before);
+    await page.keyboard.type('l');                                        // the caret really moved: "helo" -> "hel" + "l" + "o"
+    await page.keyboard.press('ArrowLeft');
+    await page.keyboard.press('ArrowLeft');
+    await page.keyboard.press('ArrowLeft');
+    await page.keyboard.type('l');
+    expect(await box.inputValue()).toMatch(/l/);
+    expect(await page.locator('#book-page-num-left').textContent()).toBe(before);
+    // ...and on the page itself the arrow still turns it
+    await page.locator('#study-drawer .ai-close').click();
+    await page.locator('body').click({ position: { x: 5, y: 300 } });
+    await page.keyboard.press('ArrowRight');
+    expect(await page.locator('#book-page-num-left').textContent()).not.toBe(before);
 });

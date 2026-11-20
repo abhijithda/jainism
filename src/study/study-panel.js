@@ -21,7 +21,7 @@ const NUDGE_MS = 15000;
 const MAX_PENDING = 12;
 
 const $ = id => document.getElementById(id);
-const state = { data: null, onCite: null, model: null, pending: [], log: {}, lastBlockId: null, nudgeTimer: null, aiBusy: false, aiQuestions: [] };
+const state = { data: null, onCite: null, model: null, pending: [], log: {}, lastBlockId: null, nudgeTimer: null, aiBusy: false, aiQuestions: [], aiAsked: [], aiFocusUsed: new Set(), sessionReads: [] };
 
 // ── Model, log and session ───────────────────────────────────────────────
 function model() {
@@ -55,6 +55,7 @@ function addPending(sugs, blockId) {
 export function onBlockRead({ blockId, read }) {
     if (!enabled() || !read) return;
     state.lastBlockId = blockId;
+    state.sessionReads = [...state.sessionReads.filter(id => id !== blockId), blockId];   // most recent last
     const sugs = suggestionsForRead(model(), blockId, { readSet: getReadBlocks(localStorage), done: state.log, langs: langs() });
     const fresh = addPending(sugs, blockId);
     updateBadge();
@@ -155,7 +156,7 @@ function finish(entry, status) {
 function cardNode(entry) {
     const { sug } = entry;
     const card = el('div', 'study-card');
-    card.appendChild(el('div', 'study-kind', sug.kind === 'compare' ? 'Compare' : sug.kind === 'recall' ? 'Recall' : 'Question from the AI'));
+    card.appendChild(el('div', 'study-kind', sug.kind === 'compare' ? 'Compare' : sug.kind === 'recall' ? 'Recall' : `Question from the AI${sug.focusLabel ? ` \u00B7 about ${sug.focusLabel}` : ''}`));
     card.appendChild(el('div', 'study-prompt', sug.prompt));
 
     const box = el('textarea', 'study-answer');
@@ -225,33 +226,72 @@ async function runCheck(entry, engine) {
     }
 }
 
-async function askAiForQuestion() {
-    const engine = getEngine(loadSettings().aiEngine);
-    if (!aiAvailable(engine) || state.aiBusy || !state.lastBlockId) return;
+// ── "Another question from the AI": a different part of what was read each time ──
+const normalise = q => String(q).toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, ' ').split(/\s+/).filter(Boolean);
+/** The same question again, or nearly (most of the same words). */
+function seenBefore(question) {
+    const a = new Set(normalise(question));
+    return state.aiAsked.some(prev => {
+        const b = new Set(normalise(prev));
+        const common = [...a].filter(w => b.has(w)).length;
+        return common / Math.max(a.size, b.size, 1) >= 0.8;
+    });
+}
+
+/** Blocks the reader has read that have text to ask about: most recently marked first, then book order. */
+function focusCandidates() {
+    if (!state.data) return [];
     const m = model();
-    const chunk = m.chunkById.get(state.lastBlockId);
-    if (!chunk) return;
-    // Passages: what was just read, plus the book's best matches for its topics.
-    const query = chunk.tags.join(' ');
-    const sug = suggestionsForRead(m, state.lastBlockId, { readSet: new Set(), langs: langs(), max: 3 });
+    const read = getReadBlocks(localStorage);
+    const ok = id => { const c = m.chunkById.get(id); return read.has(id) && c && !c.textless; };
+    const recent = [...state.sessionReads].reverse().filter(ok);
+    const rest = m.index.chunks.map(c => c.id).filter(id => ok(id) && !recent.includes(id));
+    return [...recent, ...rest];
+}
+
+/** The passages for one question: the focus block, the rest of its item that is read, and (if it has one) its comparison. All read. */
+function passagesAround(focusId) {
+    const m = model();
+    const read = getReadBlocks(localStorage);
+    const chunk = m.chunkById.get(focusId);
+    const sameItem = (m.blockItem.get(focusId)?.blocks || []).map(b => m.chunkById.get(b.id)).filter(c => c && !c.textless && read.has(c.id));
+    const sug = suggestionsForRead(m, focusId, { readSet: read, langs: langs(), max: 1 });
     const passages = [];
-    [{ id: chunk.id, label: chunk.label, text: chunk.text }, ...sug.flatMap(s => s.passages)].forEach(p => {
-        if (!p.text || passages.some(q => q.id === p.id) || passages.length >= 5) return;
+    [chunk, ...sug.flatMap(x => x.passages), ...sameItem].forEach(p => {
+        if (!p || !p.text || passages.some(q => q.id === p.id) || passages.length >= 5) return;
         passages.push({ id: p.id, label: p.label, text: p.text });
     });
-    if (!passages.length || !query) return;
+    return passages;
+}
+
+const MAX_AI_TRIES = 3;
+
+async function askAiForQuestion() {
+    const engine = getEngine(loadSettings().aiEngine);
+    if (!aiAvailable(engine) || state.aiBusy) return;
+    const candidates = focusCandidates();
+    if (!candidates.length) return;
     state.aiBusy = true;
-    state.aiNote = 'Writing a question\u2026';
+    state.aiNote = '';
     render();
     try {
-        const q = await generateQuestion({ engine, passages, langs: langs(), avoid: state.aiQuestions.map(e => e.sug.prompt) });
-        if (q) {
-            const entry = makeEntry({ id: `ai:${Date.now()}`, kind: 'ai', prompt: q.question, passages, modelAnswer: { text: q.answer, citations: q.citations } }, state.lastBlockId);
+        for (let tries = 0; tries < MAX_AI_TRIES; tries++) {
+            // Next part not used yet; when all have been used, start over.
+            let focus = candidates.find(id => !state.aiFocusUsed.has(id));
+            if (!focus) { state.aiFocusUsed = new Set(); focus = candidates[0]; }
+            state.aiFocusUsed.add(focus);
+            const passages = passagesAround(focus);
+            if (!passages.length) continue;
+            const q = await generateQuestion({ engine, passages, langs: langs(), avoid: state.aiAsked.slice(-10) });
+            if (!q) { state.aiNote = 'The AI didn\u2019t produce a question it could back up with the book\u2019s text. Try again.'; continue; }
+            if (seenBefore(q.question)) { state.aiNote = 'The AI gave a question you have already had. Try again, or mark more sections as read.'; continue; }
+            state.aiAsked.push(q.question);
+            const label = model().chunkById.get(focus)?.label;
+            const entry = makeEntry({ id: `ai:${Date.now()}`, kind: 'ai', prompt: q.question, passages, focusLabel: label, modelAnswer: { text: q.answer, citations: q.citations } }, focus);
             state.aiQuestions.push(entry);
             state.pending = [entry, ...state.pending].slice(0, MAX_PENDING);
             state.aiNote = '';
-        } else {
-            state.aiNote = 'The AI didn\u2019t produce a question it could back up with the book\u2019s text. Try again.';
+            break;
         }
     } catch (err) {
         state.aiNote = err?.message || 'Something went wrong.';
@@ -272,11 +312,11 @@ function render() {
     state.pending.forEach(e => body.appendChild(cardNode(e)));
 
     const engine = getEngine(loadSettings().aiEngine);
-    if (aiAvailable(engine) && state.lastBlockId) {
+    if (aiAvailable(engine) && focusCandidates().length) {
         const more = el('button', 'study-more', state.aiBusy ? 'Writing a question\u2026' : '\u2728 Another question from the AI');
         more.type = 'button';
         more.disabled = state.aiBusy;
-        more.title = 'Sends the passage you last marked as read, and related ones, to the AI assistant you chose in Settings';
+        more.title = 'Sends a passage you have marked as read (a different one each time), and related read passages, to the AI assistant you chose in Settings';
         more.addEventListener('click', askAiForQuestion);
         body.appendChild(more);
         if (state.aiNote) body.appendChild(el('div', 'study-empty', state.aiNote));
@@ -336,12 +376,47 @@ function buildDrawer() {
     document.body.appendChild(nudge);
 }
 
-/** Shows or hides the Study button and syncs both switches (header and Home) to the saved setting. */
+const RT_SWITCHES = ['toggle-read-tracking', 'home-toggle-read-tracking'];
+const LOCK_NOTES = ['rt-lock-note', 'home-rt-lock-note'];
+const LOCK_TEXT = '\u{1F393} Read tracking stays on while the study companion is on. Switch Study off to change it.';
+
+/** A refused click on the locked Read tracking switch: highlight the note that explains why. */
+function flashLockNote() {
+    LOCK_NOTES.forEach(id => {
+        const n = $(id);
+        if (!n || n.hidden) return;
+        n.classList.add('rt-lock-flash');
+        n.textContent = '';
+        n.textContent = LOCK_TEXT;          // re-announced by the status region
+        setTimeout(() => n.classList.remove('rt-lock-flash'), 1400);
+    });
+}
+
+/**
+ * Shows or hides the Study button and syncs both switches (header and Home) to the saved setting.
+ * Study needs the ✓ ticks, so while it is on, Read tracking is switched on and locked (both places).
+ * That also repairs a saved "Study on, Read tracking off" (e.g. from an older version, or another tab).
+ */
 export function applyStudySetting() {
     const on = enabled();
     ['toggle-study', 'home-toggle-study'].forEach(id => { const c = $(id); if (c) c.checked = on; });
     const btn = $('study-btn');
     if (btn) btn.hidden = !on;
+    if (on) {
+        const rt = $('toggle-read-tracking');
+        if (rt && !rt.checked) { rt.checked = true; rt.dispatchEvent(new Event('change', { bubbles: true })); }   // the header saves it and shows the ticks
+        else if (!rt && !loadSettings().readTracking) saveSettings({ readTracking: true });
+    }
+    RT_SWITCHES.forEach(id => {
+        const c = $(id);
+        if (!c) return;
+        if (on) c.checked = true;
+        // Not `disabled`: a disabled switch ignores clicks silently. A locked one refuses them and says why.
+        c.dataset.locked = on ? '1' : '';
+        c.setAttribute('aria-disabled', String(on));
+        c.title = on ? LOCK_TEXT : '';
+    });
+    LOCK_NOTES.forEach(id => { const n = $(id); if (n) { n.textContent = LOCK_TEXT; n.hidden = !on; } });
     if (!on) { closeStudy(); hideNudge(); }
 }
 
@@ -355,23 +430,24 @@ export function initStudy({ data, onCite }) {
     state.log = loadStudyLog(localStorage);
 
     document.addEventListener(READ_EVENT, e => onBlockRead(e.detail || {}));
+    document.addEventListener('click', e => {
+        const t = e.target;
+        if (t?.dataset?.locked === '1' && RT_SWITCHES.includes(t.id)) { e.preventDefault(); flashLockNote(); }
+    }, true);
     $('study-btn')?.addEventListener('click', () => (drawerOpen() ? closeStudy() : openStudy()));
     $('ai-btn')?.addEventListener('click', () => closeStudy());
     document.addEventListener('keydown', e => { if (e.key === 'Escape') closeStudy(); });
 
     $('toggle-study')?.addEventListener('change', e => {
         saveSettings({ studyCompanion: e.target.checked });
-        // Questions follow ticks, so the ticks must be visible.
-        const rt = $('toggle-read-tracking');
-        if (e.target.checked && rt && !rt.checked) { rt.checked = true; rt.dispatchEvent(new Event('change', { bubbles: true })); }
-        applyStudySetting();
+        applyStudySetting();   // also switches Read tracking on and locks it (questions follow the ticks)
     });
     applyStudySetting();
 
     const saved = readSession();
     if (saved && enabled()) {
         saved.pending?.forEach?.(p => {
-            const s = p?.desc && buildSuggestion(model(), p.desc, { langs: langs(), blockId: p.blockId });
+            const s = p?.desc && buildSuggestion(model(), p.desc, { langs: langs(), blockId: p.blockId, readSet: getReadBlocks(localStorage) });
             if (s) addPending([s], p.blockId);
         });
         updateBadge();

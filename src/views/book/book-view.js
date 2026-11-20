@@ -545,6 +545,11 @@ window.addEventListener('pooja:layout-changed', () => {
 document.addEventListener('keydown', e => {
     const c = document.getElementById(state.containerId || 'book-container');
     if (!c || !c.classList.contains('active')) return;
+    // Arrow keys belong to whatever is being typed in (the search bar, the page box, the assistant and
+    // study panels' answer boxes: moving the caret must not turn the page), to a control that already
+    // handled the key (the panel's resize handle), and to the browser when a modifier is held (Alt+Left = Back).
+    if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey) return;
+    if (e.target instanceof Element && e.target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])')) return;
     if (e.key === 'ArrowLeft' || e.key === 'PageUp') goToPrevSpread();
     if (e.key === 'ArrowRight' || e.key === 'PageDown') goToNextSpread();
 });

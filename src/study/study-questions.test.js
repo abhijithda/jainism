@@ -5,6 +5,8 @@ const Q = require('./study-questions.js');
 
 const data = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'assets', 'data.json'), 'utf8'));
 const model = Q.buildStudyModel(createIndex(data));
+const allBlocks = data.flatMap(i => (i.blocks || []).map(b => b.id));
+const everythingRead = new Set(allBlocks);
 const blocksWithTag = tag => [...model.topics.get(tag.toLowerCase()).blockIds];
 
 describe('comparisons', () => {
@@ -15,6 +17,15 @@ describe('comparisons', () => {
     test('a phrase the text names but does not tag counts when the book names it with the topic (Loka Moodhata)', () => {
         const names = Q.siblingsOf(model, 'Deva Moodhata');
         expect(names).toEqual(expect.arrayContaining(['Loka Moodhata', 'Guru Moodhata']));
+    });
+
+    test('one person named two ways (Queen / Rani Vishalakshi) is not offered as a comparison', () => {
+        expect(Q.siblingsOf(model, 'Rani Vishalakshi')).toEqual([]);
+        expect(Q.siblingsOf(model, 'Queen Vishalakshi')).toEqual([]);
+    });
+
+    test('a shortened name (Vamsha for Harivamsha) is the same name, not a sibling', () => {
+        expect(Q.siblingsOf(model, 'Harivamsha Purana')).not.toContain('Vamsha Purana');
     });
 
     test('spelling variants of one topic are not offered as something to compare', () => {
@@ -28,11 +39,11 @@ describe('comparisons', () => {
 });
 
 describe('suggestionsForRead', () => {
-    const opts = { readSet: new Set(), langs: ['en'] };
+    const opts = { readSet: everythingRead, langs: ['en'] };
 
     test('reading a Deva Moodhata block offers the Deva vs Loka comparison, with the book\u2019s words for both sides', () => {
         const id = blocksWithTag('Deva Moodhata')[0];
-        const first = Q.suggestionsForRead(model, id, { ...opts, readSet: new Set([id]), max: 5 })
+        const first = Q.suggestionsForRead(model, id, { ...opts, max: 5 })
             .find(s => s.id === 'compare:deva moodhata|loka moodhata');
         expect(first.kind).toBe('compare');
         expect(first.prompt).toBe('You just read about Deva Moodhata. Can you explain how it differs from Loka Moodhata?');
@@ -44,8 +55,30 @@ describe('suggestionsForRead', () => {
         });
     });
 
+    test('only what the reader has read: nothing is asked about a topic they have not met', () => {
+        const deva = blocksWithTag('Deva Moodhata').find(id => !/Loka Moodhata/.test(model.chunkById.get(id).text.en || ''));
+        const loka = allBlocks.find(id => /Loka Moodhata/.test(model.chunkById.get(id)?.text.en || ''));
+        const find = readSet => Q.suggestionsForRead(model, deva, { langs: ['en'], readSet, max: 5 }).find(s => s.id === 'compare:deva moodhata|loka moodhata');
+        expect(find(new Set([deva]))).toBeUndefined();                 // the Loka Moodhata note is not read yet
+        const s = find(new Set([deva, loka]));
+        expect(s).toBeDefined();
+        s.passages.forEach(p => expect([deva, loka]).toContain(p.id)); // and every passage shown has been read
+    });
+
+    test('reading the other side later brings the comparison up then, even if it is only named in the text', () => {
+        const textOf = id => model.chunkById.get(id)?.text.en || '';
+        const mithya = allBlocks.find(id => /Mithya Drishti/.test(textOf(id)) && !model.chunkById.get(id).tags.includes('Mithya Drishti'));
+        const samyag = blocksWithTag('Samyag Drishti').find(id => id !== mithya && !/Mithya Drishti/.test(textOf(id)) && textOf(id));
+        const wanted = 'compare:mithya drishti|samyag drishti';
+        const find = (blockId, readSet) => Q.suggestionsForRead(model, blockId, { langs: ['en'], readSet, max: 5 }).find(s => s.id === wanted);
+        expect(find(samyag, new Set([samyag]))).toBeUndefined();               // the passage about Mithya Drishti is not read yet
+        const s = find(mithya, new Set([samyag, mithya]));                     // now it is
+        expect(s).toBeDefined();
+        s.passages.forEach(p => expect([samyag, mithya]).toContain(p.id));
+    });
+
     test('a comparison is never offered when the book has nothing for the other side', () => {
-        expect(Q.buildSuggestion(model, { kind: 'compare', topics: ['Deva Moodhata', 'Zzzqx Moodhata'] })).toBeNull();
+        expect(Q.buildSuggestion(model, { kind: 'compare', topics: ['Deva Moodhata', 'Zzzqx Moodhata'] }, { readSet: everythingRead })).toBeNull();
     });
 
     test('something already answered is not offered again', () => {
@@ -88,7 +121,7 @@ describe('suggestionsForRead', () => {
 describe('descriptors', () => {
     test('a suggestion can be rebuilt from its descriptor (survives a reload)', () => {
         const id = blocksWithTag('Deva Moodhata')[0];
-        const [s] = Q.suggestionsForRead(model, id, { readSet: new Set(), langs: ['en'] });
+        const [s] = Q.suggestionsForRead(model, id, { readSet: everythingRead, langs: ['en'] });
         const rebuilt = Q.buildSuggestion(model, JSON.parse(JSON.stringify(s.desc)), { langs: ['en'] });
         expect(rebuilt.id).toBe(s.id);
         expect(rebuilt.prompt).toBe(s.prompt);

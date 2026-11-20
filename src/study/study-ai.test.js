@@ -16,6 +16,26 @@ describe('aiAvailable', () => {
     });
 });
 
+describe('language', () => {
+    test('studyLang: English whenever it is selected, else the first language', () => {
+        expect(A.studyLang(['kn', 'en'])).toBe('en');
+        expect(A.studyLang(['kn'])).toBe('kn');
+        expect(A.studyLang([])).toBe('en');
+    });
+
+    test('a new question is written in English for a Kannada-first reader who also has English', () => {
+        const m = A.buildQuestionMessages({ passages, langs: ['kn', 'en'] });
+        expect(m[0].content).toMatch(/Write in English/);
+        expect(m[0].content).not.toMatch(/Write in Kannada/);
+    });
+
+    test('feedback follows the language the reader answered in', () => {
+        const m = A.buildCheckMessages({ question: 'Q?', learnerAnswer: 'my answer', passages, langs: ['kn', 'en'] });
+        expect(m[0].content).toMatch(/same language as the reader's answer/);
+        expect(m[0].content).toMatch(/unclear, write in English/);
+    });
+});
+
 describe('parseQuestion', () => {
     test('accepts JSON whose answer cites a real passage (also inside code fences)', () => {
         const reply = '```json\n{"question":"How do they differ?","answer":"One is about Bhagawan [A-1.1], one about the world [A-1.2]."}\n```';
