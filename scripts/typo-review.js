@@ -9,6 +9,12 @@
 //                                                  of the Pull Request (scripts/post-suggestions.js posts them)
 //   shloka and mantra blocks                       never changed, never suggested: listed as "check against the source"
 //   anything in config/spelling-allowlist.txt      never flagged, never changed
+//   Kannada letters inside an English line         (your own mixed-language notes, e.g. "5. ಚುಹಾವಣ : Similar to Upa lepana...")
+//                                                  written in Latin letters AUTOMATICALLY when the model is sure (it says "clear", its
+//                                                  score is at least 0.9 AND the Latin word, turned back into Kannada by a second call,
+//                                                  gives your word, counting the letters in config/translit-equivalents.txt as the same,
+//                                                  e.g. ಣ = ನ); anything less is a one-click suggestion
+//   invisible characters (word joiner, zero-width space, BOM) pasted from Google Docs / WhatsApp: removed (ZWJ/ZWNJ are kept: Kannada needs them)
 //
 // The AI only PROPOSES { old, new, reason, confidence }; this code decides what is clear. A fix is applied automatically
 // only when `old` occurs exactly once in the line, is short, differs from `new` by at most a few letters (2 in Kannada,
@@ -19,7 +25,7 @@
 //
 //   node scripts/typo-review.js --base base.json            review what differs from base.json
 //   node scripts/typo-review.js --all --dry-run             review the whole book, write nothing
-//   options: --report out.md  --suggestions out.json  --allowlist file  --data file  --no-ai
+//   options: --report out.md  --suggestions out.json  --allowlist file  --data file  --no-ai  --mixed-auto-min 0.9
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
@@ -29,10 +35,12 @@ const { allBlocks } = require('./lib/book');
 const ROOT = path.join(__dirname, '..');
 const DATA_PATH = path.join(ROOT, 'assets', 'data.json');
 const ALLOWLIST_PATH = path.join(ROOT, 'config', 'spelling-allowlist.txt');
+const EQUIVALENTS_PATH = path.join(ROOT, 'config', 'translit-equivalents.txt');
 const PROSE = new Set(['paragraph', 'note']);
 const VERSE = new Set(['shloka', 'mantra']);
 const LANGS = ['kn', 'en'];
 const MAX_EDIT = { kn: 2, en: 3 };
+const MIXED_AUTO_MIN = 0.9;     // score the model must give for a Kannada-to-Latin change to be automatic
 
 // ── helpers ────────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -100,6 +108,12 @@ function collectLines(entries) {
 /** Fixes that need no judgement: runs of spaces inside a line. Returns the proposals in the same shape as the AI's. */
 function mechanicalIssues(line) {
     const out = [];
+    // invisible junk from copy-paste; U+200C / U+200D (ZWNJ / ZWJ) are NOT touched, Kannada conjuncts need them
+    for (const m of line.text.matchAll(/[\u2060\u200B\uFEFF]/g)) {
+        const i = m.index;
+        const old = i + 1 < line.text.length ? line.text.slice(i, i + 2) : line.text.slice(i - 1, i + 1);
+        out.push({ key: line.key, old, new: old.replace(/[\u2060\u200B\uFEFF]/g, ''), reason: 'invisible character', confidence: 'clear' });
+    }
     for (const m of line.text.matchAll(/\S( {2,})\S/g)) out.push({ key: line.key, old: m[0], new: m[0][0] + ' ' + m[0][m[0].length - 1], reason: 'double space', confidence: 'clear' });
     return out;
 }
@@ -133,6 +147,82 @@ async function aiIssues(ai, lines, allowlist) {
     return { issues, note: failures.length ? `the AI check failed for part of the text: ${failures[0]}` : '' };
 }
 
+const KANNADA_LETTER = /[\u0C80-\u0CFF]/;
+
+const MIXED_SYSTEM = `These lines are English text from a Jainism Q&A book. The writer put some Prakrit/Sanskrit terms in Kannada script inside the English line.
+For every word or phrase in Kannada script, give the same word in Latin letters, in the simple style the book uses for Jain terms (ಚುಹಾವಣ -> Chuhavana, ಪುಷ್ಪಾರೋಹಣ -> Pushparohana, ಣವಣ -> Navana, ಉಪ ಲೇಪನ -> Upa Lepana). This is transliteration (same sounds, Latin letters), not translation. Keep capitalisation natural: capitalise a term that starts a heading or a sentence.
+Return JSON only: {"issues":[{"key":"...","old":"the Kannada-script words exactly as in the line","new":"the Latin-letter version","reason":"short","confidence":"clear"|"doubtful","score":0.0-1.0}]}.
+"clear" with a high score only when you are sure of every letter (a known term, or a plain word). Use "doubtful" or a low score when the spelling could vary: retroflex ಣ/ನ, ಳ/ಲ, aspirated or long vowels, a term you do not recognise, a damaged or misspelt word.
+Do not change anything else in the line. If a Kannada-script word sits next to its own English equivalent ("ಣವಣ / Navana"), still transliterate it; do not drop it.`;
+
+const MIXED_BACK_SYSTEM = `Each item is a Jain term written in Latin letters (Prakrit/Sanskrit/Kannada origin). Write each one back in Kannada script, as it would normally be written.
+Return JSON only: {"items":[{"id":"...","kannada":"..."}]}. One answer for every id, nothing else.`;
+
+/** config/translit-equivalents.txt: classes of Kannada letters treated as the same, and signs to ignore. */
+function loadEquivalents(text) {
+    const map = new Map();
+    const drop = new Set();
+    for (const raw of String(text || '').split(/\r?\n/)) {
+        const line = raw.replace(/#.*$/, '').normalize('NFC').trim();
+        if (!line) continue;
+        if (/^drop:/i.test(line)) { for (const ch of line.replace(/^drop:/i, '').trim().split(/\s+/).filter(Boolean)) drop.add(ch); continue; }
+        const [rep, ...others] = line.split(/\s+/);
+        for (const ch of others) map.set(ch, rep);
+    }
+    return { map, drop };
+}
+
+/** For comparing a word with its round trip: no spaces, joiners or punctuation, composed form, and (with a list) equivalent letters made equal. */
+const skeleton = (t, eq) => {
+    let out = String(t).normalize('NFC').replace(/[\s\u200C\u200D.,;:!?()\-\/"']/g, '');
+    if (eq) out = [...out].filter((ch) => !eq.drop.has(ch)).map((ch) => eq.map.get(ch) || ch).join('');
+    return out;
+};
+
+/**
+ * English lines that contain Kannada script (prose only). Each Kannada word gets a Latin version from the model, then a
+ * SECOND call turns the Latin back into Kannada. A change is marked `mixedAuto` (applied automatically) only if the model said
+ * "clear", gave a score of at least `autoMin`, AND the round trip gives exactly the original word. Everything else is a suggestion.
+ */
+async function mixedScriptIssues(ai, lines, allowlist, autoMin = MIXED_AUTO_MIN, equivalents = null) {
+    const mixed = lines.filter((l) => l.kind === 'prose' && l.lang === 'en' && KANNADA_LETTER.test(l.text));
+    if (!mixed.length || !ai || !ai.available) return { issues: [], found: mixed.length, note: '' };
+    const proposals = [];
+    const failures = [];
+    for (let i = 0; i < mixed.length; i += 40) {
+        const chunk = mixed.slice(i, i + 40);
+        try {
+            const answer = await ai.json({
+                system: `${MIXED_SYSTEM}\nNever touch these intentional spellings: ${allowlist.length ? allowlist.join(', ') : '(none)'}`,
+                prompt: JSON.stringify({ lines: chunk.map((l) => ({ key: l.key, text: l.text })) }),
+            });
+            for (const x of Array.isArray(answer.issues) ? answer.issues : []) {
+                if (x && chunk.some((l) => l.key === x.key) && typeof x.old === 'string' && KANNADA_LETTER.test(x.old) && typeof x.new === 'string' && x.new.trim() && !KANNADA_LETTER.test(x.new)) proposals.push(x);
+            }
+        } catch (e) { failures.push(e.message); }
+    }
+    // the round trip: Latin back to Kannada must give the writer's own word
+    const back = new Map();
+    for (let i = 0; i < proposals.length; i += 60) {
+        const chunk = proposals.slice(i, i + 60);
+        try {
+            const answer = await ai.json({ system: MIXED_BACK_SYSTEM, prompt: JSON.stringify({ items: chunk.map((x, k) => ({ id: String(i + k), latin: x.new })) }) });
+            for (const it of Array.isArray(answer.items) ? answer.items : []) back.set(String(it.id), String(it.kannada || ''));
+        } catch (e) { failures.push(e.message); }
+    }
+    const issues = proposals.map((x, i) => {
+        const score = Number(x.score);
+        const got = back.get(String(i));
+        const exact = got !== undefined && skeleton(got) === skeleton(x.old);
+        const roundTrip = got !== undefined && skeleton(got, equivalents) === skeleton(x.old, equivalents);
+        const auto = x.confidence === 'clear' && score >= autoMin && roundTrip;
+        const why = roundTrip ? '' : got !== undefined ? ` (turned back into Kannada it gives ${got}, not your spelling)` : ' (round trip not checked)';
+        const ok = exact ? ', round trip matches' : ', round trip matches apart from letters your equivalence list treats as the same';
+        return { ...x, mixed: true, mixedAuto: auto, confidence: auto ? 'clear' : 'doubtful', reason: `Kannada script in English text${auto ? ` → Latin letters${ok}` : why}` };
+    });
+    return { issues, found: mixed.length, note: failures.length ? `the Kannada-in-English check failed in part: ${failures[0]}` : '' };
+}
+
 // ── deciding ───────────────────────────────────────────────────────────────────────────────────────────────
 
 /**
@@ -157,8 +247,9 @@ function decide(lines, proposals, allowlist) {
         if (spans.some((s) => protectedSpan(line.text, s, allowlist))) { drop('allowlisted spelling or link'); continue; }
         const base = { key: p.key, blockId: line.blockId, label: line.label, lang: line.lang, index: line.index, old: p.old, new: p.new, reason: String(p.reason || '').slice(0, 160) };
         if (line.kind === 'verse') { decided.flags.push({ ...base, flag: true }); continue; }
-        const clear = p.confidence === 'clear' && spans.length === 1 && [...p.old].length <= 40
-            && editDistance(p.old, p.new) <= MAX_EDIT[line.lang];
+        const clear = p.mixed
+            ? Boolean(p.mixedAuto) && spans.length === 1                       // Kannada to Latin: its own checks are in mixedScriptIssues
+            : p.confidence === 'clear' && spans.length === 1 && [...p.old].length <= 40 && editDistance(p.old, p.new) <= MAX_EDIT[line.lang];
         (clear ? decided.fixes : decided.suggestions).push(base);
     }
     return decided;
@@ -246,12 +337,13 @@ async function reviewTypos(head, base, options = {}) {
     const proseLines = lines.filter((l) => l.kind === 'prose');
     const mechanical = proseLines.flatMap(mechanicalIssues);
     const ai = await aiIssues(options.ai, lines, allowlist);
-    const decided = decide(lines, [...mechanical, ...ai.issues], allowlist);
+    const mixed = await mixedScriptIssues(options.ai, lines, allowlist, options.mixedAutoMin, options.equivalents);
+    const decided = decide(lines, [...mechanical, ...ai.issues, ...mixed.issues], allowlist);
     const result = applyFixes(head, decided);
     const comments = buildSuggestionComments(result.data, result.suggestions);
     const verses = entries.filter((e) => VERSE.has(e.block.type)).map((e) => ({ label: e.label, id: e.block.id, flagged: decided.flags.filter((f) => f.blockId === e.block.id) }));
     const summary = { blocks: entries.length, lines: lines.length, fixes: result.applied.length, suggestions: comments.length, verses: verses.length };
-    return { data: result.data, changed: result.applied.length > 0, applied: result.applied, comments, verses, dropped: decided.dropped, note: ai.note, summary, notApplied: result.notApplied };
+    return { data: result.data, changed: result.applied.length > 0, applied: result.applied, comments, verses, dropped: decided.dropped, note: [ai.note, mixed.note].filter(Boolean).join('; '), mixedFound: mixed.found, summary, notApplied: result.notApplied };
 }
 
 function renderReport(r, { all = false } = {}) {
@@ -276,19 +368,20 @@ function renderReport(r, { all = false } = {}) {
         for (const v of r.verses) out.push(`- ${v.label}${v.flagged.length ? ` (the AI doubts: ${v.flagged.map((f) => `${f.old} → ${f.new}`).join('; ')})` : ''}`);
         out.push('');
     }
+    if (r.mixedFound) out.push(`${r.mixedFound} English line(s) contain Kannada-script words (your own wording). Those the model was sure of, and whose round trip matched, were written in Latin letters above; the others are suggestions.\n`);
     if (r.notApplied.length) out.push(`${r.notApplied.length} fix(es) overlapped another on the same line and were skipped.\n`);
     return out.join('\n') + '\n';
 }
 const esc = (t) => String(t).replace(/\|/g, '\\|').replace(/\n/g, ' ');
 
 module.exports = {
-    loadAllowlist, editDistance, changedBlocks, collectLines, mechanicalIssues, decide, applyToLine, applyFixes,
+    loadAllowlist, loadEquivalents, skeleton, editDistance, changedBlocks, collectLines, mechanicalIssues, decide, applyToLine, applyFixes,
     buildSuggestionComments, reviewTypos, renderReport,
 };
 
 // ── CLI ────────────────────────────────────────────────────────────────────────────────────────────────────
 function parseArgs(argv) {
-    const args = { base: null, all: false, dryRun: false, report: null, suggestions: null, allowlist: ALLOWLIST_PATH, data: DATA_PATH, noAi: false };
+    const args = { base: null, all: false, dryRun: false, report: null, suggestions: null, allowlist: ALLOWLIST_PATH, data: DATA_PATH, noAi: false, mixedAutoMin: MIXED_AUTO_MIN, equivalents: EQUIVALENTS_PATH };
     for (let i = 0; i < argv.length; i++) {
         const a = argv[i];
         if (a === '--all') args.all = true;
@@ -299,6 +392,8 @@ function parseArgs(argv) {
         else if (a === '--suggestions') args.suggestions = argv[++i];
         else if (a === '--allowlist') args.allowlist = path.resolve(argv[++i]);
         else if (a === '--data') args.data = path.resolve(argv[++i]);
+        else if (a === '--equivalents') args.equivalents = path.resolve(argv[++i]);
+        else if (a === '--mixed-auto-min') args.mixedAutoMin = Number(argv[++i]);
         else throw new Error(`Unknown option: ${a}`);
     }
     if (!args.base && !args.all) throw new Error('give --base <main branch data.json>, or --all to review the whole book');
@@ -311,7 +406,7 @@ async function main() {
     const head = JSON.parse(raw);
     const base = args.base && fs.existsSync(args.base) ? JSON.parse(fs.readFileSync(args.base, 'utf8')) : null;
     const allowlist = fs.existsSync(args.allowlist) ? loadAllowlist(fs.readFileSync(args.allowlist, 'utf8')) : [];
-    const r = await reviewTypos(head, base, { ai: args.noAi ? null : createGemini(), allowlist, all: args.all || !base });
+    const r = await reviewTypos(head, base, { ai: args.noAi ? null : createGemini(), allowlist, all: args.all || !base, mixedAutoMin: args.mixedAutoMin, equivalents: fs.existsSync(args.equivalents) ? loadEquivalents(fs.readFileSync(args.equivalents, 'utf8')) : null });
     const markdown = renderReport(r, { all: args.all || !base });
     console.log(markdown);
     if (args.report) fs.writeFileSync(args.report, markdown);
