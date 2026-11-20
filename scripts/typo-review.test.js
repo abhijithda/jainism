@@ -207,3 +207,116 @@ describe('posting suggestions to the Pull Request', () => {
         expect(gh.log.some((x) => x.url.endsWith('/issues/7/comments'))).toBe(true);
     });
 });
+
+describe('Kannada words inside English lines, and invisible characters', () => {
+    const base = book();
+    const head = clone(base);
+    head[1].blocks.push(
+        blk('m00001', 1, 'paragraph', ['5. ಚುಹಾವಣ : ಉಪ ಲೇಪನದಂತೆಯೇ ಆದರೆ ಕೇವಲ ಪಾದಗಳಿಗೆ ಮಾತ್ರ.'], ['5. ಚುಹಾವಣ : Similar to Upa lepana but only for feet.']),
+        blk('m00002', 2, 'paragraph', ['6. \u2060ಪುಲ್ಲಾರೋಹಣ: ಪುಷ್ಪಾರೋಹಣ'], ['6. \u2060ಪುಲ್ಲಾರೋಹಣ: ಪುಷ್ಪಾರೋಹಣ - Aarohana/ putting flowers garland on pratima.']),
+        blk('m00003', 3, 'paragraph', [], ['1. ಣವಣ / Navana  = Abhishekas']),
+    );
+    /** first call proposes; the round-trip call answers from `roundTrip` (latin -> what the model writes back) */
+    const mixedAi = (proposals, roundTrip = {}) => ({
+        available: true,
+        json: jest.fn(async ({ system, prompt }) => {
+            if (/Write each one back in Kannada/.test(system)) {
+                const items = JSON.parse(prompt).items;
+                return { items: items.map((it) => ({ id: it.id, kannada: roundTrip[it.latin] ?? '' })) };
+            }
+            if (/Kannada script inside the English line/.test(system)) return { issues: proposals };
+            return { issues: [] };
+        }),
+    });
+    const P1 = { key: 'm00001|en|0', old: 'ಚುಹಾವಣ', new: 'Chuhavana', reason: 'x', confidence: 'clear', score: 0.97 };
+    const P2 = { key: 'm00002|en|0', old: 'ಪುಲ್ಲಾರೋಹಣ: ಪುಷ್ಪಾರೋಹಣ', new: 'Pullarohana: Pushparohana', reason: 'x', confidence: 'clear', score: 0.6 };
+    const P3 = { key: 'm00003|en|0', old: 'ಣವಣ', new: 'Navana', reason: 'x', confidence: 'clear', score: 0.95 };
+    const RT = { Chuhavana: 'ಚುಹಾವಣ', 'Pullarohana: Pushparohana': 'ಪುಲ್ಲಾರೋಹಣ: ಪುಷ್ಪಾರೋಹಣ', Navana: 'ನವನ' };
+
+    test('sure and the round trip matches: written in Latin letters automatically, listed with its reason', async () => {
+        const r = await T.reviewTypos(head, base, { ai: mixedAi([P1], RT), allowlist: [] });
+        expect(r.data[1].blocks[0].content.en[0]).toBe('5. Chuhavana : Similar to Upa lepana but only for feet.');
+        expect(r.applied.filter((a) => /Kannada script/.test(a.reason)).map((a) => a.reason)).toEqual([expect.stringMatching(/round trip matches/)]);
+        expect(r.data[1].blocks[0].content.kn[0]).toBe(head[1].blocks[0].content.kn[0]);
+    });
+    test('a low score is only a suggestion, even if the model says clear and the round trip matches', async () => {
+        const r = await T.reviewTypos(head, base, { ai: mixedAi([P2], RT), allowlist: [] });
+        expect(r.data[1].blocks[1].content.en[0]).toContain('ಪುಲ್ಲಾರೋಹಣ');
+        expect(r.comments.map((c) => c.body).join('')).toContain('Pullarohana: Pushparohana');
+    });
+    test('letters your equivalence list treats as the same (ಣ = ನ) no longer fail the round trip: automatic', async () => {
+        const eq = T.loadEquivalents('ನ ಣ\nಲ ಳ');
+        const r = await T.reviewTypos(head, base, { ai: mixedAi([P3], RT), allowlist: [], equivalents: eq });
+        expect(r.data[1].blocks[2].content.en[0]).toBe('1. Navana / Navana = Abhishekas');
+        expect(r.applied.map((a) => a.reason).join('|')).toMatch(/apart from letters your equivalence list/);
+    });
+    test('the equivalence list does not hide a real difference: ನವನ vs ಚುಹಾವಣ is still a suggestion', async () => {
+        const eq = T.loadEquivalents('ನ ಣ');
+        const r = await T.reviewTypos(head, base, { ai: mixedAi([P1], { Chuhavana: 'ಮಹಾವೀರ' }), allowlist: [], equivalents: eq });
+        expect(r.data[1].blocks[0].content.en[0]).toContain('ಚುಹಾವಣ');
+        expect(r.comments).toHaveLength(1);
+    });
+    test('the real list: loads, folds ಣ/ನ, ಳ/ಲ, ಶ/ಷ/ಸ, vowel length and the aa sign, and still tells real words apart', () => {
+        const eq = T.loadEquivalents(fs.readFileSync(path.join(ROOT, 'config', 'translit-equivalents.txt'), 'utf8'));
+        const same = (a, b) => T.skeleton(a, eq) === T.skeleton(b, eq);
+        expect(same('ಣವಣ', 'ನವನ')).toBe(true);
+        expect(same('ಪುಷ್ಪಾರೋಹಣ', 'ಪುಷ್ಪರೊಹನ')).toBe(true);
+        expect(same('ಅಭಿಷೇಕ', 'ಅಭಿಸೆಕ')).toBe(true);
+        expect(same('ಚುಹಾವಣ', 'ಮಹಾವೀರ')).toBe(false);
+        expect(same('ಕಮಲ', 'ಕರಲ')).toBe(false);
+    });
+    test('the list file: classes, comments, drop line', () => {
+        const eq = T.loadEquivalents('# c\nನ ಣ  # trailing comment\ndrop: ಾ\n');
+        expect(eq.map.get('ಣ')).toBe('ನ');
+        expect(eq.drop.has('ಾ')).toBe(true);
+    });
+    test('a round trip that gives another spelling (ಣ vs ನ), with no list, is a suggestion that says so', async () => {
+        const r = await T.reviewTypos(head, base, { ai: mixedAi([P3], RT), allowlist: [] });
+        expect(r.data[1].blocks[2].content.en[0]).toContain('ಣವಣ');
+        const body = r.comments.map((c) => c.body).join('');
+        expect(body).toContain('Navana');
+        expect(body).toMatch(/not your spelling/);
+    });
+    test('"doubtful" from the model is a suggestion whatever the score', async () => {
+        const r = await T.reviewTypos(head, base, { ai: mixedAi([{ ...P1, confidence: 'doubtful', score: 0.99 }], RT), allowlist: [] });
+        expect(r.data[1].blocks[0].content.en[0]).toContain('ಚುಹಾವಣ');
+        expect(r.comments).toHaveLength(1);
+    });
+    test('the threshold can be changed', async () => {
+        const r = await T.reviewTypos(head, base, { ai: mixedAi([P2], RT), allowlist: [], mixedAutoMin: 0.5 });
+        expect(r.data[1].blocks[1].content.en[0]).toContain('Pullarohana: Pushparohana');
+    });
+    test('the Kannada line itself is never touched, and a proposal for a Kannada line is ignored', async () => {
+        const r = await T.reviewTypos(head, base, { ai: mixedAi([P1, { ...P1, key: 'm00001|kn|0' }], RT), allowlist: [] });
+        expect(r.data[1].blocks[0].content.kn[0]).toBe(head[1].blocks[0].content.kn[0]);
+        expect(r.applied.filter((a) => /Kannada script/.test(a.reason))).toHaveLength(1);
+    });
+    test('if the round-trip call fails the change stays a suggestion', async () => {
+        const ai = mixedAi([P1], RT);
+        const inner = ai.json;
+        ai.json = jest.fn(async (req) => { if (/Write each one back/.test(req.system)) throw new Error('boom'); return inner(req); });
+        const r = await T.reviewTypos(head, base, { ai, allowlist: [] });
+        expect(r.data[1].blocks[0].content.en[0]).toContain('ಚುಹಾವಣ');
+        expect(r.comments).toHaveLength(1);
+        expect(r.note).toMatch(/boom/);
+    });
+    test('without a key nothing happens', async () => {
+        const r = await T.reviewTypos(head, base, { ai: { available: false }, allowlist: [] });
+        expect(r.comments).toHaveLength(0);
+    });
+    test('an allowlisted word is left alone', async () => {
+        const r = await T.reviewTypos(head, base, { ai: mixedAi([P1], RT), allowlist: ['ಚುಹಾವಣ'] });
+        expect(r.data[1].blocks[0].content.en[0]).toContain('ಚುಹಾವಣ');
+        expect(r.comments).toHaveLength(0);
+    });
+    test('a word joiner pasted from Google Docs is removed automatically, in both languages; ZWJ/ZWNJ are kept', async () => {
+        const r = await T.reviewTypos(head, base, { ai: { available: false }, allowlist: [] });
+        expect(r.data[1].blocks[1].content.kn[0]).toBe('6. ಪುಲ್ಲಾರೋಹಣ: ಪುಷ್ಪಾರೋಹಣ');
+        expect(r.data[1].blocks[1].content.en[0]).toBe('6. ಪುಲ್ಲಾರೋಹಣ: ಪುಷ್ಪಾರೋಹಣ - Aarohana/ putting flowers garland on pratima.');
+        expect(r.applied.every((a) => ['invisible character', 'double space'].includes(a.reason))).toBe(true);
+        const zwj = 'ಕ್\u200Dಷ';
+        const keep = clone(base); keep[1].blocks.push(blk('m00009', 1, 'paragraph', [zwj], ['x']));
+        const k = await T.reviewTypos(keep, base, { ai: { available: false }, allowlist: [] });
+        expect(k.data[1].blocks[0].content.kn[0]).toBe(zwj);
+    });
+});
