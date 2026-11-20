@@ -179,12 +179,14 @@ does not start workflows by itself), or by hand: Actions, *Typo Review*, Run wor
 | --- | --- |
 | Clear typo in plain prose (paragraph / note) | fixed in **one commit** (`typo-review: fix N clear typo(s)...`); revert that commit to undo all; listed old, new, reason |
 | Doubtful case | **not changed**; a *Commit suggestion* button on that line of the PR |
+| Kannada-script words inside an English line (your own mixed notes) | written in Latin letters **automatically only if** the model says clear, scores it 0.9 or more, **and** a second call turning the Latin back into Kannada gives your word, counting the letters in `config/translit-equivalents.txt` as the same (ಣ = ನ, ಲ = ಳ, ಸ = ಶ = ಷ, vowel length, the ಾ sign; edit that file as you like); otherwise a *Commit suggestion* |
+| Invisible characters (word joiner, zero-width space, BOM) from copy-paste | removed automatically (the joiners Kannada conjuncts need are kept) |
 | Shloka / mantra block | **never changed**, never suggested; listed under "check against the source" |
 | A spelling in `config/spelling-allowlist.txt` | never flagged, never changed |
 
 The AI only proposes `{ old, new, reason, confidence }`; the code decides. A fix is automatic only if the model said clear,
 `old` occurs **once** in the line, is short, differs from `new` by at most 3 letters (2 in Kannada), and does not overlap
-the allowlist or a link. Anything else is a suggestion at most. The only fix that needs no AI is a double space. Without the key
+the allowlist or a link. Anything else is a suggestion at most. The only fixes that need no AI are a double space and invisible characters. Without the key
 only that runs, and the comment says the AI check was skipped. Re-running updates the PR comment and does not repeat
 a suggestion that is already there.
 

@@ -1,0 +1,29 @@
+# Kannada letters that Latin letters cannot tell apart. The typo review uses this list to decide whether a Kannada word
+# in an English line can be written in Latin letters AUTOMATICALLY: the Latin word is turned back into Kannada by the model,
+# and if it matches your word once the letters on a line below are treated as the same, the change is automatic.
+# Anything that still differs stays a one-click suggestion for you to review.
+#
+# One class per line, letters separated by spaces. Add or remove lines as you like (one line, no code involved).
+# "drop:" lists signs that are ignored in the comparison.
+
+# n / l / s / t / d: retroflex and dental, sibilants
+ನ ಣ
+ಲ ಳ
+ಸ ಶ ಷ
+ತ ಟ
+ದ ಡ
+ಥ ಠ
+ಧ ಢ
+
+# long and short vowels (independent letters, then the vowel signs)
+ಇ ಈ
+ಉ ಊ
+ಎ ಏ
+ಒ ಓ
+ಿ ೀ
+ು ೂ
+ೆ ೇ
+ೊ ೋ
+
+# the long "aa" sign: Latin "a" does not show it
+drop: ಾ ಆ
