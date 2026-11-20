@@ -219,7 +219,15 @@ function processDraft(data, options) {
             // like the existing follow-up answers do. It has no question of its own, so it needs its own `num`.
             let replyTo = null;
             let followUpOf = null;
-            if (item.type === 'answer' && !(item.references || []).length) {
+            // `_agent: { standalone: true }` is left by notes-to-blocks on a note-style answer that is NOT a follow-up of
+            // the answer above it: it keeps its own num, links to nothing by position, and the marker is removed here.
+            const standalone = Boolean(item._agent && item._agent.standalone);
+            if (item._agent) {
+                const { _agent, ...rest } = item;
+                item = rest;
+                next[position] = item;
+            }
+            if (item.type === 'answer' && !(item.references || []).length && !standalone) {
                 const previous = next[position - 1];
                 if (previous && previous.type === 'question') {
                     replyTo = previous.id;

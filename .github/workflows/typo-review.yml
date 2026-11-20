@@ -1,0 +1,100 @@
+# Typo review: a SECOND commit on the staging branch, after the content agent's commit.
+#
+# Started by content-agent.yml when it has pushed (a push made with the built-in token does not start workflows by itself),
+# or by hand: Actions -> Typo Review -> Run workflow (works from the phone), with the staging branch name.
+#
+#   - looks only at the blocks the branch adds or changes compared with the main branch (tick "whole_book" to check everything);
+#   - clear typos in plain prose (paragraph / note blocks) are fixed in ONE commit, so you can revert it alone;
+#   - doubtful cases are NOT changed: each becomes a "Commit suggestion" button on its line in the Pull Request;
+#   - shloka and mantra blocks are never changed: they are listed as "check against the source";
+#   - spellings in config/spelling-allowlist.txt are never flagged.
+# The list of every change (old, new, reason) is posted as one comment on the Pull Request (updated on a re-run).
+#
+# Needs the repository secret GEMINI_API_KEY (free key from Google AI Studio). Without it only the mechanical fix
+# (double spaces) runs and the comment says the AI check was skipped. The model can be changed with the repository
+# variable GEMINI_MODEL.
+
+name: Typo Review
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "Staging branch to review (for example staging/new-vastu-questions)"
+        required: true
+      whole_book:
+        description: "Review every block of the book, not only what this branch adds or changes"
+        type: boolean
+        default: false
+
+concurrency:
+  group: typo-review-${{ github.event.inputs.branch }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+
+env:
+  BRANCH: ${{ github.event.inputs.branch }}
+  BASE: ${{ github.event.repository.default_branch }}
+  GH_TOKEN: ${{ github.token }}
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: 📥 Checkout the staging branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.BRANCH }}
+          fetch-depth: 0
+
+      - name: ⚙️ Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: 🔤 Review
+        id: review
+        env:
+          NODE_OPTIONS: --no-warnings
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
+          WHOLE_BOOK: ${{ github.event.inputs.whole_book }}
+        run: |
+          git show "origin/${BASE}:assets/data.json" > "$RUNNER_TEMP/base.json" 2>/dev/null || echo '[]' > "$RUNNER_TEMP/base.json"
+          ARGS=""
+          if [ "$WHOLE_BOOK" = "true" ]; then ARGS="--all"; fi
+          node scripts/typo-review.js --base "$RUNNER_TEMP/base.json" $ARGS \
+            --report "$RUNNER_TEMP/typo-report.md" --suggestions "$RUNNER_TEMP/suggestions.json"
+
+      - name: 💾 Commit the fixes (its own commit)
+        id: commit
+        if: steps.review.outputs.changed == 'true'
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add assets/data.json
+          git commit -m "typo-review: fix ${{ steps.review.outputs.fixes }} clear typo(s) in plain prose"
+          git push origin "HEAD:${BRANCH}" || { git pull --rebase origin "${BRANCH}" && git push origin "HEAD:${BRANCH}"; }
+
+      - name: 💬 Report on the Pull Request, with one-click suggestions
+        run: |
+          SHA=$(git rev-parse HEAD)
+          PR=$(gh pr list --head "$BRANCH" --base "$BASE" --state open --json number --jq '.[0].number // empty')
+          if [ -z "$PR" ]; then echo "No open Pull Request for $BRANCH: nothing to comment on."; cat "$RUNNER_TEMP/typo-report.md"; exit 0; fi
+          { cat "$RUNNER_TEMP/typo-report.md"; echo '<!-- typo-review-report -->'; } > "$RUNNER_TEMP/typo-comment.md"
+          EXISTING=$(gh api "repos/${GITHUB_REPOSITORY}/issues/${PR}/comments" --paginate --jq '[.[] | select(.body | contains("<!-- typo-review-report -->"))][0].id // empty')
+          if [ -n "$EXISTING" ]; then
+            gh api -X PATCH "repos/${GITHUB_REPOSITORY}/issues/comments/${EXISTING}" -F body=@"$RUNNER_TEMP/typo-comment.md" > /dev/null
+          else
+            gh pr comment "$PR" --body-file "$RUNNER_TEMP/typo-comment.md"
+          fi
+          GITHUB_TOKEN="$GH_TOKEN" node scripts/post-suggestions.js --pr "$PR" --sha "$SHA" --file "$RUNNER_TEMP/suggestions.json"
+
+      - name: 🧪 Start CI for the new commit
+        if: steps.commit.outcome == 'success' && steps.review.outputs.changed == 'true'
+        run: gh workflow run ci.yml --ref "$BRANCH"

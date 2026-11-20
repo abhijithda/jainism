@@ -1,0 +1,19 @@
+# Intentional spellings: the typo review never flags or changes these (one per line; case does not matter for Latin
+# letters; "#" starts a comment). A word or phrase that overlaps one of these is left alone.
+# Add yours here; send a one-line change on any branch, no code involved.
+
+# Names and transliterations you chose on purpose
+Poojyapaada
+Pooja
+Maanatunga
+Iyam
+Vrushabha
+
+# Both spellings are valid
+ತೀರ್ಥಕರ
+ತೀರ್ಥಂಕರ
+ತೀರ್ಥಂಕರರು
+ತೀರ್ಥಕರರು
+
+# The ocean list (A-19.9): this is the correct spelling
+ಛಿಂದಿ ಛಿಂದಿ ಭಿಂದಿ ಭಿಂದಿ

@@ -1,0 +1,157 @@
+# Video follow-up: "follow up of A-11.2" + a YouTube link -> a Pull Request with a new follow-up answer.
+#
+# Run it from Actions -> Video Follow-up -> Run workflow (works from the phone). You give:
+#   target      the block being extended, as a label: A-11.2
+#   video_url   a PUBLIC YouTube link
+#   start       optional, where the clip starts (1:20:30, 12m30s or seconds); the link's ?t= is used if you leave it empty
+#   duration    optional, how long to read from there (5m, 90s, 5:00). Always give one for long videos:
+#               the free tier allows only 8 hours of YouTube per day, and a clip is cheaper and more accurate
+#   speaker     optional, the name that opens the new block ("Acharya Vidyasagar Swami")
+#   dry_run     ticked by default: shows the transcript and the points in the run summary and the log, changes nothing.
+#               Try your first video this way.
+#
+# The Gemini API reads the YouTube link itself (GitHub's servers never download the video, so YouTube cannot block them).
+# Needs the repository secret GEMINI_API_KEY. Model: repository variable GEMINI_MODEL (default in scripts/lib/gemini.js).
+#
+# Without dry run: the new answer is added on the branch staging/followup-<target>-<video id>, the content pipeline runs on
+# it (id, timestamp, cross-references), the Pull Request is opened, and the typo review starts. You review and merge.
+
+name: Video Follow-up
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Block to extend, for example A-11.2"
+        required: true
+      video_url:
+        description: "Public YouTube link"
+        required: true
+      start:
+        description: "Clip start (1:20:30, 12m30s or seconds); empty = the link's ?t= or 0"
+        required: false
+      duration:
+        description: "Clip length (5m, 90s or 5:00); empty = to the end of the video"
+        required: false
+      speaker:
+        description: "Speaker's name, shown as the first line of the new block"
+        required: false
+      dry_run:
+        description: "Only show the transcript and points; change nothing"
+        type: boolean
+        default: true
+
+concurrency:
+  group: video-followup-${{ github.event.inputs.target }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+
+env:
+  BASE: ${{ github.event.repository.default_branch }}
+  GH_TOKEN: ${{ github.token }}
+
+jobs:
+  followup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+
+      - name: ⚙️ Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: 🌿 Pick the branch
+        id: branch
+        env:
+          TARGET: ${{ github.event.inputs.target }}
+          URL: ${{ github.event.inputs.video_url }}
+        run: |
+          VID=$(printf '%s' "$URL" | grep -oE '[A-Za-z0-9_-]{11}' | head -n 1)
+          SLUG=$(printf '%s' "$TARGET" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9\n' '-')
+          echo "name=staging/followup-${SLUG}-${VID}" >> "$GITHUB_OUTPUT"
+
+      - name: 🎬 Transcript and follow-up
+        id: followup
+        env:
+          NODE_OPTIONS: --no-warnings
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
+          TARGET: ${{ github.event.inputs.target }}
+          URL: ${{ github.event.inputs.video_url }}
+          START: ${{ github.event.inputs.start }}
+          DURATION: ${{ github.event.inputs.duration }}
+          SPEAKER: ${{ github.event.inputs.speaker }}
+          DRY_RUN: ${{ github.event.inputs.dry_run }}
+          BRANCH: ${{ steps.branch.outputs.name }}
+        run: |
+          # continue on the follow-up branch when an earlier run already made it
+          if git ls-remote --exit-code --heads origin "$BRANCH" > /dev/null 2>&1; then
+            git fetch origin "$BRANCH" && git checkout -B "$BRANCH" "origin/$BRANCH"
+          else
+            git checkout -b "$BRANCH"
+          fi
+          ARGS=(--target "$TARGET" --url "$URL" --report "$RUNNER_TEMP/followup.md" --transcript-out "$RUNNER_TEMP/transcript.txt")
+          [ -n "$START" ]    && ARGS+=(--start "$START")
+          [ -n "$DURATION" ] && ARGS+=(--duration "$DURATION")
+          [ -n "$SPEAKER" ]  && ARGS+=(--speaker "$SPEAKER")
+          [ "$DRY_RUN" = "true" ] && ARGS+=(--dry-run)
+          node scripts/video-followup.js "${ARGS[@]}"
+          cat "$RUNNER_TEMP/followup.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: 📎 Keep the transcript (dry run)
+        if: github.event.inputs.dry_run == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: transcript
+          path: ${{ runner.temp }}/transcript.txt
+
+      - name: 🤖 Content pipeline (ids, timestamps, cross-references)
+        id: agent
+        if: github.event.inputs.dry_run != 'true' && steps.followup.outputs.changed == 'true'
+        env:
+          NODE_OPTIONS: --no-warnings
+        run: |
+          node scripts/content-agent.js --report "$RUNNER_TEMP/agent-report.md"
+          { cat "$RUNNER_TEMP/followup.md"; echo; cat "$RUNNER_TEMP/agent-report.md"; } > "$RUNNER_TEMP/pr-body.md"
+
+      - name: 🖼️ Fetch the thumbnail of the new video
+        # a new YouTube link needs its thumbnail in assets/images/thumbs/ or the data test in CI fails (docs/THUMBNAILS.md)
+        if: steps.agent.outcome == 'success'
+        run: node scripts/fetch-thumbs.js || echo "::warning::could not fetch the thumbnail; run the Update Thumbnails workflow on this branch"
+
+      - name: 💾 Commit, push, open the Pull Request
+        id: commit
+        if: steps.agent.outcome == 'success'
+        env:
+          BRANCH: ${{ steps.branch.outputs.name }}
+          TARGET: ${{ github.event.inputs.target }}
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add assets/data.json assets/images/thumbs
+          git commit -m "video-followup: follow-up of ${TARGET} from a YouTube clip"
+          git push origin "HEAD:${BRANCH}"
+          PR=$(gh pr list --head "$BRANCH" --base "$BASE" --state open --json number --jq '.[0].number // empty')
+          if [ -z "$PR" ]; then
+            gh pr create --base "$BASE" --head "$BRANCH" --title "Content: follow-up of ${TARGET} (video)" --body-file "$RUNNER_TEMP/pr-body.md"
+          else
+            gh pr comment "$PR" --body-file "$RUNNER_TEMP/pr-body.md"
+          fi
+
+      - name: 🧪 Start CI and the typo review
+        if: steps.commit.outcome == 'success'
+        env:
+          BRANCH: ${{ steps.branch.outputs.name }}
+        run: |
+          gh workflow run ci.yml --ref "$BRANCH"
+          gh workflow run typo-review.yml --ref "$BRANCH" -f branch="$BRANCH"

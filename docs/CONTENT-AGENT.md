@@ -1,6 +1,18 @@
 # Content Pipeline Agent
 
-Status: **built, not yet run on GitHub** (the logic and unit tests run locally; the workflow needs the one-time setup below).
+Status: **built, not yet run on GitHub.** The logic and the unit tests run locally (the AI and GitHub are faked in the tests,
+so nothing here has talked to the real Gemini API or the real Pull Request API yet; see "First run" at the end).
+
+Four jobs, one Pull Request:
+
+| Job | You give | You get |
+| --- | --- | --- |
+| **Pipeline** (above) | items/blocks without an `id` in `data.json` | ids, timestamps, links, cross-references |
+| **1. Notes to blocks** | a `.txt` file in `content-inbox/` | items and blocks in `data.json`, then the pipeline runs |
+| **2. Typo review** | nothing (it follows every agent commit) | a second commit with clear typo fixes, one-click suggestions for doubtful ones |
+| **3. Video follow-up** | "follow up of A-11.2" + a YouTube link | a new follow-up answer with the video attached, from the transcript |
+
+Jobs 1 to 3 use the Gemini API (free key). The pipeline itself needs no key.
 
 ## What it does
 
@@ -108,11 +120,137 @@ A commit or PR made with the built-in `GITHUB_TOKEN` does not trigger other work
 agent's commit. The workflow therefore dispatches `ci.yml` for the branch (it already has `workflow_dispatch`); the result
 shows on the PR. The agent's own commits (by `github-actions[bot]`) are skipped, so it cannot loop.
 
+## Names: branch and inbox folder
+
+- **The branch must start with `staging/`** (for example `staging/abhisheka-notes`; what follows is yours to choose). That prefix is the
+  safety fence in `content-agent.yml` (`branches: [ "staging/**" ]`): the agent never runs on `main` or on your feature branches.
+  To use another prefix, change that one line (and the branch name in `video-followup.yml`).
+- **The notes folder is `content-inbox/`, at the top of the project, not under `assets/`.** `assets/` is what the site itself loads
+  (data, images, thumbnails, transcripts) and what the data tests check; a raw `.txt` of notes is a draft, not site content. The
+  folder name appears in three places only: the `INBOX` constant in `scripts/notes-to-blocks.js`, `paths:` in `content-agent.yml`,
+  and `content-inbox/README.md`.
+- **Phone:** on github.com open the branch menu, type `staging/some-name`, choose *Create branch*, then *Add file, Create new file*
+  and name it `content-inbox/some-name.txt`. Committing it starts the agent.
+- The secret must be called exactly `GEMINI_API_KEY` and be a **repository secret** (Settings, Secrets and variables, Actions, Secrets
+  tab; not the Variables tab).
+
+## Job 1: notes to blocks
+
+Put a text file in `content-inbox/` on a `staging/...` branch and push (details: `content-inbox/README.md`). The workflow
+runs `scripts/notes-to-blocks.js` first, then the pipeline above, in one commit, and opens the PR.
+
+- **The AI only decides where the text splits** (items, blocks) **and each block's type** (paragraph / shloka / mantra / note),
+  by answering with line numbers. **The code copies your lines into the blocks.** Before anything is written,
+  `verifyPreservation()` checks that the lines out are exactly the lines in (only these are removed: the `ಪ್ರಶ್ನೆ ಕರ್ತ:` /
+  `ಉತ್ತರ:` / `Inquirer:` / `Answer:` prefixes, YouTube links, blank lines, spaces at the edges of a line). It runs again after
+  the translation. If it fails nothing is written. A model answer that is not a valid split (a gap, an overlap, a wrong type)
+  is retried once, then the rule-based split is used and the PR says so.
+- **Items:** with `ಪ್ರಶ್ನೆ ಕರ್ತ:` / `ಉತ್ತರ:` prefixes they decide the items (a question, then its answer). With none (rough notes)
+  the default is one **answer** item; the AI starts a second item only when the topic clearly changes (for example the
+  Deshabhushana story after the abhisheka notes).
+- **Numbers:** a question gets the next free `num`; an answer right below a question takes none (it shares the question's number);
+  a note-style answer with no question gets its own next `num`, like a follow-up answer. It is marked so the pipeline does not
+  guess it is a follow-up of the answer above (put `followup: yes` in the file header if it is one).
+- **Videos:** every YouTube link (`youtu.be`, `watch?v=`, `/shorts/`, `/live/`) becomes a `videos` entry `{ url, youtubeId }` with
+  the link as you wrote it, `?t=` included, and leaves the text. A link on its own line goes to the text line above it; a link in
+  a line goes to that line. Other links (forms, websites) stay in the text.
+- **Language:** each block is in the language you wrote it in (the script with more letters: Latin text, also romanised Hindi,
+  counts as English). The other language is **machine-translated line for line** (the count must match; one retry; else it
+  is left empty and listed as missing). A language you wrote is never overwritten. Shloka and mantra blocks are
+  **transliterated**, not translated, and listed to check against the source.
+- **Where:** at the end, or `after: A-11` (also `A-11.2`, `Q-11`, a number, an id) in the file header.
+- **The PR lists:** the blocks made (type, language, videos), what was machine-translated ("review this"), missing translations,
+  and **suggested tags**. Tags are never written into `data.json`.
+- **Thumbnails:** a new video needs `assets/images/thumbs/<id>.jpg` or the data test fails, so the workflow runs
+  `fetch-thumbs.js` before it commits.
+
+What the rule-based split does without a key: Example 1 (a Q&A) comes out right (one question; one answer with a block of
+the first lines and a block with the Vidyasagar line and its video). Example 2 (rough notes) is only roughly split, because
+the rules cannot tell a heading from a point: numbered points get their own block, but "6. ..." then swallows the next heading
+and the story into one block. With the key the AI separates them.
+
+## Job 2: typo review (a second commit)
+
+`.github/workflows/typo-review.yml` is started by the content-agent workflow after its commit (a push by the built-in token
+does not start workflows by itself), or by hand: Actions, *Typo Review*, Run workflow, with the branch name (tick
+`whole_book` to check everything). It reviews only the blocks the branch **adds or changes** compared with the main branch.
+
+| Finding | What happens |
+| --- | --- |
+| Clear typo in plain prose (paragraph / note) | fixed in **one commit** (`typo-review: fix N clear typo(s)...`); revert that commit to undo all; listed old, new, reason |
+| Doubtful case | **not changed**; a *Commit suggestion* button on that line of the PR |
+| Shloka / mantra block | **never changed**, never suggested; listed under "check against the source" |
+| A spelling in `config/spelling-allowlist.txt` | never flagged, never changed |
+
+The AI only proposes `{ old, new, reason, confidence }`; the code decides. A fix is automatic only if the model said clear,
+`old` occurs **once** in the line, is short, differs from `new` by at most 3 letters (2 in Kannada), and does not overlap
+the allowlist or a link. Anything else is a suggestion at most. The only fix that needs no AI is a double space. Without the key
+only that runs, and the comment says the AI check was skipped. Re-running updates the PR comment and does not repeat
+a suggestion that is already there.
+
+`config/spelling-allowlist.txt`: one spelling per line (Poojyapaada, ತೀರ್ಥಕರ, ...). Case does not matter for Latin letters.
+Add yours there; the model is also told not to touch them.
+
+## Job 3: video follow-up
+
+Actions, *Video Follow-up*, Run workflow (works from the phone). You give the **target block** (`A-11.2`), a **public YouTube
+link**, optionally **start** and **duration** (`12m30s`, `1:20:30`, `5m`, `90s`; a bare number is seconds) and the **speaker**.
+**`dry_run` is ticked by default**: it shows the transcript and the points in the run summary and changes nothing. **Try your
+first video that way.**
+
+1. The target block, its answer and the question it replies to are read as context.
+2. Call 1 gives Gemini the public YouTube link and the clip offsets and asks for a timestamped transcript of the clip.
+3. Call 2 (text only) gets the transcript and the context and returns the points that **add** to A-11.2, each with the numbers of
+   the transcript lines it comes from, plus the lines where the speaker recites Sanskrit/Prakrit. A point with no valid
+   transcript line behind it is dropped (and listed).
+4. One new **answer** is placed right below the answer it extends: `references: [the A-11.2 block]`, its own next `num`, a
+   paragraph block with the speaker line and the points (English and Kannada, both machine-written) and the video attached at
+   the clip start (`?t=`). If there was a recitation, a **note** block says "machine-transcribed, verify against the source" and
+   holds the lines exactly as transcribed. **Machine-transcribed Sanskrit/Prakrit is never put in a shloka block.**
+5. The PR shows each point with the transcript excerpt it came from and a timestamp link to that second of the video.
+
+Honest limits:
+- **Kannada transcript quality is unknown until you try it**; that is why dry run comes first.
+- **Clip times:** Google's documentation and users disagree on two things, so both are handled: whether returned timestamps count from
+  the video start or the clip start (the code detects it and the report says which it saw), and whether the audio is really cut
+  to the clip (a forum report says that for YouTube links the whole audio may still be processed and counted, so give a
+  duration and watch your daily quota).
+- **Free tier:** public videos only (not private or unlisted), at most 8 hours of YouTube per day. On Google's free tier your prompts
+  and the model's answers may be used to improve Google's products (check the current terms before sending anything you consider
+  private; this site's content and public videos are not private).
+- The points are paraphrases of what the speaker said: a draft to check, never a source.
+
+## Setup for jobs 1 to 3
+
+1. A free key from Google AI Studio, saved as the repository secret `GEMINI_API_KEY` (Settings, Secrets and variables, Actions).
+2. Optional: repository variable `GEMINI_MODEL`. The default in `scripts/lib/gemini.js` is a model name taken from Google's current
+   documentation, which renames and retires models often, so if every call fails with a 404 or 400 naming the model, this is the
+   first thing to change.
+3. The permissions from "One-time GitHub setup" above (workflow read and write, allow Actions to create pull requests).
+
+## First run: what has not been seen working
+
+Tested here, with fakes: every rule above, both of your examples, the whole path to the existing pipeline, the PR suggestion
+payload. **Not tested** (no network access to Gemini or GitHub from where this was built): the real Gemini answers (split,
+translation, typos, transcript), the workflows on GitHub, and that GitHub accepts each suggestion line. Suggested order: run
+Notes with Example 1, then Example 2; run Video Follow-up as a dry run on a video you know; then the typo review on a
+branch that has a typo you know about.
+
 ## Files
 
 | File | Purpose |
 | --- | --- |
-| `.github/workflows/content-agent.yml` | Trigger (`staging/**`, only when `assets/data.json` changed), commit, PR, CI dispatch |
-| `scripts/content-agent.js` | Pure `processDraft()` plus the CLI |
-| `scripts/content-agent.test.js` | 38 unit tests, including runs on the real `data.json` (a re-drafted question and the real follow-up answer `z5xxer`) |
+| `.github/workflows/content-agent.yml` | Trigger (`staging/**`, when `assets/data.json` or a `content-inbox/*.txt` changed): notes, pipeline, thumbnails, commit, PR, CI, typo review |
+| `.github/workflows/typo-review.yml` | The second commit and the PR suggestions |
+| `.github/workflows/video-followup.yml` | The "Run workflow" form for job 3 |
+| `scripts/content-agent.js` | Pure `processDraft()` plus the CLI (now also removes the `_agent` marker notes-to-blocks leaves) |
+| `scripts/notes-to-blocks.js` | Job 1 |
+| `scripts/typo-review.js`, `scripts/post-suggestions.js` | Job 2 and the PR suggestion poster |
+| `scripts/video-followup.js` | Job 3 |
+| `scripts/lib/book.js` | A-11.2 labels and places (same rules as `src/core/blocks.js`, checked against it in a test) |
+| `scripts/lib/youtube.js`, `scripts/lib/gemini.js` | YouTube link parsing; the small Gemini client |
+| `scripts/*.test.js`, `scripts/lib/lib.test.js` | 38 + 32 + 24 + 16 + 14 unit tests (the AI and GitHub are fakes) |
+| `scripts/fixtures/notes-example-*.txt` | Your two Google Doc examples, verbatim, used by the tests |
+| `config/spelling-allowlist.txt` | Your intentional spellings |
+| `content-inbox/` | Where notes files go (processed files move to `content-inbox/done/`) |
 | `scripts/new-id.js` | Unchanged; the agent reuses `fillMissingIds` |
