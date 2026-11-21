@@ -2,6 +2,7 @@
 const fs = require('fs');
 const path = require('path');
 const T = require('./typo-review');
+const { fixFinalA } = require('./lib/translit');
 const { onlyNew, postSuggestions } = require('./post-suggestions');
 
 const ROOT = path.join(__dirname, '..');
@@ -247,7 +248,7 @@ describe('Kannada words inside English lines, and invisible characters', () => {
     test('letters your equivalence list treats as the same (ಣ = ನ) no longer fail the round trip: automatic', async () => {
         const eq = T.loadEquivalents('ನ ಣ\nಲ ಳ');
         const r = await T.reviewTypos(head, base, { ai: mixedAi([P3], RT), allowlist: [], equivalents: eq });
-        expect(r.data[1].blocks[2].content.en[0]).toBe('1. Navana / Navana = Abhishekas');
+        expect(r.data[1].blocks[2].content.en[0]).toBe('1. Navana = Abhishekas');       // the duplicate "Navana / Navana" is not made
         expect(r.applied.map((a) => a.reason).join('|')).toMatch(/apart from letters your equivalence list/);
     });
     test('the equivalence list does not hide a real difference: ನವನ vs ಚುಹಾವಣ is still a suggestion', async () => {
@@ -318,5 +319,71 @@ describe('Kannada words inside English lines, and invisible characters', () => {
         const keep = clone(base); keep[1].blocks.push(blk('m00009', 1, 'paragraph', [zwj], ['x']));
         const k = await T.reviewTypos(keep, base, { ai: { available: false }, allowlist: [] });
         expect(k.data[1].blocks[0].content.kn[0]).toBe(zwj);
+    });
+});
+
+describe('final "a" and duplicates', () => {
+    test('the Hindi-style ending is put back: abhishek -> abhisheka, ram -> rama; words that really end in a consonant are left', () => {
+        expect(fixFinalA('ಅಭಿಷೇಕ', 'abhishek')).toEqual({ text: 'abhisheka', changed: true });
+        expect(fixFinalA('ರಾಮ', 'Ram')).toEqual({ text: 'Rama', changed: true });
+        expect(fixFinalA('ರಾಮ', 'Rama').changed).toBe(false);
+        expect(fixFinalA('ಜಗತ್', 'jagat').changed).toBe(false);                       // ends in a virama: a real final consonant
+        expect(fixFinalA('ಸಂ', 'sam').changed).toBe(false);                            // anusvara
+        expect(fixFinalA('ಪುಷ್ಪ ಆರೋಹಣ', 'pushp arohan')).toEqual({ text: 'pushpa arohana', changed: true }); // both words end in a bare consonant
+    });
+    test('a phrase: each word is checked when the word counts match', () => {
+        expect(fixFinalA('ಉಪ ಲೇಪನ', 'upa lepan').text).toBe('upa lepana');
+        expect(fixFinalA('ಉಪ ಲೇಪನ', 'upalepan').text).toBe('upalepana');             // counts differ: last word only
+    });
+    const base = book();
+    const mk = (kn, en) => { const h = clone(base); h[1].blocks.push(blk('d00001', 1, 'paragraph', [], [en])); return h; };
+    const ai = (issue, back) => ({ available: true, json: jest.fn(async ({ system, prompt }) => {
+        if (/Write each one back/.test(system)) return { items: JSON.parse(prompt).items.map((i) => ({ id: i.id, kannada: back })) };
+        if (/Kannada script inside the English line/.test(system)) return { issues: [issue] };
+        return { issues: [] };
+    }) });
+    const eq = T.loadEquivalents('ನ ಣ');
+    test('the model\'s Hindi-style spelling is corrected before it is written', async () => {
+        const head = mk(null, '1. ಅಭಿಷೇಕ of the Jina');
+        const r = await T.reviewTypos(head, base, { ai: ai({ key: 'd00001|en|0', old: 'ಅಭಿಷೇಕ', new: 'abhishek', confidence: 'clear', score: 0.97 }, 'ಅಭಿಷೇಕ'), allowlist: [], equivalents: eq });
+        expect(r.data[1].blocks[0].content.en[0]).toBe('1. abhisheka of the Jina');
+        expect(r.applied[0].reason).toMatch(/final "a" put back/);
+    });
+    test('Kannada word + the same English word (right or left, with / - = or brackets): one word is kept, as the writer typed it', async () => {
+        for (const [line, want] of [
+            ['2. ಚುಹಾವಣ / Chuhavana : Similar to upa lepana.', '2. Chuhavana : Similar to upa lepana.'],
+            ['2. ಚುಹಾವಣ (chuhavana) is only for feet.', '2. chuhavana is only for feet.'],
+            ['2. Chuhavana - ಚುಹಾವಣ is only for feet.', '2. Chuhavana is only for feet.'],
+        ]) {
+            const r = await T.reviewTypos(mk(null, line), base, { ai: ai({ key: 'd00001|en|0', old: 'ಚುಹಾವಣ', new: 'Chuhavana', confidence: 'clear', score: 0.97 }, 'ಚುಹಾವಣ'), allowlist: [], equivalents: eq });
+            expect(r.data[1].blocks[0].content.en[0]).toBe(want);
+        }
+    });
+    test('a different English spelling next to it is NOT treated as a duplicate: both stay', async () => {
+        const r = await T.reviewTypos(mk(null, '2. ಚುಹಾವಣ / Chuhavan : feet.'), base, { ai: ai({ key: 'd00001|en|0', old: 'ಚುಹಾವಣ', new: 'Chuhavana', confidence: 'clear', score: 0.97 }, 'ಚುಹಾವಣ'), allowlist: [], equivalents: eq });
+        expect(r.data[1].blocks[0].content.en[0]).toBe('2. Chuhavana / Chuhavan : feet.');
+    });
+    test('not sure: the duplicate is dropped only in the suggestion, not on its own', async () => {
+        const r = await T.reviewTypos(mk(null, '2. ಚುಹಾವಣ / Chuhavana : feet.'), base, { ai: ai({ key: 'd00001|en|0', old: 'ಚುಹಾವಣ', new: 'Chuhavana', confidence: 'doubtful', score: 0.99 }, 'ಚುಹಾವಣ'), allowlist: [], equivalents: eq });
+        expect(r.data[1].blocks[0].content.en[0]).toContain('ಚುಹಾವಣ');
+        expect(r.comments[0].body).toContain('"2. Chuhavana : feet."');
+    });
+    test('the same English word typed twice by the writer is only a suggestion', async () => {
+        const r = await T.reviewTypos(mk(null, '3. Navana / navana = Abhishekas'), base, { ai: { available: false }, allowlist: [] });
+        expect(r.data[1].blocks[0].content.en[0]).toBe('3. Navana / navana = Abhishekas');
+        expect(r.applied).toHaveLength(0);
+        expect(T.duplicatePairIssues({ key: 'k', lang: 'en', text: 'a bit-by-bit and step-by-step plan, so-so' })).toEqual([]);
+    });
+});
+
+describe('the spelling style reaches every prompt that writes English', () => {
+    test('typo, mixed-script, translation and video prompts all say: keep the final a', () => {
+        const fs2 = require('fs');
+        for (const f of ['typo-review.js', 'notes-to-blocks.js', 'video-followup.js']) {
+            const src = fs2.readFileSync(path.join(__dirname, f), 'utf8');
+            expect(src).toMatch(/TRANSLIT_STYLE|final "a"/);
+        }
+        const { TRANSLIT_STYLE } = require('./lib/translit');
+        expect(TRANSLIT_STYLE).toMatch(/abhisheka not abhishek, Rama not Ram/);
     });
 });
