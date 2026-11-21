@@ -27,6 +27,7 @@ const path = require('path');
 const { createGemini } = require('./lib/gemini');
 const { findLinks, parseYouTube } = require('./lib/youtube');
 const { insertIndex, maxNum, snippet } = require('./lib/book');
+const { TRANSLIT_STYLE } = require('./lib/translit');
 
 const ROOT = path.join(__dirname, '..');
 const DATA_PATH = path.join(ROOT, 'assets', 'data.json');
@@ -276,7 +277,8 @@ function verifyPreservation(originalText, items, meta) {
 const LANG_NAME = { kn: 'Kannada', en: 'English' };
 const TRANSLATE_SYSTEM = `You translate lines from a Jainism Q&A book. Return JSON only: {"blocks":[{"key":"...","lines":["..."]}]}.
 Rules: one output line for every input line, same order, so the count must match exactly; keep numbering such as "1." and proper names; keep Sanskrit and Prakrit technical terms (abhisheka, kalasha, dravya ...) in the target script rather than explaining them; never add comments, notes or links.
-Blocks with "mode":"transliterate" are verses or mantras: do NOT translate the meaning, write the same words in the other script (Kannada script <-> Latin letters), as faithfully as possible.`;
+Blocks with "mode":"transliterate" are verses or mantras: do NOT translate the meaning, write the same words in the other script (Kannada script <-> Latin letters), as faithfully as possible.
+${TRANSLIT_STYLE}`;
 
 /** Fill the empty language of every block with a machine translation. Records on `meta` what happened. */
 async function translateBlocks(ai, items, meta) {
