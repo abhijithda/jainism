@@ -180,6 +180,8 @@ does not start workflows by itself), or by hand: Actions, *Typo Review*, Run wor
 | Clear typo in plain prose (paragraph / note) | fixed in **one commit** (`typo-review: fix N clear typo(s)...`); revert that commit to undo all; listed old, new, reason |
 | Doubtful case | **not changed**; a *Commit suggestion* button on that line of the PR |
 | Kannada-script words inside an English line (your own mixed notes) | written in Latin letters **automatically only if** the model says clear, scores it 0.9 or more, **and** a second call turning the Latin back into Kannada gives your word, counting the letters in `config/translit-equivalents.txt` as the same (ಣ = ನ, ಲ = ಳ, ಸ = ಶ = ಷ, vowel length, the ಾ sign; edit that file as you like); otherwise a *Commit suggestion* |
+| A Kannada word next to the same English word (`ಣವಣ / Navana`) | one word is kept, in your spelling (`Navana`), when the converted word is the same; a different spelling stays as a pair. The same English word typed twice by you (`Navana / Navana`) is only a suggestion |
+| Final "a" of Sanskrit words | the book's style is `abhisheka`, `Rama`, not the Hindi `abhishek`, `Ram`. Every prompt that writes English says so, and where the Kannada word is known the code puts a dropped final "a" back |
 | Invisible characters (word joiner, zero-width space, BOM) from copy-paste | removed automatically (the joiners Kannada conjuncts need are kept) |
 | Shloka / mantra block | **never changed**, never suggested; listed under "check against the source" |
 | A spelling in `config/spelling-allowlist.txt` | never flagged, never changed |
@@ -221,6 +223,8 @@ Honest limits:
   and the model's answers may be used to improve Google's products (check the current terms before sending anything you consider
   private; this site's content and public videos are not private).
 - The points are paraphrases of what the speaker said: a draft to check, never a source.
+
+Open question (not built): English sentences that are really **Hindi in Latin letters** ("Shachi sugandint dravyo se bhagawan par upatan lagaya"). Today they count as English and the Kannada is machine-translated from them. What a separate Hindi block should look like (a third language in `data.json` and the app, or only a flag in the PR) is still to be decided.
 
 ## Setup for jobs 1 to 3
 

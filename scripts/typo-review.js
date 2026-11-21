@@ -31,6 +31,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { createGemini } = require('./lib/gemini');
 const { allBlocks } = require('./lib/book');
+const { TRANSLIT_STYLE, fixFinalA, sameWord } = require('./lib/translit');
 
 const ROOT = path.join(__dirname, '..');
 const DATA_PATH = path.join(ROOT, 'assets', 'data.json');
@@ -123,7 +124,7 @@ Return JSON only: {"issues":[{"key":"...","old":"exact text from the line","new"
 Rules:
 - "old" must be copied exactly from the line and be as short as possible (one word, or a few words), "new" is that same piece corrected.
 - Report only spelling and typing mistakes: a wrong, missing or extra letter or vowel sign, a broken conjunct, a doubled word, a missing space between words, a space before a comma or full stop. Never rephrase, restyle, shorten, add words or fix grammar or facts.
-- Different valid spellings or transliterations are NOT mistakes (Pooja/Puja, Kundakunda/Kundkund, ತೀರ್ಥಕರ/ತೀರ್ಥಂಕರ, aa/a, v/w). Do not report them.
+- Different valid spellings or transliterations are NOT mistakes (Pooja/Puja, Kundakunda/Kundkund, ತೀರ್ಥಕರ/ತೀರ್ಥಂಕರ, aa/a, v/w). Do not report them. The book keeps the final "a" of Sanskrit words (abhisheka, Rama): never "correct" it away to the Hindi form (abhishek, Ram); if a word lost its final "a", report it as doubtful with the "a" put back.
 - "clear" = you are certain it is a typing slip in ordinary Kannada or English prose. Use "doubtful" for anything else: Sanskrit or Prakrit words, quotations, proper names, transliterations, anything where you would want to see the source.
 - Lines with "kind":"verse" are shlokas or mantras: report a suspicion as "doubtful" only; they are never corrected automatically.
 - Never touch these intentional spellings: `;
@@ -153,7 +154,8 @@ const MIXED_SYSTEM = `These lines are English text from a Jainism Q&A book. The 
 For every word or phrase in Kannada script, give the same word in Latin letters, in the simple style the book uses for Jain terms (ಚುಹಾವಣ -> Chuhavana, ಪುಷ್ಪಾರೋಹಣ -> Pushparohana, ಣವಣ -> Navana, ಉಪ ಲೇಪನ -> Upa Lepana). This is transliteration (same sounds, Latin letters), not translation. Keep capitalisation natural: capitalise a term that starts a heading or a sentence.
 Return JSON only: {"issues":[{"key":"...","old":"the Kannada-script words exactly as in the line","new":"the Latin-letter version","reason":"short","confidence":"clear"|"doubtful","score":0.0-1.0}]}.
 "clear" with a high score only when you are sure of every letter (a known term, or a plain word). Use "doubtful" or a low score when the spelling could vary: retroflex ಣ/ನ, ಳ/ಲ, aspirated or long vowels, a term you do not recognise, a damaged or misspelt word.
-Do not change anything else in the line. If a Kannada-script word sits next to its own English equivalent ("ಣವಣ / Navana"), still transliterate it; do not drop it.`;
+Do not change anything else in the line. If a Kannada-script word sits next to its own English equivalent ("ಣವಣ / Navana"), still transliterate it; do not drop it.
+${TRANSLIT_STYLE}`;
 
 const MIXED_BACK_SYSTEM = `Each item is a Jain term written in Latin letters (Prakrit/Sanskrit/Kannada origin). Write each one back in Kannada script, as it would normally be written.
 Return JSON only: {"items":[{"id":"...","kannada":"..."}]}. One answer for every id, nothing else.`;
@@ -180,6 +182,40 @@ const skeleton = (t, eq) => {
 };
 
 /**
+ * "ಣವಣ / Navana": when the Latin version of the Kannada word is the SAME word as the English one the writer typed next to it
+ * (any case), change the whole span "ಣವಣ / Navana" into the writer's own "Navana" instead of making "Navana / Navana".
+ * Only for a single word, only when the English neighbour matches exactly; a different spelling stays as a pair.
+ */
+function dropDuplicate(issue, line) {
+    if (!line || /\s/.test(issue.new.trim())) return issue;
+    const text = line.text;
+    const at = text.indexOf(issue.old);
+    if (at < 0 || text.indexOf(issue.old, at + 1) >= 0) return issue;
+    const right = text.slice(at + issue.old.length).match(/^([\s\/\-–=(,:]+)([A-Za-z][A-Za-z'’-]*)(\)?)/);
+    if (right && sameWord(right[2], issue.new)) {
+        const close = right[1].includes('(') ? right[3] : '';
+        const span = issue.old + right[1] + right[2] + close;
+        return { ...issue, old: span, new: right[2], reason: `${issue.reason}; your own English word "${right[2]}" is the same, so the duplicate is dropped` };
+    }
+    const left = text.slice(0, at).match(/([A-Za-z][A-Za-z'’-]*)([\s\/\-–=),:]+)$/);
+    if (left && sameWord(left[1], issue.new)) {
+        const span = left[1] + left[2] + issue.old;
+        return { ...issue, old: span, new: left[1], reason: `${issue.reason}; your own English word "${left[1]}" is the same, so the duplicate is dropped` };
+    }
+    return issue;
+}
+
+/** "Navana / Navana" typed twice by the writer: a suggestion to keep one (never automatic). */
+function duplicatePairIssues(line) {
+    if (line.lang !== 'en') return [];
+    const out = [];
+    for (const m of line.text.matchAll(/\b([A-Za-z]{3,})\s*(?:\/|=|\s[–-]\s)\s*\1\b/gi)) {
+        out.push({ key: line.key, old: m[0], new: m[1], reason: 'the same word typed twice', confidence: 'doubtful' });
+    }
+    return out;
+}
+
+/**
  * English lines that contain Kannada script (prose only). Each Kannada word gets a Latin version from the model, then a
  * SECOND call turns the Latin back into Kannada. A change is marked `mixedAuto` (applied automatically) only if the model said
  * "clear", gave a score of at least `autoMin`, AND the round trip gives exactly the original word. Everything else is a suggestion.
@@ -201,6 +237,9 @@ async function mixedScriptIssues(ai, lines, allowlist, autoMin = MIXED_AUTO_MIN,
             }
         } catch (e) { failures.push(e.message); }
     }
+    // the Hindi habit of dropping the final "a" (abhishek, ram) is put right before anything is checked
+    const fixedA = new Set();
+    proposals.forEach((x, i) => { const f = fixFinalA(x.old, x.new); if (f.changed) { x.new = f.text; fixedA.add(i); } });
     // the round trip: Latin back to Kannada must give the writer's own word
     const back = new Map();
     for (let i = 0; i < proposals.length; i += 60) {
@@ -218,7 +257,9 @@ async function mixedScriptIssues(ai, lines, allowlist, autoMin = MIXED_AUTO_MIN,
         const auto = x.confidence === 'clear' && score >= autoMin && roundTrip;
         const why = roundTrip ? '' : got !== undefined ? ` (turned back into Kannada it gives ${got}, not your spelling)` : ' (round trip not checked)';
         const ok = exact ? ', round trip matches' : ', round trip matches apart from letters your equivalence list treats as the same';
-        return { ...x, mixed: true, mixedAuto: auto, confidence: auto ? 'clear' : 'doubtful', reason: `Kannada script in English text${auto ? ` → Latin letters${ok}` : why}` };
+        const finalA = fixedA.has(i) ? ', final "a" put back' : '';
+        const issue = { ...x, mixed: true, mixedAuto: auto, confidence: auto ? 'clear' : 'doubtful', reason: `Kannada script in English text${auto ? ` → Latin letters${ok}${finalA}` : why}` };
+        return dropDuplicate(issue, mixed.find((l) => l.key === x.key));
     });
     return { issues, found: mixed.length, note: failures.length ? `the Kannada-in-English check failed in part: ${failures[0]}` : '' };
 }
@@ -266,6 +307,12 @@ function applyToLine(text, changes) {
         out = out.slice(0, at) + c.new + out.slice(at + c.old.length);
         limit = at;
         applied.push(c);
+    }
+    // a change that overlapped another one is tried again on the new text (its own words are usually still there)
+    const retry = left.filter((c) => out.indexOf(c.old) >= 0);
+    if (retry.length && applied.length) {
+        const again = applyToLine(out, retry);
+        return { text: again.text, applied: [...applied, ...again.applied], left: [...left.filter((c) => !retry.includes(c)), ...again.left] };
     }
     return { text: out, applied, left };
 }
@@ -335,7 +382,7 @@ async function reviewTypos(head, base, options = {}) {
     const entries = changedBlocks(base, head, { all: options.all });
     const lines = collectLines(entries);
     const proseLines = lines.filter((l) => l.kind === 'prose');
-    const mechanical = proseLines.flatMap(mechanicalIssues);
+    const mechanical = [...proseLines.flatMap(mechanicalIssues), ...proseLines.flatMap(duplicatePairIssues)];
     const ai = await aiIssues(options.ai, lines, allowlist);
     const mixed = await mixedScriptIssues(options.ai, lines, allowlist, options.mixedAutoMin, options.equivalents);
     const decided = decide(lines, [...mechanical, ...ai.issues, ...mixed.issues], allowlist);
@@ -375,7 +422,7 @@ function renderReport(r, { all = false } = {}) {
 const esc = (t) => String(t).replace(/\|/g, '\\|').replace(/\n/g, ' ');
 
 module.exports = {
-    loadAllowlist, loadEquivalents, skeleton, editDistance, changedBlocks, collectLines, mechanicalIssues, decide, applyToLine, applyFixes,
+    loadAllowlist, loadEquivalents, skeleton, dropDuplicate, duplicatePairIssues, editDistance, changedBlocks, collectLines, mechanicalIssues, decide, applyToLine, applyFixes,
     buildSuggestionComments, reviewTypos, renderReport,
 };
 
