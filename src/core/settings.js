@@ -10,7 +10,7 @@
 // paper-size.js and font-scale.js own how their setting is applied to the
 // DOM and wired to its control.
 
-import { KNOWN_LANGS } from './langs.js';
+import { KNOWN_LANGS, limitLangs } from './langs.js';
 
 export const SETTINGS_KEY = 'settings';
 
@@ -103,7 +103,8 @@ export function loadSettings() {
     let saved;
     try { saved = JSON.parse(localStorage.getItem(SETTINGS_KEY)); } catch (_) {}
 
-    const langs = Array.isArray(saved?.langs) ? saved.langs.filter(c => KNOWN_LANGS.some(l => l.code === c)) : [];
+    // At most two languages (see langs.js MAX_ACTIVE_LANGS), registry order.
+    const langs = limitLangs(saved?.langs);
 
     const paperSize = PAPER_SIZES.includes(saved?.paperSize) ? saved.paperSize : DEFAULT_PAPER_SIZE;
 

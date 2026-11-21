@@ -178,3 +178,19 @@ describe('local model source', () => {
         expect(localStorage.getItem(SETTINGS_KEY)).not.toMatch(/sk-secret|apiKey/);
     });
 });
+
+describe('loadSettings: language limit', () => {
+    beforeEach(() => localStorage.clear());
+
+    test('a saved list of three languages is cut to two, in registry order', () => {
+        localStorage.setItem(SETTINGS_KEY, JSON.stringify({ langs: ['hi', 'en', 'kn'] }));
+        expect(loadSettings().langs).toEqual(['kn', 'en']);
+    });
+
+    test('Kannada + Hindi and English + Hindi are valid choices', () => {
+        localStorage.setItem(SETTINGS_KEY, JSON.stringify({ langs: ['hi', 'kn'] }));
+        expect(loadSettings().langs).toEqual(['kn', 'hi']);
+        localStorage.setItem(SETTINGS_KEY, JSON.stringify({ langs: ['hi', 'en'] }));
+        expect(loadSettings().langs).toEqual(['en', 'hi']);
+    });
+});

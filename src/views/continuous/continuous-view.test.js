@@ -306,3 +306,52 @@ describe('renderContinuousView for a share link (partial data + opts.indexData)'
     });
 });
 
+describe('renderContinuousView: the chosen languages (up to two of three)', () => {
+    let container;
+    beforeEach(() => { container = document.getElementById('continuous-container'); });
+
+    const three = () => [{
+        id: 'q_001', type: 'question', references: null,
+        blocks: [baseBlock({ id: 'q_001_b_1', content: { kn: ['ಪ್ರಶ್ನೆ'], en: ['Question'], hi: ['प्रश्न'] } })],
+    }];
+
+    test.each([
+        [['kn', 'en'], true, true, false],
+        [['kn', 'hi'], true, false, true],
+        [['en', 'hi'], false, true, true],
+        [['hi'], false, false, true],
+    ])('langs %j shows kn=%s en=%s hi=%s (not "all of them")', (langs, kn, en, hi) => {
+        renderContinuousView(three(), container, langs);
+        const row = document.getElementById('q_001_b_1');
+        expect(row.querySelector('.col-kn') !== null).toBe(kn);
+        expect(row.querySelector('.col-en') !== null).toBe(en);
+        expect(row.querySelector('.col-hi') !== null).toBe(hi);
+    });
+
+    test('the Hindi column holds the Hindi text', () => {
+        renderContinuousView(three(), container, ['kn', 'hi']);
+        expect(document.querySelector('#q_001_b_1 .col-hi').textContent).toBe('प्रश्न');
+    });
+
+    test('image captions follow the chosen languages, one line each', () => {
+        const data = [{
+            id: 'ins_002', type: 'insert',
+            blocks: [{ id: 'ins_002_b_1', type: 'images', images: [{ src: 'x.jpg', caption: { kn: 'ಶೀ', en: 'Caption', hi: 'शीर्षक' } }] }],
+        }];
+        renderContinuousView(data, container, ['kn', 'hi']);
+        const card = document.querySelector('#ins_002_b_1 .image-card');
+        expect(card.querySelector('.image-caption.lang-kn').textContent).toBe('ಶೀ');
+        expect(card.querySelector('.image-caption.lang-hi').textContent).toBe('शीर्षक');
+        expect(card.querySelector('.image-caption.lang-en')).toBeNull();
+        expect(card.querySelector('img').alt).toBe('ಶೀ');
+    });
+
+    test('a block with text only in a language that is not chosen counts as media-only', () => {
+        const data = [{
+            id: 'a_001', type: 'answer', references: null,
+            blocks: [baseBlock({ id: 'a_001_b_1', content: { kn: [], en: [], hi: ['केवल हिन्दी'] }, videos: [{ url: 'https://youtu.be/abc' }] })],
+        }];
+        renderContinuousView(data, container, ['kn', 'en']);
+        expect(document.getElementById('a_001_b_1').classList.contains('media-only')).toBe(true);
+    });
+});

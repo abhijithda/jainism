@@ -140,6 +140,12 @@ body[data-paper-size="a3"] #continuous-container {
     color: #555;
 }
 
+/* Devanagari at the Kannada size (it reads smaller than Latin at the same px), in the second-language colour. */
+.title-style-text-line.lang-hi {
+    font-size: calc(24px * var(--font-scale));
+    color: #555;
+}
+
 /* A content-less insert (no image, no text) — the "blank page" case.
    On screen, enough height to read as a deliberate break rather than
    nothing at all. In print, forced onto its own page before AND after —
@@ -190,7 +196,8 @@ body[data-paper-size="a3"] #continuous-container {
     }
 
     .col-kn,
-    .col-en {
+    .col-en,
+    .col-hi {
         orphans: var(--print-orphans);
         widows: var(--print-widows);
     }
@@ -243,12 +250,14 @@ body[data-paper-size="a3"] #continuous-container {
 }
 
 .col-kn,
-.col-en {
+.col-en,
+.col-hi {
     flex: 1 1 0%;
     min-width: 0;
 }
 
-.col-en p {
+.col-en p,
+.col-hi p {
     color: #555;
 }
 
@@ -381,7 +390,8 @@ input:checked + .slider::before {
 }
 
 .excerpt-row .col-kn,
-.excerpt-row .col-en {
+.excerpt-row .col-en,
+.excerpt-row .col-hi {
     flex: 1 !important;
     min-width: 0 !important;
 }
@@ -667,7 +677,8 @@ input:checked + .slider::before {
     }
 
     .col-kn,
-    .col-en {
+    .col-en,
+    .col-hi {
         overflow-wrap: break-word;
         flex: 1 1 auto !important;
         min-width: 150px !important;
