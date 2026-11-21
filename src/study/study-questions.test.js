@@ -24,8 +24,19 @@ describe('comparisons', () => {
         expect(Q.siblingsOf(model, 'Queen Vishalakshi')).toEqual([]);
     });
 
+    test('"Yaksha Yakshi" is a pair named together (Gomukha Chakreshwari Yaksha Yakshi), so it is not compared with Chakreshwari Yakshi, nor the other way', () => {
+        expect(Q.siblingsOf(model, 'Yaksha Yakshi')).toEqual([]);
+        expect(Q.siblingsOf(model, 'Chakreshwari Yakshi')).not.toContain('Yaksha Yakshi');
+        expect(Q.siblingsOf(model, 'Chakreshwari Yakshi')).toEqual([]);
+        expect(Q.siblingsOf(model, 'Kali Devi')).toContain('Chakreshwari Devi');   // two different deities: still a comparison
+        expect(Q.siblingsOf(model, 'Padma Purana')).toContain('Harivamsha Purana');
+    });
+
     test('a shortened name (Vamsha for Harivamsha) is the same name, not a sibling', () => {
         expect(Q.siblingsOf(model, 'Harivamsha Purana')).not.toContain('Vamsha Purana');
+        expect(Q.siblingsOf(model, 'Padma Purana')).not.toContain('Vamsha Purana');
+        expect(Q.siblingsOf(model, 'Vamsha Purana')).toEqual([]);
+        expect(Q.siblingsOf(model, 'Nava Devata')).toContain('Shasana Devata');   // a tag is never an alias, even if another name starts with it
     });
 
     test('spelling variants of one topic are not offered as something to compare', () => {

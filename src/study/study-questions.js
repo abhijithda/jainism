@@ -162,6 +162,16 @@ export function topicsOf(model, chunk) {
     return out;
 }
 
+/**
+ * A paired term: its two words are the same word in two forms ("Yaksha Yakshi", the male and female
+ * attendant named together, as the book's Kannada does: "ಗೋಮುಖ ಚಕ್ರೇಶ್ವರಿ ಯಕ್ಷ ಯಕ್ಷಿ"). It is not one member of a
+ * "<qualifier> Yakshi" family, so nothing is compared with it, and it is compared with nothing.
+ */
+const isPairedTerm = phrase => {
+    const words = phrase.trim().split(/\s+/);
+    return words.length === 2 && sameWord(words[0], words[1]);
+};
+
 /** Whether some block of the book names both phrases (in its English text or tags). */
 function namedTogether(model, a, b) {
     const x = lower(a), y = lower(b);
@@ -179,16 +189,28 @@ function namedTogether(model, a, b) {
  * book names together, then plain tag siblings.
  * @returns {{name: string, together: boolean}[]}
  */
+/** A shortened form, only ever one the text uses without a tag, of another member of the family ("Vamsha Purana" for "Harivamsha Purana"): the same thing, not a sibling. */
+const isShortenedAlias = (model, group, phrase) => {
+    if (model.topics.has(lower(phrase))) return false;      // a tag is curated: never an alias
+    const first = lower(phrase.trim().split(/\s+/)[0]);
+    return first.length >= 4 && [...group.values()].some(({ name }) => {
+        const other = lower(name.trim().split(/\s+/)[0]);
+        return other !== first && other.includes(first);
+    });
+};
+
 export function comparisonsFor(model, topic) {
     const group = model.heads.get(lower(lastWord(topic)));
     if (!group || topic.trim().split(/\s+/).length < 2) return [];
     const firstWord = phrase => phrase.trim().split(/\s+/)[0];
+    if (isPairedTerm(topic) || isShortenedAlias(model, group, topic)) return [];
     return [...group.entries()]
         .filter(([key]) => key !== lower(topic))
         .map(([, v]) => ({ ...v, together: namedTogether(model, topic, v.name) }))
         .filter(v => !sameWord(firstWord(v.name), firstWord(topic)))
         .filter(v => !TITLE_WORDS.has(lower(firstWord(v.name))) && !TITLE_WORDS.has(lower(firstWord(topic))))
         .filter(v => v.source === 'tag' || v.together)
+        .filter(v => !isPairedTerm(v.name) && !isShortenedAlias(model, group, v.name))
         .sort((a, b) => Number(b.together) - Number(a.together))
         .map(({ name, together }) => ({ name, together }));
 }

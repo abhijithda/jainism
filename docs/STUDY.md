@@ -23,6 +23,28 @@ that says why (a locked switch is used instead of a disabled one, which would ig
 Nothing is marked, scored or sent anywhere by the reader's own answer: it is for them to compare
 with the passages. (With AI on, see below.)
 
+## Adding content: what you have to do
+
+Almost nothing. The questions are worked out when the page loads, from `data.json` as it is: new blocks, tags and
+answers produce new questions with no code change. Two things are worth a look after adding content:
+
+1. Run **`npm run study:report`** (no AI, no network). It lists every comparison the study companion can ask, so
+   a new tag that makes a strange pair is seen before readers see it, and it lists the topics that have no Kannada
+   name yet, each with the book's own Kannada line to copy the spelling from.
+2. Add any missing Kannada names to `src/study/topic-names.js` (one line each). Until you do, the question shows
+   the English tag, which works but looks odd in a Kannada sentence.
+
+If a comparison is wrong, fix it on the content side by tagging: a topic is only compared with the other topics
+that share its last word ("... Naya", "... Devata"), so changing a tag changes the pairs. Heuristics already keep out
+spelling variants, shortened names ("Vamsha Purana"), names that start with a title ("Queen/Rani ..."), and paired
+terms ("Yaksha Yakshi", the pair named together). A new kind of false pair is a small rule in
+`comparisonsFor` (`study-questions.js`).
+
+Why not AI? The step that needs judgment (a Kannada name, a doubtful pair) happens once, when content is added, so
+it can be reviewed by a person; at run time AI would cost money on every reader's device, need a connection, and
+could misspell or mis-pair religious terms. The content agent (`docs/CONTENT-AGENT.md`) is deterministic with no
+key by design; this report is the same kind of step, and could be added to its PR description later.
+
 ## Panel behaviour
 
 * **Two questions at a time.** More wait behind "N more waiting \u2014 show" (up to 6 queued); answering one

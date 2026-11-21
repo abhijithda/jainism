@@ -25,6 +25,7 @@
     "agent:notes": "node scripts/notes-to-blocks.js",
     "agent:typos": "node scripts/typo-review.js",
     "agent:followup": "node scripts/video-followup.js",
+    "study:report": "node scripts/study-report.js",
     "transcripts": "node scripts/fetch-transcripts.js",
     "transcripts:check": "node scripts/fetch-transcripts.js --check"
   },
