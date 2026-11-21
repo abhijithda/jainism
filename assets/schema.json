@@ -73,6 +73,13 @@
                   "items": {
                     "type": "string"
                   }
+                },
+                "hi": {
+                  "description": "Hindi in Devanagari. Optional: a block without it simply has no Hindi column.",
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
                 }
               },
               "required": [
@@ -138,6 +145,9 @@
                         "type": "string"
                       },
                       "en": {
+                        "type": "string"
+                      },
+                      "hi": {
                         "type": "string"
                       }
                     }

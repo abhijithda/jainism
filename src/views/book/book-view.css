@@ -209,6 +209,12 @@ body[data-paper-size="a3"] .book-nav {
     font-size: clamp(calc(9.5px * var(--font-scale)), calc(1.25cqi * var(--font-scale)), calc(13px * var(--font-scale)));
 }
 
+/* Hindi (Devanagari): the Kannada size, in the second-language colour. */
+.book-lang-line.lang-hi {
+    color: #555;
+    font-size: clamp(calc(10px * var(--font-scale)), calc(1.35cqi * var(--font-scale)), calc(14px * var(--font-scale)));
+}
+
 .book-lang-sep {
     height: 0.5px;
     background: #ebebeb;
@@ -633,6 +639,11 @@ body.show-qrs .book-card .qr-code {
     color: #555;
 }
 
+.title-style-text-line.lang-hi {
+    font-size: clamp(calc(15px * var(--font-scale)), calc(2.6cqi * var(--font-scale)), calc(22px * var(--font-scale)));
+    color: #555;
+}
+
 /* Same font step-down as any additional stacked line elsewhere in the
    book — keeps 3+ active languages, or multi-line content, fitting the
    page. */
@@ -1049,6 +1060,7 @@ body.show-qrs .book-card .qr-code {
     }
     body:not([data-paper-size="a4"]):not([data-paper-size="a3"]) .book-lang-line.lang-kn { font-size: calc(16px * var(--font-scale)); }
     body:not([data-paper-size="a4"]):not([data-paper-size="a3"]) .book-lang-line.lang-en { font-size: calc(14.5px * var(--font-scale)); }
+    body:not([data-paper-size="a4"]):not([data-paper-size="a3"]) .book-lang-line.lang-hi { font-size: calc(16px * var(--font-scale)); }
     body:not([data-paper-size="a4"]):not([data-paper-size="a3"]) .book-bid,
     body:not([data-paper-size="a4"]):not([data-paper-size="a3"]) .book-ref { font-size: calc(11px * var(--font-scale)); }
     body:not([data-paper-size="a4"]):not([data-paper-size="a3"]) .book-excerpt { font-size: calc(12px * var(--font-scale)); }

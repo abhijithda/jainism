@@ -224,7 +224,27 @@ Honest limits:
   private; this site's content and public videos are not private).
 - The points are paraphrases of what the speaker said: a draft to check, never a source.
 
-Open question (not built): English sentences that are really **Hindi in Latin letters** ("Shachi sugandint dravyo se bhagawan par upatan lagaya"). Today they count as English and the Kannada is machine-translated from them. What a separate Hindi block should look like (a third language in `data.json` and the app, or only a flag in the PR) is still to be decided.
+## Hindi (third language)
+
+Decided: Hindi is a third language, `hi`, in `data.json` and the app, **written in Devanagari**. A reader of Latin-letter Hindi
+can mostly read English, so Latin-letter Hindi would add little.
+
+- **Reader chooses at most two languages** (Settings, language picker): a main language and one to compare with, for example
+  Kannada + English (the default), Kannada + Hindi, or English + Hindi. With two chosen the other rows are disabled until one
+  is unchecked. Saved settings with more than two are cut to two.
+- **What is on screen is what is printed**: language, QR and video switches all follow the screen, so there is no per-language
+  print list to maintain.
+- **Adding a language** (Tamil later): one entry in `src/core/langs.js`, the text in `data.json` (`content.ta`, optional per
+  block), a font if the browser has none, and the CSS lines for `.col-ta`, `.book-lang-line.lang-ta` and
+  `.title-style-text-line.lang-ta`. The picker and views read the registry.
+- `assets/schema.json`: `content.hi` and `caption.hi` are optional; `kn` and `en` stay required.
+
+Not done yet (agent side): detecting Hindi written in Latin letters in a note, converting it to Devanagari (machine, listed in
+the PR as unreviewed), keeping it out of typo review, and the follow-up job writing it. Until then such a sentence still
+counts as English and the Kannada is machine-translated from it.
+
+Known gaps in the app: the cover title is still Kannada + English only; a reader who picks only Hindi sees blank rows for blocks
+that have no Hindi yet.
 
 ## Setup for jobs 1 to 3
 
