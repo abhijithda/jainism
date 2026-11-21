@@ -116,6 +116,7 @@ function renderSettingsMirror() {
     const qrs = document.getElementById('home-toggle-qrs');
     const readTracking = document.getElementById('home-toggle-read-tracking');
     const offline = document.getElementById('home-toggle-offline');
+    const study = document.getElementById('home-toggle-study');
     const paperSize = document.getElementById('home-paper-size-select');
     const aiEngine = document.getElementById('home-ai-engine-select');
     const fontDisplay = document.getElementById('home-font-scale-display');
@@ -124,6 +125,7 @@ function renderSettingsMirror() {
     if (qrs) qrs.checked = saved.qrs;
     if (readTracking) readTracking.checked = saved.readTracking;
     if (offline) offline.checked = saved.offline;
+    if (study) study.checked = saved.studyCompanion;
     if (paperSize) paperSize.value = saved.paperSize;
     if (aiEngine) aiEngine.value = saved.aiEngine;
     if (fontDisplay) fontDisplay.textContent = `${Math.round(saved.fontScale * 100)}%`;
@@ -155,6 +157,10 @@ export function initHomeControls(data) {
     });
     document.getElementById('home-toggle-read-tracking')?.addEventListener('change', (e) => {
         proxyToHeader('toggle-read-tracking', (headerChk) => { headerChk.checked = e.target.checked; });
+    });
+    document.getElementById('home-toggle-study')?.addEventListener('change', (e) => {
+        proxyToHeader('toggle-study', (headerChk) => { headerChk.checked = e.target.checked; });
+        refreshHomeView(); // turning Study on also turns read tracking on
     });
     document.getElementById('home-toggle-offline')?.addEventListener('change', (e) => {
         proxyToHeader('toggle-offline', (headerChk) => { headerChk.checked = e.target.checked; });

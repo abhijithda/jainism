@@ -167,6 +167,7 @@ to a real file) as part of building this structure.
 | `scripts/fetch-transcripts.js` | Builds `assets/transcripts/` from YouTube captions (yt-dlp) or Whisper output; `--check`, `--reindex`, `--import-whisper` | ✅ Current |
 | `src/core/read-tracking.js` | Read/unread state functions, incl. `isBlockTrackable` and `countTrackableBlocks` — shared by both views | ✅ Current |
 | `src/core/read-tick.js` | `buildReadTick()` — the "mark as read" button, built once for both views (`onToggle` hook for view-specific repaint) | ✅ Current |
+| `src/study/` | Study companion (opt-in): `study-questions.js` builds questions from tags/text, `study-log.js` remembers answers, `study-ai.js` optional AI questions/feedback, `study-panel.js` the UI. Listens for the `pooja:block-read` event that `read-tick.js` fires. See [STUDY.md](STUDY.md) | ✅ Current |
 | `src/core/print-vars.css` | Print spacing both views' print blocks read (`--print-orphans`, `--print-ref-gap`, `--print-block-gap`, …) | ✅ Current |
 | `src/core/settings.js` | The one unified `settings` object — schema, defaults, validation (`loadSettings`/`saveSettings`) for every persisted preference | ✅ Current |
 | `src/core/layout-signal.js` | `notifyLayoutChanged()` — tells book view to re-measure pagination when a layout-affecting setting changes outside a window resize | ✅ Current |

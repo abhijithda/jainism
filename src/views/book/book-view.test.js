@@ -357,6 +357,53 @@ describe('Navigation: goToPrevSpread / goToNextSpread', () => {
 
         expect(document.getElementById('book-page-num-left').textContent).toBe('3'); // spread 1, not spread 2 (page 5)
     });
+
+    // Typing in a box (search, the assistant's or the study panel's answer) and pressing an arrow key to
+    // fix a typo must move the caret, not turn the page.
+    describe('arrow keys while typing', () => {
+        beforeEach(() => {
+            initBookView([{ id: 'a_101', type: 'answer', references: null, blocks: [baseBlock({ id: 'a_101_b_1' })] }], ['kn', 'en']);
+            mockSpreadLayout({ spreadWidth: 800, columnsScrollWidth: 2400 });
+            renderCurrentSpread();
+            document.getElementById('book-container').classList.add('active');
+        });
+        const press = (target, init = {}) => target.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true, ...init }));
+        const page = () => document.getElementById('book-page-num-left').textContent;
+
+        test.each(['textarea', 'input', 'select'])('does not turn the page from a <%s>', tag => {
+            const el = document.createElement(tag);
+            document.body.appendChild(el);
+            press(el);
+            expect(page()).toBe('1');
+            el.remove();
+        });
+
+        test('does not turn the page from inside an editable element, or from a control that handled the key', () => {
+            const ed = document.createElement('div');
+            ed.setAttribute('contenteditable', 'true');
+            document.body.appendChild(ed);
+            press(ed);
+            expect(page()).toBe('1');
+            ed.remove();
+
+            const handle = document.createElement('div');
+            handle.addEventListener('keydown', e => e.preventDefault());
+            document.body.appendChild(handle);
+            press(handle);
+            expect(page()).toBe('1');
+            handle.remove();
+        });
+
+        test('leaves Alt/Ctrl/Cmd + arrow to the browser', () => {
+            ['altKey', 'ctrlKey', 'metaKey'].forEach(k => press(document.body, { [k]: true }));
+            expect(page()).toBe('1');
+        });
+
+        test('still turns the page from the page itself', () => {
+            press(document.body);
+            expect(page()).toBe('3');
+        });
+    });
 });
 
 describe('Navigation: jumpToPage', () => {

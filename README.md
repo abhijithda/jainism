@@ -143,6 +143,7 @@ images). Useful commands after changing it:
 | [docs/THUMBNAILS.md](docs/THUMBNAILS.md) | Video thumbnails and QR codes: adding videos, the unavailable list, print and test order |
 | [docs/UI-NOTES.md](docs/UI-NOTES.md) | Layout, media and print rules; how links in text work |
 | [docs/PRINTING.md](docs/PRINTING.md) | Making the folded booklet |
+| [docs/STUDY.md](docs/STUDY.md) | The study companion: questions after you mark a section as read, how they are made, the optional AI part |
 | [docs/AI.md](docs/AI.md), [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md) | Architecture and design notes, requirements |
 | [docs/CONTENT-AGENT.md](docs/CONTENT-AGENT.md) | The content agent: push a draft to `staging/…` and it adds ids, cross-references and opens the Pull Request |
 

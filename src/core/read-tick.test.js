@@ -83,3 +83,18 @@ describe('buildReadTick: clicking', () => {
         expect(onParentClick).not.toHaveBeenCalled();
     });
 });
+
+describe('block-read event', () => {
+    test('clicking the tick tells the page which block was marked read, and that it was un-marked', () => {
+        const { buildReadTick } = require('./read-tick.js');
+        localStorage.clear();
+        const seen = [];
+        const on = e => seen.push(e.detail);
+        document.addEventListener('pooja:block-read', on);
+        const tick = buildReadTick({ id: 'blk1' }, { totalBlockCount: 3 });
+        tick.click();
+        tick.click();
+        document.removeEventListener('pooja:block-read', on);
+        expect(seen).toEqual([{ blockId: 'blk1', read: true }, { blockId: 'blk1', read: false }]);
+    });
+});

@@ -37,6 +37,8 @@ export function buildReadTick(block, { isRead = false, totalBlockCount = 0, onTo
         paint(nowRead);
         if (onToggle) onToggle(nowRead);
         updateProgressDisplay(newSet, totalBlockCount);
+        // Lets features that react to reading (the study companion) hear about it without this file knowing them.
+        document.dispatchEvent(new CustomEvent('pooja:block-read', { detail: { blockId: block.id, read: nowRead } }));
     };
 
     return tick;

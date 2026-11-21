@@ -37,6 +37,7 @@
     <link rel="stylesheet" href="src/core/card-types.css">
     <link rel="stylesheet" href="src/core/font-scale.css">
     <link rel="stylesheet" href="src/ai/ai-panel.css">
+    <link rel="stylesheet" href="src/study/study-panel.css">
     <link rel="stylesheet" id="css-continuous" href="src/views/continuous/continuous-view.css">
     <link rel="stylesheet" id="css-book"       href="src/views/book/book-view.css">
     <!-- @page can't be scoped to a body attribute/class in plain CSS, so the
@@ -58,6 +59,8 @@
         <input type="text" id="search-bar" placeholder="Search topics - ಅಭಿಷೇಕ, Daana...">
 
         <span id="read-progress" class="read-progress" title="Items you've marked as read"></span>
+
+        <button id="study-btn" class="menu-trigger" title="Study questions about what you have read" aria-label="Study companion" hidden>🎓<span class="btn-label">&nbsp;Study</span><span id="study-badge" class="study-badge"></span></button>
 
         <button id="ai-btn" class="menu-trigger" title="Ask a question about this book" aria-label="Ask the book" hidden>💬<span class="btn-label">&nbsp;Ask</span></button>
 
@@ -102,6 +105,14 @@
                     <label>✓ Read tracking:</label>
                     <label class="switch">
                         <input type="checkbox" id="toggle-read-tracking">
+                        <span class="slider"></span>
+                    </label>
+                </div>
+                <div id="rt-lock-note" class="rt-lock-note" role="status" hidden></div>
+                <div class="menu-section">
+                    <label for="toggle-study" title="After you mark a section as read, get questions about it. Uses the book's own text; no AI needed.">🎓 Study companion:</label>
+                    <label class="switch">
+                        <input type="checkbox" id="toggle-study">
                         <span class="slider"></span>
                     </label>
                 </div>
@@ -198,6 +209,15 @@
                     <span class="slider"></span>
                 </label>
             </div>
+            <p id="home-rt-lock-note" class="rt-lock-note" role="status" hidden></p>
+            <div class="home-section home-row">
+                <label for="home-toggle-study">🎓 Study companion</label>
+                <label class="switch">
+                    <input type="checkbox" id="home-toggle-study">
+                    <span class="slider"></span>
+                </label>
+            </div>
+            <p class="home-offline-hint">After you mark a section as read, you get questions about it, made from the book's own text. Read tracking is switched on with it and stays on while Study is on. With an AI assistant on, it can also write extra questions and check your answers.</p>
             <div class="home-section home-row">
                 <label for="home-toggle-offline">📴 Offline copy</label>
                 <label class="switch">

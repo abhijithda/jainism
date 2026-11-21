@@ -123,6 +123,8 @@ export function loadSettings() {
         // Off by default: saving the book for offline use downloads a few MB, so
         // it only starts when the reader turns it on (see core/offline.js).
         offline:      typeof saved?.offline      === 'boolean' ? saved.offline      : false,
+        // Study companion (see study/): questions after a section is marked read. Off by default.
+        studyCompanion: typeof saved?.studyCompanion === 'boolean' ? saved.studyCompanion : false,
         aiEngine:     AI_ENGINES.includes(saved?.aiEngine) ? saved.aiEngine : DEFAULT_AI_ENGINE,
         aiCloudSource: AI_CLOUD_SOURCES.includes(saved?.aiCloudSource) ? saved.aiCloudSource : DEFAULT_AI_CLOUD_SOURCE,
         aiLocalModel: AI_LOCAL_TIERS.includes(saved?.aiLocalModel) ? saved.aiLocalModel : DEFAULT_AI_LOCAL_TIER,
