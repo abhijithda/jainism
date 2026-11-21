@@ -21,6 +21,7 @@
 
 import { search, foldLatin, tokenize } from '../ai/retrieval.js';
 import { isBlockTrackable } from '../core/read-tracking.js';
+import { topicName } from './topic-names.js';
 
 const MIN_SCORE = 0.5;                 // same floor retrieval.js uses for "relevant"
 const MAX_PASSAGES_PER_TOPIC = 2;
@@ -242,9 +243,9 @@ export function buildSuggestion(model, desc, { langs = ['en'], blockId, readSet 
         const mine = topicPassages(model, a, langs, { first: blockId, readSet, skip: new Set(theirs.map(p => p.id)) });
         if (!mine.length || !theirs.length) return null;
         const wl = wordingLangs(langs);
-        const promptLines = wl.map(lang => ({ lang, text: WORDING[lang].compare(a, b) }));
+        const promptLines = wl.map(lang => ({ lang, text: WORDING[lang].compare(topicName(a, lang), topicName(b, lang)) }));
         return {
-            id: suggestionId(desc), desc, kind: 'compare', title: `${a} vs ${b}`,
+            id: suggestionId(desc), desc, kind: 'compare', title: `${topicName(a, primaryLang(wl))} vs ${topicName(b, primaryLang(wl))}`,
             prompt: promptLines.find(l => l.lang === primaryLang(wl)).text, promptLines,
             passages: [...mine, ...theirs],   // the topic just read first, then the one to compare it with
         };

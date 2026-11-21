@@ -205,8 +205,9 @@ test('Kannada only: the study question is in Kannada, with no English sentence',
     await tick.click();
     await page.locator('#study-btn').click();
     const prompt = page.locator('#study-body .study-prompt').first();
-    await expect(prompt).toContainText('Deva Moodhata');
+    await expect(prompt).toContainText('ದೇವ ಮೂಢತೆ');                      // the topic is named in Kannada, not "Deva Moodhata"
     await expect(prompt).toContainText(/[\u0C80-\u0CFF]/);
+    await expect(prompt).not.toContainText('Deva Moodhata');
     await expect(prompt).not.toContainText('You just read');
 });
 

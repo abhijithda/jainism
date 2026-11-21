@@ -31,8 +31,10 @@ with the passages. (With AI on, see below.)
   the \u2922 button (wider / narrower, hidden on phones). The width is the same saved setting as the Ask panel's.
 * **Language:** the wording of each question follows the languages selected in Settings (`WORDING` in
   `study-questions.js`, Kannada and English). Kannada only gives a Kannada question; both give one whole sentence
-  per language, in the selected order (never a Kannada quote inside an English sentence). Topic names are the
-  book's own Latin-script tags in every language. The panel's buttons stay English like the rest of the app.
+  per language, in the selected order (never a Kannada quote inside an English sentence). Topic names are shown
+  in Kannada from `src/study/topic-names.js` (the book's own spelling; a test checks every word against the
+  book's Kannada text). A topic with no entry there is shown as its Latin-script tag, so add new tags to that
+  file to get a Kannada name. The panel's buttons stay English like the rest of the app.
 * **What is kept:** the pending questions, the open panel and any typed (unfinished) answers survive a reload in
   `sessionStorage` (this tab only; AI-written questions are not kept). "I got it" / "Review later" are kept on
   this device (`localStorage`, `studyLog`). Typed answers are not stored after the question is finished.

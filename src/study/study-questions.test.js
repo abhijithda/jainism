@@ -128,8 +128,8 @@ describe('wording follows the selected languages', () => {
         expect(s.promptLines.map(l => l.lang)).toEqual(['kn']);
         expect(hasKannada(s.prompt)).toBe(true);
         expect(s.prompt).not.toMatch(/You just read/);
-        expect(s.prompt).toContain('Deva Moodhata');
-        expect(s.prompt).toContain('Loka Moodhata');
+        expect(s.prompt).toContain('ದೇವ ಮೂಢತೆ');     // topic names in Kannada too (topic-names.js)
+        expect(s.prompt).toContain('ಲೋಕ ಮೂಢತೆ');
     });
 
     test('English only: unchanged', () => {
