@@ -27,6 +27,27 @@ const MAX_PASSAGES_PER_TOPIC = 2;
 const MAX_RECALL_PASSAGES = 4;
 const QUESTION_MAX_CHARS = 300;
 
+// The wording of a question, one complete sentence per language, so a reader who selected only Kannada gets
+// Kannada, and one who selected both gets each sentence whole (never a Kannada quote inside an English
+// sentence). Topic names are the book's own Latin-script tags in every language. A language with no
+// template here falls back to English.
+const WORDING = {
+    en: {
+        compare: (a, b) => `You just read about ${a}. Can you explain how it differs from ${b}?`,
+        recall: q => `A question from the book: \u201C${q}\u201D What does the book answer?`,
+        recallTitle: q => `Recall: ${q}`,
+    },
+    kn: {
+        compare: (a, b) => `ನೀವು ${a} ಬಗ್ಗೆ ಓದಿದ್ದೀರಿ. ಅದು ${b} ಗಿಂತ ಹೇಗೆ ಭಿನ್ನ ಎಂದು ವಿವರಿಸಬಲ್ಲಿರಾ?`,
+        recall: q => `ಪುಸ್ತಕದಲ್ಲಿರುವ ಒಂದು ಪ್ರಶ್ನೆ: \u201C${q}\u201D ಪುಸ್ತಕದ ಉತ್ತರವೇನು?`,
+        recallTitle: q => `ನೆನಪಿಸಿಕೊಳ್ಳಿ: ${q}`,
+    },
+};
+const wordingLangs = langs => { const l = (langs || []).filter(x => WORDING[x]); return l.length ? l : ['en']; };
+/** The language the card's single-string `prompt` (used for feedback and the nudge) is in: English if selected, else the first. */
+const primaryLang = langs => (langs.includes('en') ? 'en' : langs[0]);
+const clip = (text, n) => (text.length > n ? `${text.slice(0, n).trimEnd()}\u2026` : text);
+
 // Capitalised words that start a sentence rather than name something
 // ("Is Moodhata ...", "The Naya ..."): never the first word of a sibling phrase.
 const NOT_A_NAME = new Set((
@@ -68,8 +89,8 @@ function sameWord(a, b) {
 }
 
 /** The first non-empty line(s) of a block, in the first of `langs` it has text in. */
-export function blockText(block, langs) {
-    for (const lang of [...langs, 'en', 'kn']) {
+export function blockText(block, langs, { strict = false } = {}) {
+    for (const lang of strict ? langs : [...langs, 'en', 'kn']) {
         const lines = (block?.content?.[lang] || []).filter(l => l.trim() !== '');
         if (lines.length) return lines.join(' ');
     }
@@ -220,25 +241,32 @@ export function buildSuggestion(model, desc, { langs = ['en'], blockId, readSet 
         const theirs = topicPassages(model, b, langs, { readSet });
         const mine = topicPassages(model, a, langs, { first: blockId, readSet, skip: new Set(theirs.map(p => p.id)) });
         if (!mine.length || !theirs.length) return null;
+        const wl = wordingLangs(langs);
+        const promptLines = wl.map(lang => ({ lang, text: WORDING[lang].compare(a, b) }));
         return {
             id: suggestionId(desc), desc, kind: 'compare', title: `${a} vs ${b}`,
-            prompt: `You just read about ${a}. Can you explain how it differs from ${b}?`,
+            prompt: promptLines.find(l => l.lang === primaryLang(wl)).text, promptLines,
             passages: [...mine, ...theirs],   // the topic just read first, then the one to compare it with
         };
     }
     if (desc?.kind === 'recall') {
         const item = model.index.itemById[desc.itemId];
         if (!item || item.type !== 'answer') return null;
-        const question = questionOf(model, item, langs);
+        const wl = wordingLangs(langs);
         const passages = (item.blocks || [])
             .map(b => model.chunkById.get(b.id)).filter(c => c && !c.textless)
             .slice(0, MAX_RECALL_PASSAGES).map(c => passageOf(c, langs));
-        if (!question || !passages.length) return null;
-        const shortQ = question.length > QUESTION_MAX_CHARS ? `${question.slice(0, QUESTION_MAX_CHARS).trimEnd()}\u2026` : question;
+        // The book's question, in each language of its own: never a Kannada quote in an English sentence.
+        let lines = wl.map(lang => ({ lang, q: clip(questionOf(model, item, [lang], { strict: true }), QUESTION_MAX_CHARS) })).filter(l => l.q);
+        // (a language the question has no text in is left out; if that leaves nothing, use whatever text it has)
+        if (!lines.length) lines = wl.slice(0, 1).map(lang => ({ lang, q: clip(questionOf(model, item, [lang]), QUESTION_MAX_CHARS) })).filter(l => l.q);
+        if (!lines.length || !passages.length) return null;
+        const promptLines = lines.map(l => ({ lang: l.lang, text: WORDING[l.lang].recall(l.q) }));
+        const main = lines.find(l => l.lang === primaryLang(wl)) || lines[0];
         return {
             id: suggestionId(desc), desc, kind: 'recall',
-            title: `Recall: ${shortQ.length > 60 ? `${shortQ.slice(0, 60).trimEnd()}\u2026` : shortQ}`,
-            prompt: `A question from the book: \u201C${shortQ}\u201D What does the book answer?`,
+            title: WORDING[main.lang].recallTitle(clip(main.q, 60)),
+            prompt: promptLines.find(l => l.lang === main.lang).text, promptLines,
             passages,
         };
     }
@@ -246,11 +274,11 @@ export function buildSuggestion(model, desc, { langs = ['en'], blockId, readSet 
 }
 
 /** The text of the question an answer item replies to ('' if it has none). */
-function questionOf(model, answerItem, langs) {
+function questionOf(model, answerItem, langs, opts) {
     for (const refId of answerItem.references || []) {
         const target = model.index.itemById[refId] || model.blockItem.get(refId);
         if (target?.type === 'question') {
-            const text = (target.blocks || []).map(b => blockText(b, langs)).filter(Boolean).join(' ');
+            const text = (target.blocks || []).map(b => blockText(b, langs, opts)).filter(Boolean).join(' ');
             if (text) return text;
         }
     }

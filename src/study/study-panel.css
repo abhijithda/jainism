@@ -33,6 +33,7 @@ input[data-locked="1"] + .slider { opacity: .55; cursor: not-allowed; }
 .study-card { border: 1px solid #ddd; border-radius: 8px; padding: 10px 12px; background: #fff; }
 .study-kind { font-size: .75em; text-transform: uppercase; letter-spacing: .04em; color: #2e7d32; }
 .study-prompt { margin: 4px 0 8px; line-height: 1.45; font-weight: 600; overflow-wrap: anywhere; }
+.study-prompt-line + .study-prompt-line { margin-top: 6px; font-weight: 500; color: #333; }
 .study-answer { width: 100%; box-sizing: border-box; font: inherit; padding: 6px; resize: vertical; min-height: 3.2em; }
 .study-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .study-actions button, .study-more { font: inherit; font-size: .9em; padding: 5px 10px; border: 1px solid #bbb; border-radius: 6px; background: #fff; cursor: pointer; }

@@ -118,6 +118,53 @@ describe('suggestionsForRead', () => {
     });
 });
 
+describe('wording follows the selected languages', () => {
+    const id = blocksWithTag('Deva Moodhata')[0];
+    const build = langs => Q.suggestionsForRead(model, id, { readSet: everythingRead, langs, max: 5 }).find(s => s.id === 'compare:deva moodhata|loka moodhata');
+    const hasKannada = t => /[\u0C80-\u0CFF]/.test(t);
+
+    test('Kannada only: the question is in Kannada, with no English sentence', () => {
+        const s = build(['kn']);
+        expect(s.promptLines.map(l => l.lang)).toEqual(['kn']);
+        expect(hasKannada(s.prompt)).toBe(true);
+        expect(s.prompt).not.toMatch(/You just read/);
+        expect(s.prompt).toContain('Deva Moodhata');
+        expect(s.prompt).toContain('Loka Moodhata');
+    });
+
+    test('English only: unchanged', () => {
+        const s = build(['en']);
+        expect(s.prompt).toBe('You just read about Deva Moodhata. Can you explain how it differs from Loka Moodhata?');
+        expect(s.promptLines).toHaveLength(1);
+    });
+
+    test('both: one whole sentence per language, in the selected order, and the single-string prompt is English', () => {
+        const s = build(['kn', 'en']);
+        expect(s.promptLines.map(l => l.lang)).toEqual(['kn', 'en']);
+        expect(hasKannada(s.promptLines[0].text)).toBe(true);
+        expect(s.promptLines[1].text).toBe(s.prompt);
+        expect(hasKannada(s.prompt)).toBe(false);
+    });
+
+    test('recall: each language quotes the book\u2019s question in that language, never mixed', () => {
+        const item = data.find(i => i.type === 'answer' && (i.references || []).some(r => model.index.itemById[r]?.type === 'question' && ['kn', 'en'].every(l => model.index.itemById[r].blocks.some(b => (b.content?.[l] || []).join('').trim()))));
+        const s = Q.buildSuggestion(model, { kind: 'recall', itemId: item.id }, { langs: ['kn', 'en'] });
+        const [kn, en] = s.promptLines;
+        expect(kn.lang).toBe('kn');
+        expect(hasKannada(kn.text)).toBe(true);
+        expect(kn.text).not.toMatch(/A question from the book/);
+        expect(hasKannada(en.text.replace(/\u201C[\s\S]*\u201D/, ''))).toBe(false);
+        expect(en.text).toMatch(/^A question from the book: \u201C/);
+        const knOnly = Q.buildSuggestion(model, { kind: 'recall', itemId: item.id }, { langs: ['kn'] });
+        expect(knOnly.promptLines).toHaveLength(1);
+        expect(hasKannada(knOnly.title)).toBe(true);
+    });
+
+    test('a language with no wording falls back to English', () => {
+        expect(build(['xx']).prompt).toMatch(/^You just read about/);
+    });
+});
+
 describe('descriptors', () => {
     test('a suggestion can be rebuilt from its descriptor (survives a reload)', () => {
         const id = blocksWithTag('Deva Moodhata')[0];

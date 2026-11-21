@@ -195,3 +195,50 @@ test('book view: arrow keys while typing an answer move the caret and do not tur
     await page.keyboard.press('ArrowRight');
     expect(await page.locator('#book-page-num-left').textContent()).not.toBe(before);
 });
+
+test('Kannada only: the study question is in Kannada, with no English sentence', async ({ page }) => {
+    await page.addInitScript(() => { if (!sessionStorage.getItem('s3')) { localStorage.setItem('settings', JSON.stringify({ studyCompanion: true, readTracking: true, langs: ['kn'] })); sessionStorage.setItem('s3', '1'); } });
+    await page.goto('/');
+    await page.locator('.view-toggle-btn[data-view="continuous"]').click();
+    const tick = page.locator(`#${devaBlock.id} .read-tick`);
+    await tick.scrollIntoViewIfNeeded();
+    await tick.click();
+    await page.locator('#study-btn').click();
+    const prompt = page.locator('#study-body .study-prompt').first();
+    await expect(prompt).toContainText('Deva Moodhata');
+    await expect(prompt).toContainText(/[\u0C80-\u0CFF]/);
+    await expect(prompt).not.toContainText('You just read');
+});
+
+test('the panel has the Ask panel\u2019s width controls: the \u2922 button and the drag handle', async ({ page }) => {
+    await startStudy(page, 'continuous');
+    await page.locator('#study-btn').click();
+    const drawer = page.locator('#study-drawer');
+    const w0 = (await drawer.boundingBox()).width;
+    await drawer.locator('.ai-expand').click();
+    await expect.poll(async () => (await drawer.boundingBox()).width).toBeGreaterThan(w0 + 200);
+    await drawer.locator('.ai-expand').click();
+    await expect.poll(async () => Math.round((await drawer.boundingBox()).width)).toBe(420);
+    const h = await page.locator('#study-resize').boundingBox();
+    await page.mouse.move(h.x + 5, 300);
+    await page.mouse.down();
+    await page.mouse.move(h.x - 200, 300, { steps: 5 });
+    await page.mouse.up();
+    expect((await drawer.boundingBox()).width).toBeGreaterThan(w0 + 150);
+    await page.screenshot({ path: 'test-results/study-wide.png' });
+});
+
+test('no more than two questions at a time', async ({ page }) => {
+    await page.addInitScript(({ ids }) => { if (!sessionStorage.getItem('s4')) { localStorage.setItem('readBlocks', JSON.stringify(ids)); sessionStorage.setItem('s4', '1'); } }, { ids: data.flatMap(i => (i.blocks || []).map(b => b.id)) });
+    await startStudy(page, 'continuous');
+    for (const tag of ['Nishchaya Naya', 'Deva Moodhata', 'Shasana Devata']) {
+        const id = data.flatMap(i => i.blocks || []).find(b => (b.tags || []).includes(tag)).id;
+        const tick = page.locator(`#${id} .read-tick`);
+        await tick.scrollIntoViewIfNeeded();
+        await tick.click();      // already read: un-ticks
+        await tick.click();      // ticks again
+    }
+    await page.locator('#study-btn').click();
+    await expect(page.locator('#study-body .study-answer')).toHaveCount(2);
+    await expect(page.getByRole('button', { name: /more waiting/ })).toBeVisible();
+});

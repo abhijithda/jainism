@@ -288,7 +288,7 @@ export function applyAiSetting() {
 // ── Drawer width ─────────────────────────────────────────────────────────
 // Dragging the left edge resizes the drawer (arrow keys too, double-click or
 // Home resets); the ⤢ button toggles a wide reading size. Saved in Settings.
-const WIDE_PANEL = 900;
+export const WIDE_PANEL = 900;
 
 function clampPanelWidth(w) {
     const room = typeof window !== 'undefined' ? Math.floor(window.innerWidth * 0.95) : AI_PANEL_WIDTH_MAX;
@@ -297,25 +297,24 @@ function clampPanelWidth(w) {
 
 export function setPanelWidth(width, { save = true } = {}) {
     const w = clampPanelWidth(width);
-    $('ai-drawer')?.style.setProperty('--ai-width', `${w}px`);
-    const handle = $('ai-resize');
-    if (handle) handle.setAttribute('aria-valuenow', String(w));
+    document.querySelectorAll('.ai-drawer').forEach(d => d.style.setProperty('--ai-width', `${w}px`));   // the study panel shares this width
+    document.querySelectorAll('.ai-resize').forEach(h => h.setAttribute('aria-valuenow', String(w)));
     if (save) saveSettings({ aiPanelWidth: w });
     return w;
 }
 
 export function currentPanelWidth() {
-    return parseInt($('ai-drawer')?.style.getPropertyValue('--ai-width'), 10) || loadSettings().aiPanelWidth;
+    return parseInt(document.querySelector('.ai-drawer')?.style.getPropertyValue('--ai-width'), 10) || loadSettings().aiPanelWidth;
 }
 
-function buildResizeHandle() {
+export function buildResizeHandle(id = 'ai-resize', label = 'Resize the assistant panel (drag, or use the arrow keys)') {
     const handle = document.createElement('div');
-    handle.id = 'ai-resize';
+    handle.id = id;
     handle.className = 'ai-resize';
     handle.tabIndex = 0;
     handle.setAttribute('role', 'separator');
     handle.setAttribute('aria-orientation', 'vertical');
-    handle.setAttribute('aria-label', 'Resize the assistant panel (drag, or use the arrow keys)');
+    handle.setAttribute('aria-label', label);
     handle.setAttribute('aria-valuemin', String(AI_PANEL_WIDTH_MIN));
     handle.setAttribute('aria-valuemax', String(AI_PANEL_WIDTH_MAX));
     handle.title = 'Drag to resize. Double-click to reset.';

@@ -23,6 +23,23 @@ that says why (a locked switch is used instead of a disabled one, which would ig
 Nothing is marked, scored or sent anywhere by the reader's own answer: it is for them to compare
 with the passages. (With AI on, see below.)
 
+## Panel behaviour
+
+* **Two questions at a time.** More wait behind "N more waiting \u2014 show" (up to 6 queued); answering one
+  brings the next up.
+* **Width like the Ask panel:** drag the panel's left edge (arrow keys too, double-click or Home resets) or use
+  the \u2922 button (wider / narrower, hidden on phones). The width is the same saved setting as the Ask panel's.
+* **Language:** the wording of each question follows the languages selected in Settings (`WORDING` in
+  `study-questions.js`, Kannada and English). Kannada only gives a Kannada question; both give one whole sentence
+  per language, in the selected order (never a Kannada quote inside an English sentence). Topic names are the
+  book's own Latin-script tags in every language. The panel's buttons stay English like the rest of the app.
+* **What is kept:** the pending questions, the open panel and any typed (unfinished) answers survive a reload in
+  `sessionStorage` (this tab only; AI-written questions are not kept). "I got it" / "Review later" are kept on
+  this device (`localStorage`, `studyLog`). Typed answers are not stored after the question is finished.
+* **Which reading counts:** a question is *triggered* by ticking a block now, but it may draw on anything marked
+  read on this device, from earlier sessions too (read ticks live in `localStorage`). Nothing is synced between
+  devices: that would need accounts (see the to-do board).
+
 ## Where questions come from (no AI needed)
 
 `src/study/study-questions.js`, using only `data.json`:

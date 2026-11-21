@@ -123,6 +123,76 @@ test('turning the switch on also turns read tracking on, and off hides the butto
     expect($('study-btn').hidden).toBe(true);
 });
 
+describe('panel size, language and drafts', () => {
+    const allIds = data.flatMap(i => (i.blocks || []).map(b => b.id));
+    const tagged = tag => data.flatMap(i => i.blocks || []).find(b => (b.tags || []).includes(tag)).id;
+    const readEverything = () => localStorage.setItem('readBlocks', JSON.stringify(allIds));
+    const fire = id => document.dispatchEvent(new CustomEvent('pooja:block-read', { detail: { blockId: id, read: true } }));
+    const cards = () => [...$('study-body').querySelectorAll('.study-card')].filter(c => c.querySelector('.study-answer'));
+
+    test('at most two questions are shown at once; the rest wait behind a button', () => {
+        boot(); readEverything();
+        ['Nishchaya Naya', 'Deva Moodhata', 'Shasana Devata'].forEach(t => fire(tagged(t)));
+        $('study-btn').click();
+        expect(cards()).toHaveLength(2);
+        const more = [...$('study-body').querySelectorAll('button')].find(b => /more waiting/.test(b.textContent));
+        expect(more).toBeDefined();
+        more.click();
+        expect(cards().length).toBeGreaterThan(2);
+        [...$('study-body').querySelectorAll('button')].find(b => /Show fewer/.test(b.textContent)).click();
+        expect(cards()).toHaveLength(2);
+    });
+
+    test('answering one brings the next waiting question up', () => {
+        boot(); readEverything();
+        ['Nishchaya Naya', 'Deva Moodhata', 'Shasana Devata'].forEach(t => fire(tagged(t)));
+        $('study-btn').click();
+        const third = state => state;                       // (just reading the order)
+        const before = cards().map(c => c.querySelector('.study-prompt').textContent);
+        [...$('study-body').querySelectorAll('button')].find(b => /Show what the book says/.test(b.textContent)).click();
+        [...$('study-body').querySelectorAll('button')].find(b => /I got it/.test(b.textContent)).click();
+        const after = cards().map(c => c.querySelector('.study-prompt').textContent);
+        expect(after).toHaveLength(2);
+        expect(after).not.toEqual(before);
+    });
+
+    test('Kannada only: the question is Kannada; both: one whole sentence per language', () => {
+        boot();
+        localStorage.setItem('settings', JSON.stringify({ studyCompanion: true, langs: ['kn'] }));
+        tickBlock(devaBlock().id);
+        $('study-btn').click();
+        expect($('study-body').querySelector('.study-prompt').textContent).toMatch(/[\u0C80-\u0CFF]/);
+        expect($('study-body').querySelector('.study-prompt').textContent).not.toMatch(/You just read/);
+        expect($('study-body').querySelectorAll('.study-prompt-line')).toHaveLength(1);
+    });
+
+    test('a typed answer survives a reload (this tab)', () => {
+        boot();
+        tickBlock(devaBlock().id);
+        $('study-btn').click();
+        const box = $('study-body').querySelector('.study-answer');
+        box.value = 'my half-written answer'; box.dispatchEvent(new Event('input'));
+        const saved = sessionStorage.getItem('studySession');
+        document.documentElement.innerHTML = html.replace(/<script[\s\S]*?<\/script>/g, '');
+        sessionStorage.setItem('studySession', saved);
+        jest.isolateModules(() => { panel = require('./study-panel.js'); });
+        panel.initStudy({ data, onCite() {} });
+        expect($('study-body').querySelector('.study-answer').value).toBe('my half-written answer');
+    });
+
+    test('the panel has the Ask panel\u2019s width controls, and they share one saved width', () => {
+        boot();
+        const handle = $('study-resize');
+        expect(handle.getAttribute('role')).toBe('separator');
+        expect($('study-drawer').querySelector('.ai-expand')).not.toBeNull();
+        $('study-drawer').querySelector('.ai-expand').click();                 // widen
+        expect(JSON.parse(localStorage.getItem('settings')).aiPanelWidth).toBe(900);
+        expect($('study-drawer').style.getPropertyValue('--ai-width')).toBe('900px');
+        handle.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }));   // reset
+        expect(JSON.parse(localStorage.getItem('settings')).aiPanelWidth).toBe(420);
+    });
+});
+
 describe('Study needs Read tracking', () => {
     test('a saved "Study on, Read tracking off" is repaired at load: ticks on, switches locked', () => {
         document.documentElement.innerHTML = html.replace(/<script[\s\S]*?<\/script>/g, '');

@@ -10,7 +10,8 @@ import { loadSettings, saveSettings } from '../core/settings.js';
 import { getReadBlocks } from '../core/read-tracking.js';
 import { createIndex } from '../ai/retrieval.js';
 import { getEngine } from '../ai/engines/index.js';
-import { closeDrawer as closeAiDrawer } from '../ai/ai-panel.js';
+import { closeDrawer as closeAiDrawer, buildResizeHandle, setPanelWidth, currentPanelWidth, WIDE_PANEL } from '../ai/ai-panel.js';
+import { AI_PANEL_WIDTH_DEFAULT } from '../core/settings.js';
 import { buildStudyModel, buildSuggestion, suggestionsForRead, blockText } from './study-questions.js';
 import { loadStudyLog, saveStudyLog, recordResult, reviewList } from './study-log.js';
 import { aiAvailable, generateQuestion, checkAnswer } from './study-ai.js';
@@ -18,10 +19,11 @@ import { aiAvailable, generateQuestion, checkAnswer } from './study-ai.js';
 export const READ_EVENT = 'pooja:block-read';
 const SESSION_KEY = 'studySession';
 const NUDGE_MS = 15000;
-const MAX_PENDING = 12;
+const MAX_PENDING = 6;      // waiting in the queue
+const VISIBLE_CARDS = 2;    // shown at once: more than that is too much to take in
 
 const $ = id => document.getElementById(id);
-const state = { data: null, onCite: null, model: null, pending: [], log: {}, lastBlockId: null, nudgeTimer: null, aiBusy: false, aiQuestions: [], aiAsked: [], aiFocusUsed: new Set(), sessionReads: [] };
+const state = { data: null, onCite: null, model: null, pending: [], log: {}, lastBlockId: null, nudgeTimer: null, aiBusy: false, aiQuestions: [], aiAsked: [], aiFocusUsed: new Set(), sessionReads: [], showAll: false };
 
 // ── Model, log and session ───────────────────────────────────────────────
 function model() {
@@ -35,7 +37,7 @@ function saveSession() {
     try {
         sessionStorage.setItem(SESSION_KEY, JSON.stringify({
             open: !!$('study-drawer') && !$('study-drawer').hidden,
-            pending: state.pending.filter(e => e.sug.desc).map(e => ({ desc: e.sug.desc, blockId: e.blockId })),
+            pending: state.pending.filter(e => e.sug.desc).map(e => ({ desc: e.sug.desc, blockId: e.blockId, text: e.text })),   // typed answers too (this tab only)
         }));
     } catch (_) { /* the panel just won't survive a reload */ }
 }
@@ -92,6 +94,7 @@ export function openStudy() {
     if (!d) return;
     closeAiDrawer();
     hideNudge();
+    d.style.setProperty('--ai-width', `${loadSettings().aiPanelWidth}px`);   // the width shared with the Ask panel
     d.hidden = false;
     render();
     d.querySelector('.ai-close')?.focus();
@@ -157,13 +160,19 @@ function cardNode(entry) {
     const { sug } = entry;
     const card = el('div', 'study-card');
     card.appendChild(el('div', 'study-kind', sug.kind === 'compare' ? 'Compare' : sug.kind === 'recall' ? 'Recall' : `Question from the AI${sug.focusLabel ? ` \u00B7 about ${sug.focusLabel}` : ''}`));
-    card.appendChild(el('div', 'study-prompt', sug.prompt));
+    const prompt = el('div', 'study-prompt');
+    (sug.promptLines?.length ? sug.promptLines : [{ lang: '', text: sug.prompt }]).forEach(line => {
+        const row = el('div', 'study-prompt-line', line.text);
+        if (line.lang) row.lang = line.lang;
+        prompt.appendChild(row);
+    });
+    card.appendChild(prompt);
 
     const box = el('textarea', 'study-answer');
     box.rows = 3;
     box.placeholder = 'Your answer (optional) / ನಿಮ್ಮ ಉತ್ತರ';
     box.value = entry.text;
-    box.addEventListener('input', () => { entry.text = box.value; if (check) check.disabled = entry.busy || !box.value.trim(); });
+    box.addEventListener('input', () => { entry.text = box.value; saveSession(); if (check) check.disabled = entry.busy || !box.value.trim(); });
     card.appendChild(box);
 
     const actions = el('div', 'study-actions');
@@ -309,7 +318,15 @@ function render() {
     if (!state.pending.length) {
         body.appendChild(el('p', 'study-empty', 'Mark a section as read (the \u2713 at its corner) and questions about it will appear here. They come from the book\u2019s own text, so they work without any AI.'));
     }
-    state.pending.forEach(e => body.appendChild(cardNode(e)));
+    const shown = state.showAll ? state.pending : state.pending.slice(0, VISIBLE_CARDS);
+    shown.forEach(e => body.appendChild(cardNode(e)));
+    if (state.pending.length > VISIBLE_CARDS) {
+        const n = state.pending.length - VISIBLE_CARDS;
+        const toggle = el('button', 'study-more', state.showAll ? 'Show fewer' : `${n} more waiting \u2014 show`);
+        toggle.type = 'button';
+        toggle.addEventListener('click', () => { state.showAll = !state.showAll; render(); });
+        body.appendChild(toggle);
+    }
 
     const engine = getEngine(loadSettings().aiEngine);
     if (aiAvailable(engine) && focusCandidates().length) {
@@ -352,12 +369,18 @@ function buildDrawer() {
     close.type = 'button';
     close.setAttribute('aria-label', 'Close');
     close.addEventListener('click', closeStudy);
-    head.append(el('strong', '', 'Study companion'), close);
+    // Same width controls as the Ask panel (and the same saved width): drag the left edge, or the \u2922 button.
+    const expand = el('button', 'ai-expand', '\u2922');
+    expand.type = 'button';
+    expand.title = 'Wider / narrower';
+    expand.setAttribute('aria-label', 'Make the panel wider or narrower');
+    expand.addEventListener('click', () => setPanelWidth(currentPanelWidth() < 700 ? WIDE_PANEL : AI_PANEL_WIDTH_DEFAULT));
+    head.append(el('strong', '', 'Study companion'), expand, close);
     const body = el('div', 'study-body');
     body.id = 'study-body';
     body.setAttribute('aria-live', 'polite');
     const note = el('div', 'ai-disclaimer', 'Questions come from this book\u2019s own text. Check your answers against the passages, and ask a guru or scholar for guidance.');
-    drawer.append(head, body, note);
+    drawer.append(buildResizeHandle('study-resize', 'Resize the study panel (drag, or use the arrow keys)'), head, body, note);
     document.body.appendChild(drawer);
     drawer.style.setProperty('--ai-width', `${loadSettings().aiPanelWidth}px`);
 
@@ -448,7 +471,10 @@ export function initStudy({ data, onCite }) {
     if (saved && enabled()) {
         saved.pending?.forEach?.(p => {
             const s = p?.desc && buildSuggestion(model(), p.desc, { langs: langs(), blockId: p.blockId, readSet: getReadBlocks(localStorage) });
-            if (s) addPending([s], p.blockId);
+            if (!s) return;
+            const [added] = addPending([s], p.blockId);
+            const entry = added && state.pending.find(e => e.sug.id === s.id);
+            if (entry && typeof p.text === 'string') entry.text = p.text;
         });
         updateBadge();
         if (saved.open) openStudy();
