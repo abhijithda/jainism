@@ -34,6 +34,18 @@ answers produce new questions with no code change. Two things are worth a look a
 2. Add any missing Kannada names to `src/study/topic-names.js` (one line each). Until you do, the question shows
    the English tag, which works but looks odd in a Kannada sentence.
 
+Two ways the book can name one thing, and what to do:
+
+* **One topic, two names** (Gomukha Yaksha / Govadana Yaksha, the first Tirthankara's yaksha): add the second name
+  to `TOPIC_ALIASES` in `src/study/topic-names.js`. Questions and passages then treat them as one topic.
+* **A topic that includes others** ("Shasanaadi Devata" = Shasana Devata and the other devatas): not an alias; tag
+  those blocks "Shasana Devata". As a safety net, a name only the text uses that is a tag plus more letters in the
+  first word (Shasana + aadi) is treated as that tag, so it never shows up as a second topic or a duplicate card.
+
+A pair like "Gomukha Chakreshwari Yaksha Yakshi" (tag "Yaksha Yakshi") is handled on purpose: the pair itself is
+compared with nothing, and its two members ("Gomukha Yaksha", "Chakreshwari Yakshi") are compared with each
+other when a passage names them together.
+
 If a comparison is wrong, fix it on the content side by tagging: a topic is only compared with the other topics
 that share its last word ("... Naya", "... Devata"), so changing a tag changes the pairs. Heuristics already keep out
 spelling variants, shortened names ("Vamsha Purana"), names that start with a title ("Queen/Rani ..."), and paired

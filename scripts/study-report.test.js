@@ -17,7 +17,8 @@ test('lists each comparison once, with the ones the book names together marked',
     const keys = pairs.map(p => [p.a, p.b].map(x => x.toLowerCase()).sort().join('|'));
     expect(new Set(keys).size).toBe(keys.length);
     expect(markdown).toMatch(/Deva Moodhata <-> Loka Moodhata {2}\(named together in the book\)/);
-    expect(markdown).not.toMatch(/Chakreshwari Yakshi|Vamsha Purana/);
+    expect(markdown).toMatch(/(Chakreshwari Yakshi <-> Gomukha Yaksha|Gomukha Yaksha <-> Chakreshwari Yakshi)/);
+    expect(markdown).not.toMatch(/Vamsha Purana|Govadana|<-> Yaksha Yakshi|Yaksha Yakshi <->/);
 });
 
 test('topics without a Kannada name are listed with the book\u2019s own Kannada line to copy from', () => {

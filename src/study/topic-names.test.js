@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { createIndex } = require('../ai/retrieval.js');
 const Q = require('./study-questions.js');
-const { TOPIC_NAMES, topicName } = require('./topic-names.js');
+const { TOPIC_NAMES, TOPIC_ALIASES, topicName, canonicalTopic, aliasesOf } = require('./topic-names.js');
 
 const data = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'assets', 'data.json'), 'utf8'));
 const model = Q.buildStudyModel(createIndex(data));
@@ -17,6 +17,19 @@ describe('Kannada topic names', () => {
         const known = new Set([...model.topics.values()].map(t => t.name.toLowerCase()));
         model.phrases.forEach(p => known.add(p.toLowerCase()));
         Object.keys(TOPIC_NAMES).forEach(name => expect(known.has(name.toLowerCase())).toBe(true));
+    });
+
+    test('every alias points at a topic the book has, and is not itself a topic', () => {
+        const known = new Set([...model.topics.values()].map(t => t.name.toLowerCase()));
+        model.phrases.forEach(p => known.add(p.toLowerCase()));
+        Object.entries(TOPIC_ALIASES).forEach(([alias, name]) => {
+            expect(known.has(name.toLowerCase())).toBe(true);
+            expect(known.has(alias.toLowerCase())).toBe(false);
+            expect(TOPIC_ALIASES[name]).toBeUndefined();            // no chains
+        });
+        expect(canonicalTopic('govadana yaksha')).toBe('Gomukha Yaksha');
+        expect(canonicalTopic('Kali Devi')).toBe('Kali Devi');
+        expect(aliasesOf('Gomukha Yaksha')).toEqual(['Govadana Yaksha']);
     });
 
     test('lookup: Kannada when there is a name, the tag as written when there is not (or the language is English)', () => {

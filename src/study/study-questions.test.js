@@ -24,12 +24,18 @@ describe('comparisons', () => {
         expect(Q.siblingsOf(model, 'Queen Vishalakshi')).toEqual([]);
     });
 
-    test('"Yaksha Yakshi" is a pair named together (Gomukha Chakreshwari Yaksha Yakshi), so it is not compared with Chakreshwari Yakshi, nor the other way', () => {
+    test('"Yaksha Yakshi" is a pair named together, so it is compared with nothing; its two members are compared with each other', () => {
         expect(Q.siblingsOf(model, 'Yaksha Yakshi')).toEqual([]);
-        expect(Q.siblingsOf(model, 'Chakreshwari Yakshi')).not.toContain('Yaksha Yakshi');
-        expect(Q.siblingsOf(model, 'Chakreshwari Yakshi')).toEqual([]);
+        expect(Q.siblingsOf(model, 'Chakreshwari Yakshi')).toEqual(['Gomukha Yaksha']);
+        expect(Q.siblingsOf(model, 'Gomukha Yaksha')).toEqual(['Chakreshwari Yakshi']);
         expect(Q.siblingsOf(model, 'Kali Devi')).toContain('Chakreshwari Devi');   // two different deities: still a comparison
         expect(Q.siblingsOf(model, 'Padma Purana')).toContain('Harivamsha Purana');
+    });
+
+    test('a second name for one topic is not a topic of its own: Govadana Yaksha is Gomukha Yaksha', () => {
+        expect(Q.comparisonsFor(model, 'Govadana Yaksha')).toEqual([]);
+        expect(Q.siblingsOf(model, 'Chakreshwari Yakshi')).not.toContain('Govadana Yaksha');
+        expect(model.phrases).not.toContain('Govadana Yaksha');
     });
 
     test('a shortened name (Vamsha for Harivamsha) is the same name, not a sibling', () => {
@@ -126,6 +132,61 @@ describe('suggestionsForRead', () => {
             expect(out.length).toBeLessThanOrEqual(2);
             expect(new Set(out.map(s => s.id)).size).toBe(out.length);
         }));
+    });
+});
+
+describe('Gomukha Yaksha and Chakreshwari Yakshi (the first Tirthankara\u2019s attendants)', () => {
+    const blockNaming = re => data.flatMap(i => i.blocks || []).find(b => re.test((b.content?.en || []).join(' '))).id;
+    const gomukha = blockNaming(/Gomukha Yaksha and Chakreshwari Yakshi/);
+    const govadana = blockNaming(/Govadana Yaksha and Chakreshwari Yakshi/);
+    const offered = (id, langs = ['en']) => Q.suggestionsForRead(model, id, { readSet: new Set([id]), langs, max: 5 }).find(s => s.id === 'compare:chakreshwari yakshi|gomukha yaksha');
+
+    test('reading the passage that names both offers the comparison, with that one passage shown for both', () => {
+        const s = offered(gomukha);
+        expect(s.prompt).toBe('You just read about Chakreshwari Yakshi. Can you explain how it differs from Gomukha Yaksha?');
+        expect(s.passages.map(p => p.id)).toEqual([gomukha]);
+        expect(s.passages[0].topic).toBe('Chakreshwari Yakshi \u00B7 Gomukha Yaksha');
+    });
+
+    test('the passage that says Govadana counts as Gomukha: same comparison, from that passage', () => {
+        const s = offered(govadana);
+        expect(s).toBeDefined();
+        expect(s.passages.map(p => p.id)).toEqual([govadana]);
+        expect(Q.topicsOf(model, model.chunkById.get(govadana))).toContain('Gomukha Yaksha');
+        expect(Q.topicsOf(model, model.chunkById.get(govadana))).not.toContain('Govadana Yaksha');
+    });
+
+    test('nothing is asked before either passage is read', () => {
+        expect(Q.suggestionsForRead(model, gomukha, { readSet: new Set(), langs: ['en'], max: 5 }).find(s => s.id.startsWith('compare:chakreshwari yakshi'))).toBeUndefined();
+    });
+
+    test('in Kannada the two are named in Kannada', () => {
+        const s = offered(gomukha, ['kn']);
+        expect(s.prompt).toContain('ಚಕ್ರೇಶ್ವರಿ ಯಕ್ಷಿ');
+        expect(s.prompt).toContain('ಗೋಮುಖ ಯಕ್ಷ');
+        expect(s.prompt).not.toMatch(/[A-Za-z]/);
+    });
+});
+
+describe('Shasanaadi Devata (Shasana Devata and the other devatas)', () => {
+    const blockId = data.flatMap(i => i.blocks || []).find(b => /Shasanaadi Devata/.test((b.content?.en || []).join(' '))).id;
+    const everything = new Set(allBlocks);
+
+    test('is the Shasana Devata tag, not a topic of its own: one comparison, not two', () => {
+        expect(Q.siblingsOf(model, 'Shasanaadi Devata')).toEqual([]);
+        expect(Q.siblingsOf(model, 'Vidya Devata')).not.toContain('Shasanaadi Devata');
+        expect(Q.topicsOf(model, model.chunkById.get(blockId))).not.toContain('Shasanaadi Devata');
+        const out = Q.suggestionsForRead(model, blockId, { readSet: everything, langs: ['en'], max: 5 });
+        expect(out.filter(s => /shasana/.test(s.id))).toHaveLength(1);
+        expect(out.some(s => /shasanaadi/.test(s.id))).toBe(false);
+    });
+
+    test('even a block that says it without the tag counts as Shasana Devata', () => {
+        const untagged = JSON.parse(JSON.stringify(data));
+        untagged.forEach(i => (i.blocks || []).forEach(b => { if (b.id === blockId) b.tags = (b.tags || []).filter(t => t !== 'Shasana Devata'); }));
+        const m = Q.buildStudyModel(createIndex(untagged));
+        expect(Q.topicsOf(m, m.chunkById.get(blockId))).toContain('Shasana Devata');
+        expect(Q.topicsOf(m, m.chunkById.get(blockId))).not.toContain('Shasanaadi Devata');
     });
 });
 
