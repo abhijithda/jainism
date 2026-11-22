@@ -332,3 +332,38 @@ describe('a Kannada word the writer typed next to its Latin spelling', () => {
         expect(system).toMatch(/keep ONLY the writer's own Kannada word/);
     });
 });
+
+describe('when Gemini itself is down (busy after every retry): stop and change nothing', () => {
+    const down = () => { const e = new Error('Gemini answered 503 (busy or rate-limited)'); e.unavailable = true; return e; };
+
+    test('the split: the error goes up, nothing is returned to write', async () => {
+        const ai = { available: true, json: async () => { throw down(); } };
+        const err = await convertNotes(EX1, realData(), { ai }).catch((e) => e);
+        expect(err.unavailable).toBe(true);
+        expect(err.message).toMatch(/503/);
+    });
+
+    test('the translation: the error goes up too, instead of leaving empty languages behind', async () => {
+        const items = [{ type: 'answer', blocks: [{ num: 1, type: 'paragraph', content: { kn: [], en: ['hello'] }, tags: [], videos: [], images: [] }] }];
+        const meta = [{ blocks: [{ lang: 'en', other: 'kn' }] }];
+        const ai = { available: true, json: async () => { throw down(); } };
+        await expect(translateBlocks(ai, items, meta)).rejects.toMatchObject({ unavailable: true });
+        expect(items[0].blocks[0].content.kn).toEqual([]);
+    });
+
+    test('an answer that simply was not usable still falls back to the rule-based split', async () => {
+        const ai = { available: true, json: async () => ({ nothing: 'useful' }) };
+        const r = await convertNotes(EX1, realData(), { ai });
+        expect(r.report).toMatch(/the AI split was not usable/);
+        expect(r.count).toBeGreaterThan(0);
+    });
+
+    test('a translation error that is not an outage is listed as a missing translation, as before', async () => {
+        const items = [{ type: 'answer', blocks: [{ num: 1, type: 'paragraph', content: { kn: [], en: ['hello'] }, tags: [], videos: [], images: [] }] }];
+        const meta = [{ blocks: [{ lang: 'en', other: 'kn' }] }];
+        const ai = { available: true, json: async () => { throw new Error('Gemini answered 400: bad'); } };
+        await translateBlocks(ai, items, meta);
+        expect(meta[0].blocks[0].translationNote).toMatch(/translation failed/);
+    });
+});
+

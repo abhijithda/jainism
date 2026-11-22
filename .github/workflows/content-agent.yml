@@ -77,6 +77,7 @@ jobs:
           NODE_OPTIONS: --no-warnings
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
+          GEMINI_MODELS: ${{ vars.GEMINI_MODELS }}
           GEMINI_THINKING_LEVEL: ${{ vars.GEMINI_THINKING_LEVEL }}
         run: node scripts/notes-to-blocks.js --report "$RUNNER_TEMP/notes-report.md"
 

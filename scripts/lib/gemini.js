@@ -16,6 +16,17 @@
 // generationConfig.thinkingConfig.thinkingLevel. Unset (the default) sends nothing: the model's own default. Gemini 2.5
 // models take a number of tokens instead (GEMINI_THINKING_BUDGET); the API refuses both together, so only one is sent.
 // If the model rejects the setting (HTTP 400 naming thinking) the call is repeated once without it and the log says so.
+//
+// Busy server (HTTP 429 / 5xx / timeout): each call is tried again a few times with growing pauses. If it is still busy after
+// that, the client stops asking for the rest of the run (every later call fails at once with a clear message), so a Gemini
+// outage costs a few minutes, not nine. The error then carries `unavailable: true`, so a script can tell "Gemini is down"
+// (stop and change nothing) from "the answer was not usable" (use its own fallback).
+//
+// Models: the repository variable GEMINI_MODELS is a comma-separated list in order of preference, for example
+// `gemini-3.8-flash,gemini-4-hydrogen`. The first is used; if it stays busy (or its quota is used up, HTTP 429), or is not
+// available to the key (404), the next one is tried, and the rest of the run keeps using the one that answered. Each model
+// has its own free-tier quota, so a second model is also a second quota. GEMINI_MODEL (a single name) still works when
+// GEMINI_MODELS is not set. Names are used as given; the code does not know which exist.
 
 const DEFAULT_MODEL = 'gemini-3.8-flash';
 const ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models';
@@ -50,32 +61,52 @@ function parseJsonAnswer(text) {
     throw new Error('the model did not return JSON');
 }
 
+/** The model names to use, in order: GEMINI_MODELS (list), else GEMINI_MODEL, else the default. Blank entries and repeats go. */
+function modelsFrom(list, single) {
+    const raw = Array.isArray(list) ? list : String(list ?? process.env.GEMINI_MODELS ?? '').split(',');
+    const names = [...new Set(raw.map((m) => String(m).trim()).filter(Boolean))];
+    if (names.length) return names;
+    return [String(single || '').trim() || DEFAULT_MODEL];
+}
+
+/** An error that says "Gemini itself is not answering" (busy after every retry), as opposed to "the answer was not usable". */
+function unavailableError(message) {
+    const e = new Error(message);
+    e.unavailable = true;
+    return e;
+}
+
 /**
- * @param {{ apiKey?: string, model?: string, fetchImpl?: Function, retries?: number, timeoutMs?: number, sleep?: Function,
+ * @param {{ apiKey?: string, model?: string, models?: string|string[], fetchImpl?: Function, retries?: number, timeoutMs?: number, sleep?: Function,
  *           thinkingLevel?: string, thinkingBudget?: number|string, log?: Function }} options
- * @returns {{ available: boolean, model: string, json: Function, usage: Function, printUsage: Function }}
+ * @returns {{ available: boolean, model: string, models: string[], json: Function, usage: Function, printUsage: Function }}
  */
 function createGemini(options = {}) {
     const apiKey = options.apiKey ?? process.env.GEMINI_API_KEY;
-    const model = options.model || process.env.GEMINI_MODEL || DEFAULT_MODEL;
+    const models = modelsFrom(options.models, options.model || process.env.GEMINI_MODEL);
+    let current = 0;                                  // index of the model that answered last (later calls start there)
+    const skipped = new Set();                        // models the key cannot use (404)
+    const perModel = {};                              // calls per model, for the usage line
     const fetchImpl = options.fetchImpl || globalThis.fetch;
     const retries = options.retries ?? 3;
     const timeoutMs = options.timeoutMs ?? 240000;
+    let unavailable = null; // set when Gemini stayed busy after every retry: later calls fail at once
     const sleep = options.sleep || ((ms) => new Promise((r) => setTimeout(r, ms)));
     const log = options.log || ((line) => console.log(line));
     let thinking = thinkingConfigFrom(options.thinkingLevel ?? process.env.GEMINI_THINKING_LEVEL, options.thinkingBudget ?? process.env.GEMINI_THINKING_BUDGET);
     const totals = { calls: 0, prompt: 0, output: 0, thinking: 0, total: 0, ms: 0 };
 
     /** Count and log one answer's token usage (usageMetadata), whatever the answer was. */
-    function record(payload, ms) {
+    function record(payload, ms, used) {
         const u = payload?.usageMetadata;
         totals.calls++;
+        perModel[used] = (perModel[used] || 0) + 1;
         totals.ms += ms;
-        if (!u) { log(`[gemini] call ${totals.calls}: no usage numbers in the answer, ${(ms / 1000).toFixed(1)}s`); return; }
+        if (!u) { log(`[gemini] call ${totals.calls} (${used}): no usage numbers in the answer, ${(ms / 1000).toFixed(1)}s`); return; }
         const prompt = u.promptTokenCount || 0, output = u.candidatesTokenCount || 0, think = u.thoughtsTokenCount || 0;
         const total = u.totalTokenCount || prompt + output + think;
         totals.prompt += prompt; totals.output += output; totals.thinking += think; totals.total += total;
-        log(`[gemini] call ${totals.calls}: in ${prompt}, out ${output}, thinking ${think}, total ${total} tokens, ${(ms / 1000).toFixed(1)}s`);
+        log(`[gemini] call ${totals.calls} (${used}): in ${prompt}, out ${output}, thinking ${think}, total ${total} tokens, ${(ms / 1000).toFixed(1)}s`);
     }
 
     /**
@@ -85,43 +116,66 @@ function createGemini(options = {}) {
      */
     async function json({ system, prompt, parts = [], temperature = 0 }) {
         if (!apiKey) throw new Error('GEMINI_API_KEY is not set');
+        if (unavailable) throw unavailableError(`Gemini not asked again in this run: it stayed unavailable earlier (${unavailable})`);
         const makeBody = () => ({
             ...(system ? { systemInstruction: { parts: [{ text: system }] } } : {}),
             contents: [{ role: 'user', parts: [...parts, { text: prompt }] }],
             generationConfig: { temperature, responseMimeType: 'application/json', ...(thinking ? { thinkingConfig: thinking } : {}) },
         });
         let lastError;
-        for (let attempt = 0; attempt <= retries; attempt++) {
-            if (attempt) await sleep(2000 * 2 ** (attempt - 1));
-            let res;
-            const startedAt = Date.now();
-            try {
-                res = await fetchImpl(`${ENDPOINT}/${encodeURIComponent(model)}:generateContent`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
-                    body: JSON.stringify(makeBody()),
-                    signal: AbortSignal.timeout(timeoutMs),
-                });
-            } catch (e) { lastError = new Error(`Gemini request failed: ${e.message}`); continue; }
-            if (res.status === 429 || res.status >= 500) { lastError = new Error(`Gemini answered ${res.status} (busy or rate-limited)`); continue; }
-            const payload = await res.json().catch(() => ({}));
-            if (!res.ok && res.status === 400 && thinking && /think/i.test(payload.error?.message || '')) {
-                // this model does not accept the thinking setting: say so once, drop it for the rest of the run, and repeat the call
-                log(`[gemini] the model refused the thinking setting (${payload.error.message}); continuing without it`);
-                thinking = null;
-                attempt--;
-                continue;
+        const order = models.map((name, i) => ({ name, i })).filter((m) => m.i >= current && !skipped.has(m.name));
+        for (let k = 0; k < order.length; k++) {
+            const { name: useModel, i: modelIndex } = order[k];
+            const hasNext = k + 1 < order.length;
+            if (k > 0) log(`[gemini] ${order[k - 1].name} did not answer (${lastError.message}); trying ${useModel}`);
+            const tries = k === 0 ? retries : 1;             // the first model gets all the retries, the others one more try
+            let giveUpOnModel = false;
+            for (let attempt = 0; attempt <= tries && !giveUpOnModel; attempt++) {
+                if (attempt) await sleep(2000 * 2 ** (attempt - 1));
+                let res;
+                const startedAt = Date.now();
+                try {
+                    res = await fetchImpl(`${ENDPOINT}/${encodeURIComponent(useModel)}:generateContent`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+                        body: JSON.stringify(makeBody()),
+                        signal: AbortSignal.timeout(timeoutMs),
+                    });
+                } catch (e) { lastError = new Error(`Gemini request failed: ${e.message}`); continue; }
+                if (res.status === 404 && hasNext) {
+                    // this key cannot use that model name: never ask it again in this run
+                    skipped.add(useModel);
+                    lastError = new Error(`${useModel} is not available to this key (404)`);
+                    giveUpOnModel = true;
+                    continue;
+                }
+                if (res.status === 429 || res.status >= 500) {
+                    lastError = new Error(`Gemini answered ${res.status} (busy or rate-limited)`);
+                    if (res.status === 429 && hasNext) giveUpOnModel = true; // this model's quota: the next model has its own
+                    continue;
+                }
+                const payload = await res.json().catch(() => ({}));
+                if (!res.ok && res.status === 400 && thinking && /think/i.test(payload.error?.message || '')) {
+                    // this model does not accept the thinking setting: say so once, drop it for the rest of the run, and repeat the call
+                    log(`[gemini] the model refused the thinking setting (${payload.error.message}); continuing without it`);
+                    thinking = null;
+                    attempt--;
+                    continue;
+                }
+                if (!res.ok) throw new Error(`Gemini answered ${res.status}: ${payload.error?.message || 'no details'} (model: ${useModel})`);
+                current = modelIndex;                         // the rest of the run starts with the model that answers
+                record(payload, Date.now() - startedAt, useModel);
+                const text = (payload.candidates?.[0]?.content?.parts || []).filter((p) => !p.thought).map((p) => p.text || '').join('');
+                if (!text.trim()) {
+                    const why = payload.promptFeedback?.blockReason || payload.candidates?.[0]?.finishReason || 'empty answer';
+                    throw new Error(`Gemini returned no text (${why})`);
+                }
+                return parseJsonAnswer(text);
             }
-            if (!res.ok) throw new Error(`Gemini answered ${res.status}: ${payload.error?.message || 'no details'} (model: ${model})`);
-            record(payload, Date.now() - startedAt);
-            const text = (payload.candidates?.[0]?.content?.parts || []).filter((p) => !p.thought).map((p) => p.text || '').join('');
-            if (!text.trim()) {
-                const why = payload.promptFeedback?.blockReason || payload.candidates?.[0]?.finishReason || 'empty answer';
-                throw new Error(`Gemini returned no text (${why})`);
-            }
-            return parseJsonAnswer(text);
         }
-        throw lastError;
+        unavailable = lastError.message;
+        log(`[gemini] still unavailable after the retries${order.length > 1 ? ` (${order.map((m) => m.name).join(', ')})` : ''}: ${lastError.message}; no more Gemini calls in this run`);
+        throw unavailableError(lastError.message);
     }
 
     /** Totals so far: { calls, prompt, output, thinking, total, ms }. */
@@ -131,10 +185,10 @@ function createGemini(options = {}) {
     function printUsage() {
         if (!totals.calls) return;
         const level = thinking ? ` (thinking setting: ${JSON.stringify(thinking)})` : ' (thinking setting: model default)';
-        log(`[gemini] ${model}: ${totals.calls} call(s), in ${totals.prompt}, out ${totals.output}, thinking ${totals.thinking}, total ${totals.total} tokens, ${(totals.ms / 1000).toFixed(1)}s${level}`);
+        log(`[gemini] ${Object.entries(perModel).map(([m, n]) => `${m}${models.length > 1 ? ` x${n}` : ''}`).join(', ')}: ${totals.calls} call(s), in ${totals.prompt}, out ${totals.output}, thinking ${totals.thinking}, total ${totals.total} tokens, ${(totals.ms / 1000).toFixed(1)}s${level}`);
     }
 
-    return { available: Boolean(apiKey), model, json, usage, printUsage };
+    return { available: Boolean(apiKey), get model() { return models[current]; }, models, json, usage, printUsage };
 }
 
-module.exports = { createGemini, parseJsonAnswer, thinkingConfigFrom, DEFAULT_MODEL, THINKING_LEVELS };
+module.exports = { createGemini, parseJsonAnswer, thinkingConfigFrom, modelsFrom, DEFAULT_MODEL, THINKING_LEVELS };

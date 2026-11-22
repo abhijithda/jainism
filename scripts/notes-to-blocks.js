@@ -206,7 +206,11 @@ async function makePlan(ai, lines) {
         try {
             const plan = await ai.json({ system: PLAN_SYSTEM, prompt: error ? `${prompt}\n\nYour previous answer was rejected: ${error}\nAnswer again.` : prompt });
             return { plan: validatePlan(plan, lines), source: 'ai' };
-        } catch (e) { error = e.message; if (/GEMINI_API_KEY|answered 4\d\d/.test(error)) break; }
+        } catch (e) {
+            if (e.unavailable) throw e;     // Gemini itself is down: stop, change nothing (see main)
+            error = e.message;
+            if (/GEMINI_API_KEY|answered 4\d\d/.test(error)) break;
+        }
     }
     return { plan: fallback(), source: 'rules', note: `the AI split was not usable (${error}); the rule-based split was used` };
 }
@@ -338,7 +342,10 @@ async function translateBlocks(ai, items, meta) {
                         job.block.content[job.to] = out.lines.map((l, k) => tidyPairs(job.lines[k], l.trim(), job.to));
                         job.m.translated = true;
                     }
-                } catch (e) { chunk.forEach((j) => { j.m.translationNote = `translation failed: ${e.message}`; }); }
+                } catch (e) {
+                    if (e.unavailable) throw e;  // Gemini itself is down: stop, change nothing (see main)
+                    chunk.forEach((j) => { j.m.translationNote = `translation failed: ${e.message}`; });
+                }
             }
             todo = todo.filter((j) => !j.m.translated);
         }
@@ -483,22 +490,35 @@ async function main() {
     let data = JSON.parse(raw);
     const ai = args.noAi ? null : createGemini();
     const reports = [];
+    const done = [];
     for (const file of files) {
         const text = fs.readFileSync(file, 'utf8');
-        const result = await convertNotes(text, data, { ai, name: path.basename(file), after: args.after, lang: args.lang, followup: args.followup });
+        let result;
+        try {
+            result = await convertNotes(text, data, { ai, name: path.basename(file), after: args.after, lang: args.lang, followup: args.followup });
+        } catch (e) {
+            if (e.unavailable) {
+                console.error(`notes-to-blocks: Gemini is unavailable (${e.message}).\nNothing was changed: data.json is as it was and every note is still in ${INBOX}/. Run the Content Agent workflow again when Gemini is back (Actions > Content Agent > Re-run jobs), or set GEMINI_MODELS to a list with a second model.`);
+                if (ai && ai.printUsage) ai.printUsage();
+                process.exit(2);
+            }
+            throw e;
+        }
         data = result.data;
         reports.push(result.report);
         console.log(result.report);
-        if (!args.dryRun && !args.keep && path.dirname(file) === INBOX) {
-            fs.mkdirSync(path.join(INBOX, 'done'), { recursive: true });
-            fs.renameSync(file, path.join(INBOX, 'done', path.basename(file)));
-        }
+        if (!args.keep && path.dirname(file) === INBOX) done.push(file);
     }
     if (ai && ai.printUsage) ai.printUsage();
     const markdown = `## Content pipeline agent: notes to blocks\n\n${reports.join('\n\n')}\n`;
     if (args.report) fs.writeFileSync(args.report, markdown);
     if (args.dryRun) { console.log('(dry run: nothing written)'); return; }
     fs.writeFileSync(args.data, JSON.stringify(data, null, 2) + (raw.endsWith('\n') ? '\n' : ''));
+    // the notes move out of the inbox only after data.json is written, so a failure above never loses a note
+    for (const file of done) {
+        fs.mkdirSync(path.join(INBOX, 'done'), { recursive: true });
+        fs.renameSync(file, path.join(INBOX, 'done', path.basename(file)));
+    }
     if (process.env.GITHUB_OUTPUT) fs.appendFileSync(process.env.GITHUB_OUTPUT, 'notes=true\n');
 }
 

@@ -249,9 +249,13 @@ that have no Hindi yet.
 ## Setup for jobs 1 to 3
 
 1. A free key from Google AI Studio, saved as the repository secret `GEMINI_API_KEY` (Settings, Secrets and variables, Actions).
-2. Optional: repository variable `GEMINI_MODEL`. The default in `scripts/lib/gemini.js` is a model name taken from Google's current
-   documentation, which renames and retires models often, so if every call fails with a 404 or 400 naming the model, this is the
-   first thing to change.
+2. Optional: repository variable `GEMINI_MODELS`, a comma-separated list in order of preference, for example
+   `gemini-3.8-flash,<a second model>`. The first is used. If it stays busy after its retries, its quota is used up (HTTP 429)
+   or the key cannot use it (404), the next one is tried and the rest of the run keeps using the one that answered. Each model
+   has its own free-tier quota, so a second model is also a second quota. Names are used exactly as written (the code does not
+   know which exist), so check them in Google AI Studio. `GEMINI_MODEL` (one name) still works when `GEMINI_MODELS` is empty.
+   The default in `scripts/lib/gemini.js` is a model name taken from Google's documentation, which renames and retires models
+   often, so if every call fails with a 404 or 400 naming the model, this is the first thing to change.
 3. Optional: repository variable `GEMINI_THINKING_LEVEL` (`minimal`, `low`, `medium` or `high`), sent as
    `generationConfig.thinkingConfig.thinkingLevel`. Unset sends nothing (the model's own default). Gemini 3 models think before
    they answer, and those tokens count and take time even for a tiny answer. Look at the log first: every call prints
@@ -295,3 +299,18 @@ language: the Kannada translation keeps `ಣವಣ` (never adds a second spellin
 `Navana` (never Kannada letters). The model is told this, and code checks it afterwards (it removes at most one extra word, so
 nothing else in the line is lost). The typo review's report always says how many English lines had Kannada words and how many
 changes the model proposed, so an empty result is visible.
+
+### When Gemini is down
+
+A call that gets HTTP 429, 5xx or a timeout is tried again a few times with growing pauses (then the next model in
+`GEMINI_MODELS`, if any). If every model stays busy, the run stops asking Gemini at all, so an outage costs minutes, not the
+nine minutes one run took.
+
+- **Notes to blocks stops and changes nothing**: `data.json` is as it was, no block is added, and every note stays in
+  `content-inbox/` (it moves to `done/` only after `data.json` is written). The step exits with code 2 and says so. When Gemini
+  is back: Actions, Content Agent, **Re-run jobs**. This is on purpose: a split by rules and missing translations would put
+  half-finished blocks into the PR.
+- A Gemini answer that arrives but is not usable (bad JSON, wrong number of lines) is different: the rule-based split is used
+  and missing translations are listed, as before.
+- Typo review and video follow-up do not insert items, so an outage there only means no AI help for that run (typo review still
+  makes its mechanical fixes).
