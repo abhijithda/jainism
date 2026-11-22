@@ -180,7 +180,7 @@ does not start workflows by itself), or by hand: Actions, *Typo Review*, Run wor
 | Clear typo in plain prose (paragraph / note) | fixed in **one commit** (`typo-review: fix N clear typo(s)...`); revert that commit to undo all; listed old, new, reason |
 | Doubtful case | **not changed**; a *Commit suggestion* button on that line of the PR |
 | Kannada-script words inside an English line (your own mixed notes) | written in Latin letters **automatically only if** the model says clear, scores it 0.9 or more, **and** a second call turning the Latin back into Kannada gives your word, counting the letters in `config/translit-equivalents.txt` as the same (ಣ = ನ, ಲ = ಳ, ಸ = ಶ = ಷ, vowel length, the ಾ sign; edit that file as you like); otherwise a *Commit suggestion* |
-| A Kannada word next to the same English word (`ಣವಣ / Navana`) | one word is kept, in your spelling (`Navana`), when the converted word is the same; a different spelling stays as a pair. The same English word typed twice by you (`Navana / Navana`) is only a suggestion |
+| A Kannada word next to the same English word (`ಣವಣ / Navana`, also several words: `ಉಪ ಲೇಪನ / Upa Lepana`) | one version is kept, in your spelling (`Navana`, `Upa Lepana`), when the converted words are the same; a different spelling stays as a pair. The same English word typed twice by you (`Navana / Navana`) is only a suggestion |
 | Final "a" of Sanskrit words | the book's style is `abhisheka`, `Rama`, not the Hindi `abhishek`, `Ram`. Every prompt that writes English says so, and where the Kannada word is known the code puts a dropped final "a" back |
 | Invisible characters (word joiner, zero-width space, BOM) from copy-paste | removed automatically (the joiners Kannada conjuncts need are kept) |
 | Shloka / mantra block | **never changed**, never suggested; listed under "check against the source" |
@@ -287,3 +287,11 @@ branch that has a typo you know about.
 | `config/spelling-allowlist.txt` | Your intentional spellings |
 | `content-inbox/` | Where notes files go (processed files move to `content-inbox/done/`) |
 | `scripts/new-id.js` | Unchanged; the agent reuses `fillMissingIds` |
+
+### Pairs like `ಣವಣ / Navana` in the translation step
+
+When you type a Kannada word and its Latin spelling together, the machine translation keeps only your own word in the other
+language: the Kannada translation keeps `ಣವಣ` (never adds a second spelling `ನವಣ`), and the English translation has only
+`Navana` (never Kannada letters). The model is told this, and code checks it afterwards (it removes at most one extra word, so
+nothing else in the line is lost). The typo review's report always says how many English lines had Kannada words and how many
+changes the model proposed, so an empty result is visible.

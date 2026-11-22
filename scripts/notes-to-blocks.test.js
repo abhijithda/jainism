@@ -6,7 +6,7 @@ const { processDraft } = require('./content-agent');
 const {
     parseInbox, prepare, stripVideoLinks, detectLang, fallbackPlan, validatePlan, makePlan, buildItems,
     verifyPreservation, translateBlocks, convertNotes, numberAndMark,
-    reportLabel,
+    reportLabel, tidyPairs,
 } = require('./notes-to-blocks');
 
 const FIX = (n) => fs.readFileSync(path.join(__dirname, 'fixtures', n), 'utf8');
@@ -298,5 +298,37 @@ describe('report labels match the book', () => {
         expect(reportLabel(answer, { type: 'mantra', num: 3 }, 29)).toBe('M-29.3');
         expect(reportLabel({ type: 'question' }, { type: 'paragraph', num: 1 }, 31)).toBe('Q-31.1');
         expect(reportLabel(answer, { type: 'paragraph', num: 1 }, undefined)).toBe('A-?.1');
+    });
+});
+
+describe('a Kannada word the writer typed next to its Latin spelling', () => {
+    test('the Kannada translation keeps only the writer\'s own Kannada word (no second spelling)', () => {
+        expect(tidyPairs('1. ಣವಣ / Navana  = Abhishekas', '1. ಣವಣ / ನವಣ = ಅಭಿಷೇಕಗಳು', 'kn')).toBe('1. ಣವಣ = ಅಭಿಷೇಕಗಳು');
+        expect(tidyPairs('2. ಉಪ ಲೇಪನ / Upa Lepana', '2. ಉಪ ಲೇಪನ / ಉಪಲೇಪನ: ಉದಾಹರಣೆಗಳು', 'kn')).toBe('2. ಉಪ ಲೇಪನ: ಉದಾಹರಣೆಗಳು');
+        expect(tidyPairs('2. ಉಪ ಲೇಪನ / Upa Lepana', '2. ಉಪ ಲೇಪನ / ಉಪ ಲೇಪನ', 'kn')).toBe('2. ಉಪ ಲೇಪನ');
+    });
+    test('it removes at most one more word, so the rest of the line is never lost', () => {
+        expect(tidyPairs('x ಉಪ ಲೇಪನ / Upa Lepana done', 'x ಉಪ ಲೇಪನ / ಉಪಲೇಪನ ಮಾಡಿದ', 'kn')).toBe('x ಉಪ ಲೇಪನ ಮಾಡಿದ');
+    });
+    test('a slash the writer did not type next to Latin letters is left alone', () => {
+        expect(tidyPairs('plain English', 'ಯಾವುದೋ ಸಾಲು / ಇನ್ನೊಂದು', 'kn')).toBe('ಯಾವುದೋ ಸಾಲು / ಇನ್ನೊಂದು');
+    });
+    test('an English translation has only the Latin word: "ಣವಣ / Navana" becomes "Navana"', () => {
+        expect(tidyPairs('ಣವಣ / Navana = x', 'ಣವಣ / Navana = Abhishekas', 'en')).toBe('Navana = Abhishekas');
+        expect(tidyPairs('plain', 'a plain English line', 'en')).toBe('a plain English line');
+    });
+    test('translateBlocks applies it to the lines the model returns', async () => {
+        const items = [{ type: 'answer', blocks: [{ num: 1, type: 'paragraph', content: { kn: [], en: ['1. ಣವಣ / Navana  = Abhishekas'] }, tags: [], videos: [], images: [] }] }];
+        const meta = [{ blocks: [{ lang: 'en', other: 'kn' }] }];
+        const ai = { available: true, json: async ({ prompt }) => ({ blocks: [{ key: '0.0', lines: ['1. ಣವಣ / ನವಣ = ಅಭಿಷೇಕಗಳು'] }] }) };
+        await translateBlocks(ai, items, meta);
+        expect(items[0].blocks[0].content.kn).toEqual(['1. ಣವಣ = ಅಭಿಷೇಕಗಳು']);
+    });
+    test('the translation prompt states the rule', async () => {
+        const items = [{ type: 'answer', blocks: [{ num: 1, type: 'paragraph', content: { kn: [], en: ['x'] }, tags: [], videos: [], images: [] }] }];
+        const meta = [{ blocks: [{ lang: 'en', other: 'kn' }] }];
+        let system = '';
+        await translateBlocks({ available: true, json: async (o) => { system = o.system; return { blocks: [] }; } }, items, meta);
+        expect(system).toMatch(/keep ONLY the writer's own Kannada word/);
     });
 });

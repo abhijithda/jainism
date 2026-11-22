@@ -182,25 +182,30 @@ const skeleton = (t, eq) => {
 };
 
 /**
- * "ಣವಣ / Navana": when the Latin version of the Kannada word is the SAME word as the English one the writer typed next to it
- * (any case), change the whole span "ಣವಣ / Navana" into the writer's own "Navana" instead of making "Navana / Navana".
- * Only for a single word, only when the English neighbour matches exactly; a different spelling stays as a pair.
+ * "ಣವಣ / Navana" and "ಉಪ ಲೇಪನ / Upa Lepana": when the Latin version of the Kannada word(s) is the SAME word(s) as the English
+ * the writer typed next to it (any case), change the whole span into the writer's own English instead of making
+ * "Navana / Navana". Up to four words; only when the English neighbour matches exactly (letters, any case): a different
+ * spelling stays as a pair.
  */
 function dropDuplicate(issue, line) {
-    if (!line || /\s/.test(issue.new.trim())) return issue;
+    if (!line) return issue;
+    const words = issue.new.trim().split(/\s+/);
+    if (words.length > 4) return issue;
     const text = line.text;
     const at = text.indexOf(issue.old);
     if (at < 0 || text.indexOf(issue.old, at + 1) >= 0) return issue;
-    const right = text.slice(at + issue.old.length).match(/^([\s\/\-–=(,:]+)([A-Za-z][A-Za-z'’-]*)(\)?)/);
+    const W = "[A-Za-z][A-Za-z'’-]*";
+    const phrase = words.length === 1 ? W : `${W}(?:[ \\t]+${W}){${words.length - 1}}`;
+    const right = text.slice(at + issue.old.length).match(new RegExp(`^([\\s\\/\\-–=(,:]+)(${phrase})(\\)?)`));
     if (right && sameWord(right[2], issue.new)) {
         const close = right[1].includes('(') ? right[3] : '';
         const span = issue.old + right[1] + right[2] + close;
-        return { ...issue, old: span, new: right[2], reason: `${issue.reason}; your own English word "${right[2]}" is the same, so the duplicate is dropped` };
+        return { ...issue, old: span, new: right[2], reason: `${issue.reason}; your own English "${right[2]}" is the same, so the duplicate is dropped` };
     }
-    const left = text.slice(0, at).match(/([A-Za-z][A-Za-z'’-]*)([\s\/\-–=),:]+)$/);
+    const left = text.slice(0, at).match(new RegExp(`(${phrase})([\\s\\/\\-–=),:]+)$`));
     if (left && sameWord(left[1], issue.new)) {
         const span = left[1] + left[2] + issue.old;
-        return { ...issue, old: span, new: left[1], reason: `${issue.reason}; your own English word "${left[1]}" is the same, so the duplicate is dropped` };
+        return { ...issue, old: span, new: left[1], reason: `${issue.reason}; your own English "${left[1]}" is the same, so the duplicate is dropped` };
     }
     return issue;
 }
@@ -222,7 +227,7 @@ function duplicatePairIssues(line) {
  */
 async function mixedScriptIssues(ai, lines, allowlist, autoMin = MIXED_AUTO_MIN, equivalents = null) {
     const mixed = lines.filter((l) => l.kind === 'prose' && l.lang === 'en' && KANNADA_LETTER.test(l.text));
-    if (!mixed.length || !ai || !ai.available) return { issues: [], found: mixed.length, note: '' };
+    if (!mixed.length || !ai || !ai.available) return { issues: [], found: mixed.length, proposed: 0, note: ai && ai.available === false ? 'no model, so the Kannada-in-English lines were not checked' : '' };
     const proposals = [];
     const failures = [];
     for (let i = 0; i < mixed.length; i += 40) {
@@ -261,7 +266,7 @@ async function mixedScriptIssues(ai, lines, allowlist, autoMin = MIXED_AUTO_MIN,
         const issue = { ...x, mixed: true, mixedAuto: auto, confidence: auto ? 'clear' : 'doubtful', reason: `Kannada script in English text${auto ? ` → Latin letters${ok}${finalA}` : why}` };
         return dropDuplicate(issue, mixed.find((l) => l.key === x.key));
     });
-    return { issues, found: mixed.length, note: failures.length ? `the Kannada-in-English check failed in part: ${failures[0]}` : '' };
+    return { issues, found: mixed.length, proposed: proposals.length, note: failures.length ? `the Kannada-in-English check failed in part: ${failures[0]}` : '' };
 }
 
 // ── deciding ───────────────────────────────────────────────────────────────────────────────────────────────
@@ -390,7 +395,7 @@ async function reviewTypos(head, base, options = {}) {
     const comments = buildSuggestionComments(result.data, result.suggestions);
     const verses = entries.filter((e) => VERSE.has(e.block.type)).map((e) => ({ label: e.label, id: e.block.id, flagged: decided.flags.filter((f) => f.blockId === e.block.id) }));
     const summary = { blocks: entries.length, lines: lines.length, fixes: result.applied.length, suggestions: comments.length, verses: verses.length };
-    return { data: result.data, changed: result.applied.length > 0, applied: result.applied, comments, verses, dropped: decided.dropped, note: [ai.note, mixed.note].filter(Boolean).join('; '), mixedFound: mixed.found, summary, notApplied: result.notApplied };
+    return { data: result.data, changed: result.applied.length > 0, applied: result.applied, comments, verses, dropped: decided.dropped, note: [ai.note, mixed.note].filter(Boolean).join('; '), mixedFound: mixed.found, mixedProposed: mixed.proposed || 0, summary, notApplied: result.notApplied };
 }
 
 function renderReport(r, { all = false } = {}) {
@@ -415,7 +420,7 @@ function renderReport(r, { all = false } = {}) {
         for (const v of r.verses) out.push(`- ${v.label}${v.flagged.length ? ` (the AI doubts: ${v.flagged.map((f) => `${f.old} → ${f.new}`).join('; ')})` : ''}`);
         out.push('');
     }
-    if (r.mixedFound) out.push(`${r.mixedFound} English line(s) contain Kannada-script words (your own wording). Those the model was sure of, and whose round trip matched, were written in Latin letters above; the others are suggestions.\n`);
+    if (r.mixedFound) out.push(`${r.mixedFound} English line(s) contain Kannada-script words (your own wording); the model proposed ${r.mixedProposed} change(s). Those it was sure of, and whose round trip matched, were written in Latin letters above; the others are suggestions.\n`);
     if (r.notApplied.length) out.push(`${r.notApplied.length} fix(es) overlapped another on the same line and were skipped.\n`);
     return out.join('\n') + '\n';
 }

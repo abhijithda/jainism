@@ -10,3 +10,4 @@ prints/
 
 # Local wrangler dev state (proxy)
 .wrangler/
+tmp/

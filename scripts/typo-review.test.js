@@ -240,6 +240,21 @@ describe('Kannada words inside English lines, and invisible characters', () => {
         expect(r.applied.filter((a) => /Kannada script/.test(a.reason)).map((a) => a.reason)).toEqual([expect.stringMatching(/round trip matches/)]);
         expect(r.data[1].blocks[0].content.kn[0]).toBe(head[1].blocks[0].content.kn[0]);
     });
+    test('"ಉಪ ಲೇಪನ / Upa Lepana": two Kannada words next to the same two English words become the writer\'s own English, once', async () => {
+        const h = clone(base);
+        h[1].blocks.push(blk('m00004', 4, 'paragraph', ['2. ಉಪ ಲೇಪನ'], ['2. ಉಪ ಲೇಪನ / Upa Lepana']));
+        const P4 = { key: 'm00004|en|0', old: 'ಉಪ ಲೇಪನ', new: 'Upa Lepana', reason: 'x', confidence: 'clear', score: 0.95 };
+        const r = await T.reviewTypos(h, base, { ai: mixedAi([P4], { 'Upa Lepana': 'ಉಪ ಲೇಪನ' }), allowlist: [] });
+        expect(r.data[1].blocks[0].content.en[0]).toBe('2. Upa Lepana');
+        expect(T.renderReport(r)).toMatch(/the model proposed 1 change/);
+    });
+    test('a different English spelling next to the Kannada words stays a pair (the writer decides)', async () => {
+        const h = clone(base);
+        h[1].blocks.push(blk('m00005', 5, 'paragraph', [], ['2. ಉಪ ಲೇಪನ / Upalepana']));
+        const P5 = { key: 'm00005|en|0', old: 'ಉಪ ಲೇಪನ', new: 'Upa Lepana', reason: 'x', confidence: 'clear', score: 0.95 };
+        const r = await T.reviewTypos(h, base, { ai: mixedAi([P5], { 'Upa Lepana': 'ಉಪ ಲೇಪನ' }), allowlist: [] });
+        expect(r.data[1].blocks[0].content.en[0]).toBe('2. Upa Lepana / Upalepana');
+    });
     test('a low score is only a suggestion, even if the model says clear and the round trip matches', async () => {
         const r = await T.reviewTypos(head, base, { ai: mixedAi([P2], RT), allowlist: [] });
         expect(r.data[1].blocks[1].content.en[0]).toContain('ಪುಲ್ಲಾರೋಹಣ');

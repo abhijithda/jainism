@@ -286,8 +286,29 @@ function reportLabel(item, block, shownNum) {
 }
 const TRANSLATE_SYSTEM = `You translate lines from a Jainism Q&A book. Return JSON only: {"blocks":[{"key":"...","lines":["..."]}]}.
 Rules: one output line for every input line, same order, so the count must match exactly; keep numbering such as "1." and proper names; keep Sanskrit and Prakrit technical terms (abhisheka, kalasha, dravya ...) in the target script rather than explaining them; never add comments, notes or links.
+Pairs: the writer sometimes types a Kannada word and its Latin spelling together, "<Kannada> / <Latin>". In a Kannada translation keep ONLY the writer's own Kannada word, never add a second Kannada spelling ("ಣವಣ / Navana" gives "ಣವಣ", not "ಣವಣ / ನವಣ"). In an English translation write only the Latin word ("ಣವಣ / Navana" gives "Navana"); an English translation never contains Kannada letters.
 Blocks with "mode":"transliterate" are verses or mantras: do NOT translate the meaning, write the same words in the other script (Kannada script <-> Latin letters), as faithfully as possible.
 ${TRANSLIT_STYLE}`;
+
+const KN_RUN = '[\\u0C80-\\u0CFF]+(?:[ \\t][\\u0C80-\\u0CFF]+)*';
+
+/**
+ * The writer typed "<Kannada> / <Latin>" (ಣವಣ / Navana): the translation keeps only the writer's own word, even if the model
+ * added a second spelling. Kannada out: "ಣವಣ / ನವಣ" becomes "ಣವಣ" (only after a Kannada word the writer typed in that line,
+ * and only one more word, so nothing after it is lost). English out: "ಣವಣ / Navana" becomes "Navana".
+ * @param {string} sourceLine the writer's line  @param {string} out the translated line  @param {'kn'|'en'} to
+ */
+function tidyPairs(sourceLine, out, to) {
+    if (to === 'en') return out.replace(new RegExp(`${KN_RUN}\\s*\\/\\s*(?=[A-Za-z])`, 'g'), '');
+    let result = out;
+    for (const m of String(sourceLine).matchAll(new RegExp(`(${KN_RUN})\\s*\\/\\s*[A-Za-z]`, 'g'))) {
+        const k = m[1].trim();
+        const esc = k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        // the same words again, or one more Kannada word (a second spelling, "ಉಪ ಲೇಪನ / ಉಪಲೇಪನ"); never more than that
+        result = result.replace(new RegExp(`(${esc})\\s*\\/\\s*(?:${esc}|[\\u0C80-\\u0CFF]+)`), '$1');
+    }
+    return result;
+}
 
 /** Fill the empty language of every block with a machine translation. Records on `meta` what happened. */
 async function translateBlocks(ai, items, meta) {
@@ -314,7 +335,7 @@ async function translateBlocks(ai, items, meta) {
                     for (const out of answer.blocks || []) {
                         const job = chunk.find((j) => j.key === out.key);
                         if (!job || !Array.isArray(out.lines) || out.lines.length !== job.lines.length || out.lines.some((l) => typeof l !== 'string')) continue;
-                        job.block.content[job.to] = out.lines.map((l) => l.trim());
+                        job.block.content[job.to] = out.lines.map((l, k) => tidyPairs(job.lines[k], l.trim(), job.to));
                         job.m.translated = true;
                     }
                 } catch (e) { chunk.forEach((j) => { j.m.translationNote = `translation failed: ${e.message}`; }); }
@@ -429,7 +450,7 @@ function renderReport({ name, prepared, built, placed, planSource, planNote, at,
 
 module.exports = {
     parseInbox, prepare, stripVideoLinks, detectLang, skeletonOf, fallbackPlan, validatePlan, makePlan, buildItems,
-    verifyPreservation, translateBlocks, numberAndMark, convertNotes, renderReport, snippet, reportLabel,
+    verifyPreservation, translateBlocks, numberAndMark, convertNotes, renderReport, snippet, reportLabel, tidyPairs,
 };
 
 // ── CLI ──────────────────────────────────────────────────────────────────────────────────────────────────────
