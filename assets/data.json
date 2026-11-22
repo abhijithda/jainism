@@ -3865,5 +3865,134 @@
         "images": []
       }
     ]
+  },
+  {
+    "id": "g5saz5",
+    "num": 30,
+    "type": "answer",
+    "timestamp": "2026-11-22T22:14:37Z",
+    "references": [
+      "m6kwm9",
+      "mpargp"
+    ],
+    "blocks": [
+      {
+        "id": "hmx549",
+        "num": 1,
+        "type": "paragraph",
+        "content": {
+          "kn": [
+            "ಆಚಾರ್ಯ ವೀರಸೇನರ ಜಯಧವಳಾ ಪುಸ್ತಕ 1 ರಿಂದ ಅಭಿಷೇಕದ ವಿವರಗಳು"
+          ],
+          "en": [
+            "Abhisheka details from Jaya Dhawala Book 1 by Acharya Veerasena"
+          ]
+        },
+        "tags": [],
+        "videos": [
+          {
+            "url": "https://youtu.be/jQnzNMlusIg",
+            "youtubeId": "jQnzNMlusIg"
+          }
+        ],
+        "images": []
+      },
+      {
+        "id": "yademz",
+        "num": 2,
+        "type": "paragraph",
+        "content": {
+          "kn": [
+            "1. ಣವಣ = ಅಭಿಷೇಕಗಳು"
+          ],
+          "en": [
+            "1. ಣವಣ / Navana  = Abhishekas"
+          ]
+        },
+        "tags": [],
+        "videos": [],
+        "images": []
+      },
+      {
+        "id": "nykbg3",
+        "num": 3,
+        "type": "paragraph",
+        "content": {
+          "kn": [
+            "2. ಉಪ ಲೇಪನ: ಉದಾಹರಣೆಗಳು: ಗಂಧ ಉಪ ಲೇಪನ, ಚಂದನ ಉಪ ಲೇಪನ"
+          ],
+          "en": [
+            "2. ಉಪ ಲೇಪನ / Upa Lepana:   Examples: Gandha upa lepana, Chandana upa lepana"
+          ]
+        },
+        "tags": [],
+        "videos": [],
+        "images": []
+      },
+      {
+        "id": "m3w7rg",
+        "num": 4,
+        "type": "paragraph",
+        "content": {
+          "kn": [
+            "3. ಪುಷ್ಪ ವೃಷ್ಟಿ"
+          ],
+          "en": [
+            "3. Pushpa Vrusti"
+          ]
+        },
+        "tags": [],
+        "videos": [],
+        "images": []
+      },
+      {
+        "id": "kpxa8s",
+        "num": 5,
+        "type": "paragraph",
+        "content": {
+          "kn": [
+            "4. ಸಮ್ಮಜಣ : ಹಳೆಯ ದ್ರವ್ಯವನ್ನು ಸ್ವಚ್ಛಗೊಳಿಸಲಾಗುತ್ತದೆ/ತೆಗೆಯಲಾಗುತ್ತದೆ (ನೀರಿನಿಂದ)."
+          ],
+          "en": [
+            "4. ಸಮ್ಮಜಣ : Old dravya is cleaned/removed (with water)."
+          ]
+        },
+        "tags": [],
+        "videos": [],
+        "images": []
+      },
+      {
+        "id": "err43n",
+        "num": 6,
+        "type": "paragraph",
+        "content": {
+          "kn": [
+            "5. ಚುಹಾವಣ : ಉಪ ಲೇಪನದಂತೆಯೇ ಆದರೆ ಕೇವಲ ಪಾದಗಳಿಗೆ ಮಾತ್ರ. ಉಪ ಲೇಪನದಲ್ಲಿ ಸಂಪೂರ್ಣ ಪ್ರತಿಮೆಗೆ ಚಂದನ ಲೇಪನ ಮಾಡಲಾಗುತ್ತದೆ. ಚುಹಾವಣದಲ್ಲಿ ಚಂದನ ಲೇಪನವನ್ನು ಕೇವಲ ಪಾದಗಳಿಗೆ ಮಾತ್ರ ಮಾಡಲಾಗುತ್ತದೆ."
+          ],
+          "en": [
+            "5. ಚುಹಾವಣ : Similar to Upa lepana but only for feet. In upa lepana, chandana lepana is done for entire pratima. In Chuhavana, chandan lepana is done only for feet."
+          ]
+        },
+        "tags": [],
+        "videos": [],
+        "images": []
+      },
+      {
+        "id": "u2ctze",
+        "num": 7,
+        "type": "paragraph",
+        "content": {
+          "kn": [
+            "6. ⁠ಪುಲ್ಲಾರೋಹಣ: ಪುಷ್ಪಾರೋಹಣ - ಆರೋಹಣ/ಪ್ರತಿಮೆಗೆ ಪುಷ್ಪಮಾಲೆಯನ್ನು ಹಾಕುವುದು. (ಕೇವಲ ಪಾದಗಳಿಗಲ್ಲ, ಸಂಪೂರ್ಣ ಪ್ರತಿಮೆಗೆ):"
+          ],
+          "en": [
+            "6. ⁠ಪುಲ್ಲಾರೋಹಣ: ಪುಷ್ಪಾರೋಹಣ - Aarohana/ putting flowers garland on pratima. (Not just feet, but entire pratima):"
+          ]
+        },
+        "tags": [],
+        "videos": [],
+        "images": []
+      }
+    ]
   }
 ]
