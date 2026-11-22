@@ -464,6 +464,7 @@ async function main() {
             fs.renameSync(file, path.join(INBOX, 'done', path.basename(file)));
         }
     }
+    if (ai && ai.printUsage) ai.printUsage();
     const markdown = `## Content pipeline agent: notes to blocks\n\n${reports.join('\n\n')}\n`;
     if (args.report) fs.writeFileSync(args.report, markdown);
     if (args.dryRun) { console.log('(dry run: nothing written)'); return; }

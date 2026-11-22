@@ -269,6 +269,7 @@ async function main() {
     const raw = fs.readFileSync(args.data, 'utf8');
     const ai = createGemini({ model: args.model });
     const r = await followUp(JSON.parse(raw), { ai, ...args });
+    ai.printUsage();
     console.log(r.report);
     if (args.report) fs.writeFileSync(args.report, r.report);
     if (args.transcriptOut) fs.writeFileSync(args.transcriptOut, r.transcriptText + '\n');

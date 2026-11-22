@@ -453,7 +453,9 @@ async function main() {
     const head = JSON.parse(raw);
     const base = args.base && fs.existsSync(args.base) ? JSON.parse(fs.readFileSync(args.base, 'utf8')) : null;
     const allowlist = fs.existsSync(args.allowlist) ? loadAllowlist(fs.readFileSync(args.allowlist, 'utf8')) : [];
-    const r = await reviewTypos(head, base, { ai: args.noAi ? null : createGemini(), allowlist, all: args.all || !base, mixedAutoMin: args.mixedAutoMin, equivalents: fs.existsSync(args.equivalents) ? loadEquivalents(fs.readFileSync(args.equivalents, 'utf8')) : null });
+    const ai = args.noAi ? null : createGemini();
+    const r = await reviewTypos(head, base, { ai, allowlist, all: args.all || !base, mixedAutoMin: args.mixedAutoMin, equivalents: fs.existsSync(args.equivalents) ? loadEquivalents(fs.readFileSync(args.equivalents, 'utf8')) : null });
+    if (ai) ai.printUsage();
     const markdown = renderReport(r, { all: args.all || !base });
     console.log(markdown);
     if (args.report) fs.writeFileSync(args.report, markdown);

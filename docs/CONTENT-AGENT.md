@@ -252,7 +252,14 @@ that have no Hindi yet.
 2. Optional: repository variable `GEMINI_MODEL`. The default in `scripts/lib/gemini.js` is a model name taken from Google's current
    documentation, which renames and retires models often, so if every call fails with a 404 or 400 naming the model, this is the
    first thing to change.
-3. The permissions from "One-time GitHub setup" above (workflow read and write, allow Actions to create pull requests).
+3. Optional: repository variable `GEMINI_THINKING_LEVEL` (`minimal`, `low`, `medium` or `high`), sent as
+   `generationConfig.thinkingConfig.thinkingLevel`. Unset sends nothing (the model's own default). Gemini 3 models think before
+   they answer, and those tokens count and take time even for a tiny answer. Look at the log first: every call prints
+   `[gemini] call 3: in 1200, out 310, thinking 2950, total 4460 tokens, 12.4s` and each script ends with a totals line. If
+   thinking is most of the total and the answers are fine, set `low` (or `minimal`) and compare the next run. If the model
+   rejects the setting (HTTP 400 naming thinking) the call is repeated without it and the log says so. Gemini 2.5 models use
+   `GEMINI_THINKING_BUDGET` (a number of tokens) instead; never set both.
+4. The permissions from "One-time GitHub setup" above (workflow read and write, allow Actions to create pull requests).
 
 ## First run: what has not been seen working
 

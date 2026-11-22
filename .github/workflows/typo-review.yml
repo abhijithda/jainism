@@ -63,6 +63,7 @@ jobs:
           NODE_OPTIONS: --no-warnings
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
+          GEMINI_THINKING_LEVEL: ${{ vars.GEMINI_THINKING_LEVEL }}
           WHOLE_BOOK: ${{ github.event.inputs.whole_book }}
         run: |
           git show "origin/${BASE}:assets/data.json" > "$RUNNER_TEMP/base.json" 2>/dev/null || echo '[]' > "$RUNNER_TEMP/base.json"

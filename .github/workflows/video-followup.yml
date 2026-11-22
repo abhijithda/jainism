@@ -86,6 +86,7 @@ jobs:
           NODE_OPTIONS: --no-warnings
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
+          GEMINI_THINKING_LEVEL: ${{ vars.GEMINI_THINKING_LEVEL }}
           TARGET: ${{ github.event.inputs.target }}
           URL: ${{ github.event.inputs.video_url }}
           START: ${{ github.event.inputs.start }}
