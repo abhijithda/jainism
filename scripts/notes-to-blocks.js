@@ -275,6 +275,15 @@ function verifyPreservation(originalText, items, meta) {
 // ── 4. the other language ────────────────────────────────────────────────────────────────────────────────────
 
 const LANG_NAME = { kn: 'Kannada', en: 'English' };
+
+/**
+ * The label a block will show in the app (src/core/blocks.js): shloka S, note N, mantra M, images I; a plain paragraph takes
+ * its item's letter (Q / A). So the PR says N-29.8 for a note, the same as the book and the typo review do.
+ */
+const BLOCK_LETTERS = { shloka: 'S', note: 'N', images: 'I', mantra: 'M' };
+function reportLabel(item, block, shownNum) {
+    return `${BLOCK_LETTERS[block.type] || item.type[0].toUpperCase()}-${shownNum ?? '?'}.${block.num}`;
+}
 const TRANSLATE_SYSTEM = `You translate lines from a Jainism Q&A book. Return JSON only: {"blocks":[{"key":"...","lines":["..."]}]}.
 Rules: one output line for every input line, same order, so the count must match exactly; keep numbering such as "1." and proper names; keep Sanskrit and Prakrit technical terms (abhisheka, kalasha, dravya ...) in the target script rather than explaining them; never add comments, notes or links.
 Blocks with "mode":"transliterate" are verses or mantras: do NOT translate the meaning, write the same words in the other script (Kannada script <-> Latin letters), as faithfully as possible.
@@ -389,7 +398,7 @@ function renderReport({ name, prepared, built, placed, planSource, planNote, at,
         out.push(`**${item.type[0].toUpperCase() + item.type.slice(1)} ${i + 1}**${item.num !== undefined ? ` (num ${item.num})` : ''}`);
         item.blocks.forEach((b, j) => {
             const m = built.meta[i].blocks[j];
-            const label = `${item.type[0].toUpperCase()}-${shownNum ?? '?'}.${b.num}`;
+            const label = reportLabel(item, b, shownNum);
             const vids = b.videos.map((v) => `${v.youtubeId}${/[?&]t=/.test(v.url) ? ` (${v.url.match(/[?&]t=([^&]+)/)[1]})` : ''}`);
             out.push(`- ${label} · ${b.type} · you wrote it in ${LANG_NAME[m.lang]} (${b.content[m.lang].length} line(s))${vids.length ? ` · video: ${vids.join(', ')}` : ''}: ${clip(b.content[m.lang][0])}`);
             if (m.translated) review.push({ label, m, b });
@@ -420,7 +429,7 @@ function renderReport({ name, prepared, built, placed, planSource, planNote, at,
 
 module.exports = {
     parseInbox, prepare, stripVideoLinks, detectLang, skeletonOf, fallbackPlan, validatePlan, makePlan, buildItems,
-    verifyPreservation, translateBlocks, numberAndMark, convertNotes, renderReport, snippet,
+    verifyPreservation, translateBlocks, numberAndMark, convertNotes, renderReport, snippet, reportLabel,
 };
 
 // ── CLI ──────────────────────────────────────────────────────────────────────────────────────────────────────

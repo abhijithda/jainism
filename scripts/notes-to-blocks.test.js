@@ -6,6 +6,7 @@ const { processDraft } = require('./content-agent');
 const {
     parseInbox, prepare, stripVideoLinks, detectLang, fallbackPlan, validatePlan, makePlan, buildItems,
     verifyPreservation, translateBlocks, convertNotes, numberAndMark,
+    reportLabel,
 } = require('./notes-to-blocks');
 
 const FIX = (n) => fs.readFileSync(path.join(__dirname, 'fixtures', n), 'utf8');
@@ -285,5 +286,17 @@ describe('where it goes and how the existing pipeline takes over', () => {
         expect(added.num).toBeUndefined();
         const out = processDraft(r.data, { retrieval, now: new Date('2026-11-19T10:00:00Z'), minScore: 1000 });
         expect(out.data[data.indexOf(q) + 1].references).toEqual([q.id]);
+    });
+});
+
+describe('report labels match the book', () => {
+    test('a note is N, a shloka S, a mantra M, a plain paragraph takes its item letter', () => {
+        const answer = { type: 'answer' };
+        expect(reportLabel(answer, { type: 'paragraph', num: 1 }, 29)).toBe('A-29.1');
+        expect(reportLabel(answer, { type: 'note', num: 8 }, 29)).toBe('N-29.8');
+        expect(reportLabel(answer, { type: 'shloka', num: 2 }, 29)).toBe('S-29.2');
+        expect(reportLabel(answer, { type: 'mantra', num: 3 }, 29)).toBe('M-29.3');
+        expect(reportLabel({ type: 'question' }, { type: 'paragraph', num: 1 }, 31)).toBe('Q-31.1');
+        expect(reportLabel(answer, { type: 'paragraph', num: 1 }, undefined)).toBe('A-?.1');
     });
 });
