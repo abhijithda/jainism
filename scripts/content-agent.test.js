@@ -294,6 +294,19 @@ describe('content agent: cross-references', () => {
         expect(renderReport(report)).toMatch(/nothing earlier in the book matched/);
     });
 
+    test('the line in the report shows the text of the block that matched, not the first block of its item', () => {
+        const data = existing();
+        data[1].blocks = [
+            block('qintro', 1, 'A short opening line without the topic.', []),
+            ...data[1].blocks,
+        ];
+        const { report } = run([...data, newQuestion()]);
+        const hit = report.newItems[0].added.find((r) => r.blockId === 'qabhb2');
+        expect(hit).toBeDefined();
+        expect(hit.snippet).toMatch(/^Why do we perform abhisheka/);
+        expect(renderReport(report)).toMatch(/→ `qabhb2`.*Why do we perform abhisheka/);
+    });
+
     test('inserts never get cross-references', () => {
         const ins = { type: 'insert', blocks: [{ num: 1, type: 'images', tags: ['abhisheka'], images: [{ src: 'new.jpg' }] }] };
         const { data } = run([...existing(), ins]);

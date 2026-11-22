@@ -180,6 +180,9 @@ describe('example 1 (a Q&A from the Google Doc)', () => {
         expect(a.blocks[0].content.en).toHaveLength(a.blocks[0].content.kn.length);
         expect(r.report).toMatch(/Machine-translated: review this/);
         expect(r.report).toMatch(/Q-29\.1 → English/);
+        // everything was translated into English: the heading says English once, not "English or English"
+        expect(r.report).toMatch(/Machine-translated: review this \(English; never overwrites/);
+        expect(r.report).not.toMatch(/English or English/);
         expect(r.report).toMatch(/lines in your text are exactly the lines/);
     });
 });

@@ -400,7 +400,8 @@ function renderReport({ name, prepared, built, placed, planSource, planNote, at,
         out.push('');
     });
     if (review.length) {
-        out.push(`#### Machine-translated: review this (${LANG_NAME[review[0].m.other]} or English, never overwrites a language you wrote)`);
+        const targets = [...new Set(review.map((r) => LANG_NAME[r.m.other]))].join(' and ');
+        out.push(`#### Machine-translated: review this (${targets}; never overwrites a language you wrote)`);
         for (const { label, m, b } of review) {
             const tag = b.type === 'shloka' || b.type === 'mantra' ? ' (transliteration, check against the source)' : '';
             out.push(`- ${label} → ${LANG_NAME[m.other]}${tag}: ${clip(b.content[m.other].join(' / '), 160)}`);
