@@ -1404,14 +1404,19 @@ script (Kannada letters for `kn`, Latin for `en`) and a plausible length. Anythi
 and the batch is asked again in two halves, down to a single cue; a cue that never comes back right is **left out** (a gap,
 never a shifted timestamp) and a rerun tries just those. Alignment is checked; **meaning is not**.
 
-**Faithful, not corrected.** The prompt says to translate what the captions say (mistakes included) and to give back
-unchanged any cue that is not intelligible speech, such as a Sanskrit/Prakrit shloka the recogniser garbled. That is the
-model's judgement: a cue it cannot read may still get an invented translation, which is why the page labels these lines
-and why a **mark** written by hand remains the reliable way to point at a shloka.
+**Faithful, not corrected: what really happens.** The prompt says to translate what the captions say (mistakes included)
+and to give back unchanged any cue that is not intelligible speech, such as a Sanskrit/Prakrit shloka the recogniser
+garbled. Seen in the first real run (gemini-3.6-flash): garbled shloka cues do come back unchanged, but the model also
+**quietly repairs recognition slips it can recognise** ("भक्तावर" -> Bhaktamara, "अष्ट पाउड" -> Ashtapahuda, "सहयोग केवली" ->
+Sayoga Kevali); the owner checked these and they were right, so this is accepted. Slips it cannot recognise are translated
+literally and come out as nonsense ("विक्री जीव" -> "sold beings"): the Hindi captions are the weakest link, not Gemini. About
+0.5 % of cues keep a few Devanagari words inside the translation (a leftover `[संगीत]` tag, a garbled fragment). Any
+of this is the model's judgement, which is why the page labels these lines and why a **mark** written by hand remains
+the reliable way to point at a shloka.
 
 **Glossary (`scripts/glossary.json`).** Entries `{ hi: [spellings the captions may use], kn, en }`; only the entries whose
-Hindi occurs in a batch are sent with it, so the Kannada spellings follow the book (68 seed terms; `inBook` counts how often
-the Kannada spelling occurs in `data.json`; `check: true` marks the 13 that are suggestions the book does not contain yet).
+Hindi occurs in a batch are sent with it, so the Kannada spellings follow the book (86 terms: 68 seed terms plus 18 added after the first real run, e.g. प्रशस्त -> ಪ್ರಶಸ್ತ because Gemini had written ಪ್ರಶಸ್ತಿ, "award"; `inBook` counts how often
+the Kannada spelling occurs in `data.json`; `check: true` marks the 18 that are suggestions the book does not contain yet).
 Edit it freely, then rerun with `--force` for a video to redo it. Not wired to `notes-to-blocks.js` (it could be).
 
 **Free tier, stated plainly.** The script makes about one request every 7 s, waits `--cooldown` after a 429 and stops
@@ -1429,12 +1434,26 @@ Errors that asking again cannot fix (bad key, retired model: HTTP 4xx other than
 made with `retries: 0`, so this script is the only retry layer and every counted request is one real call to Google; `--timeout`
 defaults to 90 s (the shared client's own default is 240 s, which makes one hung request take four minutes).
 
+**Doing it in several sessions (the normal case on a free key).** The run is built to be repeated:
+1. `node scripts/translate-transcripts.js --max-requests 60` (stops by itself when Google refuses; see above).
+2. `node scripts/translate-transcripts.js --check` shows `done`/`todo` per video and how many cues are translated.
+3. `npx jest test/unit/transcripts.test.js` checks that every translated cue sits on a cue of the spoken track.
+4. Commit `assets/transcripts`. Partly translated videos are fine to publish: a track may have fewer cues than the main
+   one (a Kannada question then finds hits only in the translated part; Hindi questions still find everything), and the
+   next run asks only for the missing cues, even in a video that was stopped halfway.
+Observed in the first real session: 28 requests translated 445 cues (about 16 cues per request instead of the 50 planned),
+because of 3 batches rejected by the checks on the long, shloka-heavy video (garbled short cues that did not come back as
+Kannada or an exact copy, one malformed JSON answer, one length mismatch) and 429s; the third 429 in a row ended the run
+well before `--max-requests`. Expect roughly 100 to 300 requests for the whole job.
+
 **Limits and to be verified by hand.**
 - **Not verified here:** real Gemini output. Everything above is tested with a fake client (no network): the real
   Kannada quality, whether the model leaves shlokas alone, whether the glossary is obeyed and how many requests your quota
   allows must be looked at with `--dry-run` and a first real run.
-- Transcript files grow: with both tracks the folder is about three times bigger (0.8 MB -> ~2.3 MB in a test with stand-in
-  text). They are loaded on the first question only and are not in the offline copy; the index grows with them.
+- Transcript files grow. Measured on the first real output: about 240 bytes per translated cue (Kannada + English), so
+  the full job takes the folder from 0.74 MB to roughly 1.9 MB raw (about 0.5 MB gzipped, which is what GitHub Pages sends).
+  They are loaded on the first question only and are not in the offline copy. Building the search index over all 38
+  transcripts took about 0.1 s in a test.
 - On Windows, an older version of the script could end with `Assertion failed: !(handle->flags & UV_HANDLE_CLOSING) ... win\async.c`
   after finishing (a Node/libuv problem when a process exits while fetch connections are closing). The output and the saved files
   were complete; the script now sets `process.exitCode` instead of calling `process.exit()`. Not reproduced on Linux, so
