@@ -79,6 +79,21 @@ describe('glossary', () => {
         expect(T.termsFor(g, ['यह देव मूढ\u0964'.replace('\u0964', '\u0922\u093Cता है')])).toHaveLength(1);   // decomposed in the text
     });
 
+    test('for a video spoken in Kannada or English, entries are found by that language\u2019s spelling (and English ignores case)', () => {
+        const gl = T.normalizeGlossary({ terms: [
+            { hi: ['शासन देवता'], kn: 'ಶಾಸನ ದೇವತೆ', en: 'Shasana Devata' },
+            { hi: ['अभिषेक'], kn: 'ಅಭಿಷೇಕ', en: 'Abhisheka' },
+            { hi: ['तप'], kn: 'ತಪ' },
+        ] });
+        expect(T.termsFor(gl, ['ಶಾಸನ ದೇವತೆಯನ್ನು ಪೂಜಿಸಬಾರದು'], 'kn').map(t => t.en)).toEqual(['Shasana Devata']);      // a phrase inside a longer word
+        expect(T.termsFor(gl, ['ಅಭಿಷೇಕದ ವಿಧಾನ'], 'kn').map(t => t.en)).toEqual(['Abhisheka']);                           // start of a word
+        expect(T.termsFor(gl, ['ಇಂದಿನ ವಿಷಯ'], 'kn')).toEqual([]);
+        expect(T.termsFor(gl, ['अभिषेक का महत्व'], 'kn')).toEqual([]);                                                  // Hindi spelling does not count for Kannada
+        expect(T.termsFor(gl, ['the ABHISHEKA is done at dawn'], 'en').map(t => t.kn)).toEqual(['ಅಭಿಷೇಕ']);
+        expect(T.termsFor(gl, ['अभिषेक का महत्व'])).toHaveLength(1);                                                     // default is still Hindi
+        expect(T.termName(gl[0], 'kn')).toBe('ಶಾಸನ ದೇವತೆ');
+    });
+
     test('scripts/glossary.json is well formed: Kannada and Latin spellings, no duplicates', () => {
         const raw = JSON.parse(fs.readFileSync(path.join(__dirname, 'glossary.json'), 'utf8'));
         const all = T.normalizeGlossary(raw);
@@ -102,6 +117,21 @@ describe('buildPrompt', () => {
         expect(p).toMatch(/Translate from Hindi into Kannada \(code "kn"\) and English \(code "en"\)/);
         expect(p).toMatch(/अभिषेक -> Kannada: ಅಭಿಷೇಕ \| English: Abhisheka/);
         expect(T.buildPrompt({ source: 'hi', targets: ['en'], items, before: [], terms: [] })).not.toMatch(/Glossary/);
+    });
+
+    test('for a Kannada-spoken video the glossary line starts with the Kannada spelling and gives only the other languages', () => {
+        const terms = [{ hi: ['शासन देवता'], kn: 'ಶಾಸನ ದೇವತೆ', en: 'Shasana Devata' }, { hi: ['तप'], kn: 'ತಪ' }];
+        const p = T.buildPrompt({ source: 'kn', targets: ['en'], items: [{ i: 0, t: 'ಶಾಸನ ದೇವತೆ' }], before: [], terms });
+        expect(p).toMatch(/Translate from Kannada into English \(code "en"\)/);
+        expect(p).toMatch(/^ಶಾಸನ ದೇವತೆ -> English: Shasana Devata$/m);
+        expect(p).not.toMatch(/शासन/);
+        expect(p).not.toMatch(/ತಪ/);                       // no English to give for it: no line
+    });
+
+    test('it never writes "undefined", even for a language the script does not know', () => {
+        const p = T.buildPrompt({ source: 'xx', targets: ['yy', 'kn'], items: [{ i: 0, t: 'a' }], before: [], terms: [{ hi: ['a'], kn: 'ಕ', en: 'K' }] });
+        expect(p).not.toMatch(/undefined/);
+        expect(p).toMatch(/Translate from xx into yy \(code "yy"\) and Kannada/);
     });
 
     test('the instructions say to translate faithfully and to leave garbled shlokas alone', () => {
@@ -154,6 +184,36 @@ describe('validateAnswer', () => {
 });
 
 // ── asking: batches, splitting, stopping ─────────────────────────────────
+
+describe('telling errors apart', () => {
+    const err = m => new Error(m);
+
+    test('only the client\u2019s own "Gemini answered 429" is a 429', () => {
+        expect(T.is429(err('Gemini answered 429 (busy or rate-limited)'))).toBe(true);
+        expect(T.is429(err('429'))).toBe(false);
+        expect(T.is429(err('Gemini answered 400: bad request, see quota docs 429 (model: x)'))).toBe(false);
+        expect(T.is429(err('Gemini answered 4290'))).toBe(false);
+    });
+
+    test('timeouts, network errors and 5xx are transient; other 4xx are fatal; 429 is neither', () => {
+        for (const m of ['Gemini request failed: The operation was aborted due to timeout', 'Gemini answered 503 (busy or rate-limited)', 'Gemini answered 500 (busy or rate-limited)']) {
+            expect(T.isTransient(err(m))).toBe(true);
+            expect(T.isFatal(err(m))).toBe(false);
+        }
+        expect(T.isFatal(err('Gemini answered 404: not found (model: gone)'))).toBe(true);
+        expect(T.isTransient(err('Gemini answered 404: not found (model: gone)'))).toBe(false);
+        expect(T.isFatal(err('Gemini answered 429 (busy or rate-limited)'))).toBe(false);
+        expect(T.isTransient(err('Gemini answered 429 (busy or rate-limited)'))).toBe(false);
+    });
+
+    test('an error that merely mentions 429 is not mistaken for a quota refusal: it is fatal and stops at once', async () => {
+        const ai = fakeAi(() => { throw err('Gemini answered 400: invalid request, see the 429 page (model: x)'); });
+        const ctx = ctxOf({ ai });
+        await T.translateCues(ctx, itemsOf(3));
+        expect(ctx.stopped).toBe('fatal');
+        expect(ai.calls).toHaveLength(1);
+    });
+});
 
 describe('translateCues', () => {
     test('batches of the wanted size, and every cue comes back once', async () => {
@@ -472,6 +532,17 @@ describe('main, on a temporary copy of the project', () => {
         expect(payloadOf(ai.calls[0]).cues.map(c => c.i)).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);   // kn needs all, so all are sent
         expect(langsOf(ai.calls[0])).toEqual(['kn', 'en']);
         expect(en.segments).toHaveLength(8);
+    });
+
+    test('a Kannada-spoken video gets the glossary too: found by the Kannada spelling, given in English', async () => {
+        fs.writeFileSync(path.join(root, 'scripts', 'glossary.json'), JSON.stringify({ terms: [
+            { hi: ['अभिषेक'], kn: 'ಅಭಿಷೇಕ', en: 'Abhisheka' }, { hi: ['तप'], kn: 'ತಪ', en: 'Tapa' } ] }));
+        const ai = fakeAi();
+        await run(['--ids', C], ai);
+        expect(ai.calls).toHaveLength(1);
+        expect(ai.calls[0].prompt).toMatch(/^ಅಭಿಷೇಕ -> English: Abhisheka$/m);        // "ಅಭಿಷೇಕ ಮಾಡುವ ವಿಧಾನ ಹೀಗಿದೆ" is one of C's cues
+        expect(ai.calls[0].prompt).not.toMatch(/Tapa/);
+        expect(read(C).alt.map(x => x.lang)).toEqual(['en']);
     });
 
     test('the glossary file is used, and only for the terms that occur', async () => {

@@ -1415,7 +1415,7 @@ of this is the model's judgement, which is why the page labels these lines and w
 the reliable way to point at a shloka.
 
 **Glossary (`scripts/glossary.json`).** Entries `{ hi: [spellings the captions may use], kn, en }`; only the entries whose
-Hindi occurs in a batch are sent with it, so the Kannada spellings follow the book (86 terms: 68 seed terms plus 18 added after the first real run, e.g. प्रशस्त -> ಪ್ರಶಸ್ತ because Gemini had written ಪ್ರಶಸ್ತಿ, "award"; `inBook` counts how often
+Hindi occurs in a batch are sent with it (for a video spoken in Kannada, those whose Kannada spelling occurs, so its English follows the glossary too), so the Kannada spellings follow the book (86 terms: 68 seed terms plus 18 added after the first real run, e.g. प्रशस्त -> ಪ್ರಶಸ್ತ because Gemini had written ಪ್ರಶಸ್ತಿ, "award"; `inBook` counts how often
 the Kannada spelling occurs in `data.json`; `check: true` marks the 18 that are suggestions the book does not contain yet).
 Edit it freely, then rerun with `--force` for a video to redo it. Not wired to `notes-to-blocks.js` (it could be).
 
@@ -1458,6 +1458,9 @@ well before `--max-requests`. Expect roughly 100 to 300 requests for the whole j
   the full job takes the folder from 0.74 MB to roughly 1.9 MB raw (about 0.5 MB gzipped, which is what GitHub Pages sends).
   They are loaded on the first question only and are not in the offline copy. Building the search index over all 38
   transcripts took about 0.1 s in a test.
+- Cue-by-cue translation leaves seams: because each cue is translated by itself, neighbouring cues sometimes repeat a trailing
+  verb or begin mid-phrase (e.g. one cue ends "ಆಗುತ್ತಿತ್ತು", the next starts "ಇತ್ತು. ಹಾಗಾಗಿ…"). Harmless for search and for the
+  snippet shown next to a Watch button; an expected artifact, not an error.
 - On Windows, an older version of the script could end with `Assertion failed: !(handle->flags & UV_HANDLE_CLOSING) ... win\async.c`
   after finishing (a Node/libuv problem when a process exits while fetch connections are closing). The output and the saved files
   were complete; the script now sets `process.exitCode` instead of calling `process.exit()`. It could not be reproduced

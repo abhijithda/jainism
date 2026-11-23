@@ -46,7 +46,8 @@
 //   * Faithful, not corrected: the prompt says to translate what the captions say, mistakes included, and to give back
 //     unchanged any cue that is not intelligible speech (a Sanskrit/Prakrit shloka or mantra the recogniser garbled).
 //   * Jain terms: scripts/glossary.json lists the Hindi spellings the captions may use and the Kannada/English spelling
-//     to write. Only the entries that occur in a batch are sent with it.
+//     to write. Only the entries that occur in a batch are sent with it. For a video spoken in Kannada the entries are
+//     found by their Kannada spelling (so its English follows the glossary too); in English, by the English spelling.
 //
 // What this cannot check: that the Kannada is GOOD. Alignment is checked (ids, counts, scripts, lengths), meaning is
 // not. Read the --dry-run output (ideally with someone who reads Kannada) before the full run.
@@ -93,8 +94,8 @@ function normalizeGlossary(raw) {
     const out = [];
     for (const e of list) {
         const hi = (Array.isArray(e && e.hi) ? e.hi : [e && e.hi]).filter(v => typeof v === 'string' && v.trim()).map(v => v.normalize('NFC').trim());
-        const kn = typeof (e && e.kn) === 'string' && e.kn.trim() ? e.kn.trim() : undefined;
-        const en = typeof (e && e.en) === 'string' && e.en.trim() ? e.en.trim() : undefined;
+        const kn = typeof (e && e.kn) === 'string' && e.kn.trim() ? e.kn.normalize('NFC').trim() : undefined;
+        const en = typeof (e && e.en) === 'string' && e.en.trim() ? e.en.normalize('NFC').trim() : undefined;
         if (hi.length && (kn || en)) out.push({ hi, kn, en });
     }
     return out;
@@ -106,22 +107,33 @@ function loadGlossary(file) {
 
 const WORD_SPLIT = /[\s,.;:!?।॥"'()\-\u2013\u2014]+/;
 
-/** The glossary entries whose Hindi spelling occurs in the texts. A one-word spelling matches the start of a word (so
- *  "अभिषेक" also finds "अभिषेकों"); a spelling of several words must occur as written. Nukta forms are normalised. */
-function termsFor(glossary, texts) {
-    const joined = texts.join(' ').normalize('NFC');
+/** The spelling(s) with which an entry is looked for in a text spoken in `source`: Hindi spellings for Hindi, the Kannada
+ *  or English spelling for videos spoken in those languages. */
+const spellingsOf = (e, source) => (source === 'hi' ? e.hi : (e[source] ? [e[source]] : []));
+
+/** The glossary entries that occur in the texts, looked up by the spelling of the language the texts are in (`source`,
+ *  default Hindi). A one-word spelling matches the start of a word (so "अभिषेक" also finds "अभिषेकों", ಅಭಿಷೇಕ finds
+ *  ಅಭಿಷೇಕದ); a spelling of several words must occur as written. Nukta forms are normalised; English ignores case. */
+function termsFor(glossary, texts, source = 'hi') {
+    const prep = s => (source === 'en' ? s.toLowerCase() : s).normalize('NFC');
+    const joined = prep(texts.join(' '));
     const words = joined.split(WORD_SPLIT).filter(Boolean);
-    return glossary.filter(e => e.hi.some(v => (/\s/.test(v) ? joined.includes(v) : words.some(w => w.startsWith(v)))));
+    return glossary.filter(e => spellingsOf(e, source).map(prep).some(v => (/\s/.test(v) ? joined.includes(v) : words.some(w => w.startsWith(v)))));
 }
+
+/** How a matched entry is named in logs: its first spelling in the spoken language. */
+const termName = (e, source) => spellingsOf(e, source)[0] || '';
 
 /** The user message for one batch: instructions, the glossary lines that apply, then the JSON payload as the LAST line. */
 function buildPrompt({ source, targets, items, before, terms }) {
-    const lines = [`Translate from ${LANG_NAME[source]} into ${targets.map(l => `${LANG_NAME[l]} (code "${l}")`).join(' and ')}. Give every cue a field for each of: ${targets.join(', ')}.`];
+    const name = code => LANG_NAME[code] || code;      // never "undefined" in the prompt, even for a language this script does not know
+    const lines = [`Translate from ${name(source)} into ${targets.map(l => `${name(l)} (code "${l}")`).join(' and ')}. Give every cue a field for each of: ${targets.join(', ')}.`];
     if (terms && terms.length) {
         lines.push('Glossary (use these spellings):');
         for (const t of terms) {
-            const to = targets.filter(l => t[l]).map(l => `${LANG_NAME[l]}: ${t[l]}`).join(' | ');
-            if (to) lines.push(`${t.hi.join(' | ')} -> ${to}`);
+            const from = spellingsOf(t, source).join(' | ');
+            const to = targets.filter(l => l !== source && t[l]).map(l => `${name(l)}: ${t[l]}`).join(' | ');
+            if (from && to) lines.push(`${from} -> ${to}`);
         }
     }
     lines.push(JSON.stringify({ before, cues: items.map(it => ({ i: it.i, t: it.t })) }));
@@ -178,7 +190,8 @@ function validateAnswer(answer, items, targets) {
 
 // ── Asking, with splitting and stopping ──────────────────────────────────
 
-const is429 = e => /\b429\b/.test(String((e && e.message) || e));
+// All three look at the shared client's own wording ("Gemini answered 429 ..."), so a 429 mentioned inside some other error's text does not count
+const is429 = e => /Gemini answered 429\b/.test(String((e && e.message) || e));
 // Google's side is not working (timeout, network, 5xx such as 503 "overloaded"): says nothing about the cues, so never split
 const isTransient = e => /Gemini request failed|Gemini answered 5\d\d/.test(String((e && e.message) || e));
 const isFatal = e => /Gemini answered 4\d\d/.test(String((e && e.message) || e)) && !is429(e);   // bad key, retired model ...: asking again will not help
@@ -203,7 +216,7 @@ async function translateCues(ctx, items, onCue, onBatch) {
             if (ctx.maxRequests && ctx.requests >= ctx.maxRequests) { ctx.stopped = 'max-requests'; return null; }
             if ((ctx.requests > 0 || ctx.pauseFirst) && ctx.pause) await ctx.sleep(ctx.pause);
             ctx.requests++;
-            const terms = termsFor(ctx.glossary, group.map(g => g.t));
+            const terms = termsFor(ctx.glossary, group.map(g => g.t), ctx.source);
             let answer;
             try {
                 answer = await ctx.ai.json({
@@ -421,8 +434,8 @@ async function main(argv = process.argv.slice(2), root = DEFAULT_ROOT, deps = {}
         if (!LANG_NAME[source] || !to.length) { error(`${id}: nothing to translate (spoken language "${transcript.lang}").`); return 1; }
         const items = main.slice(0, nums.cues).map((c, i) => ({ i, t: c[1] }));
         log(`Dry run: ${id}, ${LANG_NAME[source]} -> ${to.map(l => LANG_NAME[l]).join(' + ')}, the first ${items.length} of ${main.length} cues, model ${ai.model || 'unknown'}. Nothing is written.`);
-        const terms = termsFor(glossary, items.map(it => it.t));
-        log(`Glossary entries sent: ${terms.length ? terms.map(t => t.hi[0]).join(', ') : 'none'}.\n`);
+        const terms = termsFor(glossary, items.map(it => it.t), source);
+        log(`Glossary entries sent: ${terms.length ? terms.map(t => termName(t, source)).join(', ') : 'none'}.\n`);
         const ctx = makeContext(source, main, to);
         const { got, failed } = await translateCues(ctx, items);
         for (const it of items) {
@@ -497,7 +510,7 @@ async function main(argv = process.argv.slice(2), root = DEFAULT_ROOT, deps = {}
 }
 
 module.exports = {
-    hasDuplicateStarts, main, parseArgs, normalizeGlossary, loadGlossary, termsFor, buildPrompt, validateAnswer, translateCues,
+    hasDuplicateStarts, main, parseArgs, normalizeGlossary, loadGlossary, termsFor, termName, buildPrompt, validateAnswer, translateCues, is429, isTransient, isFatal,
     geminiMap, segmentsOf, statusOf, withTracks, SYSTEM, DEFAULT_BATCH, DEFAULT_GLOSSARY,
 };
 

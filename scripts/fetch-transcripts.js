@@ -209,6 +209,8 @@ const today = () => new Date().toISOString().slice(0, 10);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const pauseMs = () => (process.env.POOJA_PAUSE_MS !== undefined ? Number(process.env.POOJA_PAUSE_MS) || 0 : PAUSE_MS);
 const baseLang = code => String(code).split('-')[0];
+/** The languages a transcript's translated tracks are in, reduced to the base code (en-US counts as en). */
+const presentLangs = t => new Set((t.alt || []).map(a => baseLang((a && a.lang) || '')));
 
 // ── yt-dlp ────────────────────────────────────────────────────────────────
 
@@ -347,8 +349,8 @@ async function main(argv = process.argv.slice(2), root = DEFAULT_ROOT) {
         if (!have(id) || !altLangs.length) return false;
         const t = readJson(fileOf(id), {});
         if (t.altChecked) return false;
-        const has = new Set((t.alt || []).map(a => a && a.lang));
-        return altLangs.some(l => baseLang(l) !== baseLang(t.lang) && !has.has(l));
+        const has = presentLangs(t);
+        return altLangs.some(l => baseLang(l) !== baseLang(t.lang) && !has.has(baseLang(l)));
     };
 
     // Phase 1 fetches the main track of every video that has none. Phase 2 then adds the translated extras to every video
@@ -424,8 +426,8 @@ async function main(argv = process.argv.slice(2), root = DEFAULT_ROOT) {
         process.stdout.write(`[extras ${i + 1}/${extraJobs.length}] ${id} ... `);
         try {
             const transcript = readJson(fileOf(id), null);
-            const gotAlready = new Set((transcript.alt || []).map(a => a.lang));
-            const r = await fetchAltTracks(bin, id, { altLangs: altLangs.filter(l => !gotAlready.has(l)), mainLang: transcript.lang, ...opts });
+            const gotAlready = presentLangs(transcript);
+            const r = await fetchAltTracks(bin, id, { altLangs: altLangs.filter(l => !gotAlready.has(baseLang(l))), mainLang: transcript.lang, ...opts });
             if (r.alt.length) transcript.alt = [...(transcript.alt || []), ...r.alt];
             if (!r.rateLimited && !r.error) transcript.altChecked = today();
             writeTranscript(dir, transcript);
