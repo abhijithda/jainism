@@ -267,7 +267,7 @@ describe('translateCues', () => {
         expect(ai.calls).toHaveLength(4);
     });
 
-    test('a success resets the count of such failures, and a 429 in between does too', async () => {
+    test('a success resets the count of such failures', async () => {
         const ai = fakeAi(n => {
             if ([1, 2, 4, 5].includes(n)) throw new Error('Gemini request failed: The operation was aborted due to timeout');
             if (n === 6) return err429();
@@ -277,6 +277,21 @@ describe('translateCues', () => {
         const { got } = await T.translateCues(ctx, itemsOf(4));
         expect(ctx.stopped).toBe('');
         expect(got.size).toBe(4);
+    });
+
+    test('429s and 503s that alternate still end the run (each kind is counted since the last real answer)', async () => {
+        const ai = fakeAi(n => (n % 2 ? err429() : (() => { throw new Error('Gemini answered 503 (busy or rate-limited)'); })()));
+        const ctx = ctxOf({ ai, max429: 3, maxTransient: 4 });
+        await T.translateCues(ctx, itemsOf(5));
+        expect(ctx.stopped).toBe('rate-limit');
+        expect(ai.calls).toHaveLength(5);
+    });
+
+    test('onBatch is called once after each accepted batch, with that batch\u2019s cues already delivered', async () => {
+        const seen = [];
+        const delivered = [];
+        await T.translateCues(ctxOf({ batch: 3 }), itemsOf(8), i => delivered.push(i), () => seen.push(delivered.length));
+        expect(seen).toEqual([3, 6, 8]);
     });
 
     test('a wrong answer still splits, but only wrong answers do', async () => {
@@ -518,6 +533,41 @@ describe('main, on a temporary copy of the project', () => {
         made.length = 0;
         await T.main(['--pause', '0', '--dry-run', '--ids', B], root, { createGemini, sleep: async () => {}, log: () => {}, error: () => {} });
         expect(made[0]).toEqual({ model: undefined, retries: 0, timeoutMs: 90000 });
+    });
+
+    test('an interruption (Ctrl+C) in the middle of a video loses at most the request in flight: every accepted batch is already saved', async () => {
+        let pauses = 0;
+        const sleep = async () => { if (++pauses === 2) throw new Error('interrupted'); };      // before the 3rd request
+        const ai = fakeAi();
+        await expect(T.main(['--ids', A, '--batch', '3', '--pause', '1', '--cooldown', '0'], root, { ai, sleep, log: () => {}, error: () => {} })).rejects.toThrow('interrupted');
+        expect(ai.calls).toHaveLength(2);
+        const a = read(A);
+        expect(a.alt.map(x => [x.lang, x.segments.length])).toEqual([['kn', 6], ['en', 6]]);
+        expect(a.alt[0].segments.map(s => s[0])).toEqual([0, 10, 20, 30, 40, 50]);
+        expect(index()[A].alt).toEqual(['kn', 'en']);
+    });
+
+    test('a transcript with two cues in the same second is skipped with a message, not asked for again and again', async () => {
+        const dup = { videoId: B, lang: 'hi-orig', source: 'captions', fetched: '2026-11-19', segments: [[0, HI_B[0]], [10, HI_B[1]], [10, HI_B[2]]] };
+        write(B, dup);
+        const ai = fakeAi();
+        expect(await run(['--ids', B], ai)).toBe(0);
+        expect(ai.calls).toHaveLength(0);
+        expect(out.join('\n')).toMatch(/two cues start in the same second/);
+        expect(read(B).alt).toBeUndefined();
+        out = [];
+        expect(await T.main(['--check', '--ids', B], root, deps(ai))).toBe(1);
+        expect(out.join('\n')).toMatch(/skip\s+3Z3uwIGj_VM/);
+        expect(T.hasDuplicateStarts(cues(HI_B))).toBe(false);
+        expect(T.hasDuplicateStarts(dup.segments)).toBe(true);
+    });
+
+    test.each([
+        ['--retry-wait', 'abc'], ['--max-transient', '0'], ['--max-requests', 'x'], ['--max-429', '0'], ['--timeout', '5'], ['--batch', '-1'],
+    ])('a bad value for %s names the option as typed', async (flag, value) => {
+        expect(await run([flag, value], fakeAi())).toBe(2);
+        expect(errors.join('\n')).toContain(`Bad value for ${flag}:`);
+        expect(errors.join('\n')).not.toMatch(/--[a-z]+[A-Z]/);        // never camelCase
     });
 
     test('bad options exit 2', async () => {

@@ -34,6 +34,9 @@
 //     in `alt`. Every alt cue has exactly the start second of one main cue, so a hit in the Kannada track opens the
 //     video at the same second as the Hindi cue it was made from. A translated track replaces YouTube's own machine
 //     translation of the same language, if one is there; other alt tracks are left alone.
+//   * A transcript in which two cues start in the same second is skipped (with a message): the translated cues are matched
+//     to the spoken ones by start second, and that would be ambiguous. The fetch script never makes such a file.
+//   * Saved after every accepted batch (not only after every video), so Ctrl+C loses at most the request in flight.
 //   * One request carries a batch of cues and asks for all target languages at once (half the requests of two passes).
 //     Cues are sent as {i, t}; the answer must contain every i exactly once, a non-empty text for every language,
 //     nothing unknown, and plausible lengths and scripts. Otherwise the WHOLE answer is thrown away and the batch is
@@ -72,7 +75,6 @@ const DRY_RUN_CUES = 30;
 const DRY_RUN_ID = 'bgldj0TMZB4';  // a short video (32 cues), the one used to try the fetch script
 const MIN_RATIO_CHARS = 12;        // shorter cues are not length-checked
 const RATIO_RANGE = [0.2, 6];      // translated length / source length, in characters; a guard against gross mistakes only
-const ID = /^[\w-]{11}$/;
 
 // ── The prompt ───────────────────────────────────────────────────────────
 
@@ -188,9 +190,10 @@ const isFatal = e => /Gemini answered 4\d\d/.test(String((e && e.message) || e))
  *                        maxRequests, requests, ... } (see makeContext)
  * @param {{i: number, t: string}[]} items
  * @param {(i: number, rec: Object) => void} [onCue]  called for every cue as soon as its batch is accepted
+ * @param {() => void} [onBatch]  called once after each accepted batch (the caller saves there)
  * @returns {Promise<{ got: Map<number, Object>, failed: number[] }>}  failed: cues that never came back right
  */
-async function translateCues(ctx, items, onCue) {
+async function translateCues(ctx, items, onCue, onBatch) {
     const got = new Map();
     const failed = [];
 
@@ -210,7 +213,6 @@ async function translateCues(ctx, items, onCue) {
             } catch (e) {
                 if (is429(e)) {
                     ctx.in429++;
-                    ctx.inTransient = 0;
                     if (ctx.in429 >= ctx.max429) { ctx.stopped = 'rate-limit'; return null; }
                     ctx.log(`      Google refused the request (HTTP 429, ${ctx.in429} of ${ctx.max429} in a row); waiting ${Math.round(ctx.cooldown / 1000)} s`);
                     await ctx.sleep(ctx.cooldown);
@@ -243,6 +245,7 @@ async function translateCues(ctx, items, onCue) {
         if (!v) return;                                                    // stopped
         if (v.ok) {
             for (const [i, rec] of v.out) { got.set(i, rec); if (onCue) onCue(i, rec); }
+            if (onBatch) onBatch();
             return;
         }
         if (group.length === 1) {
@@ -280,6 +283,9 @@ function geminiMap(transcript, main, lang) {
     for (const seg of entry.segments || []) if (validCue(seg) && byStart.has(seg[0])) map.set(byStart.get(seg[0]), seg[1]);
     return map;
 }
+
+/** Two cues with the same start second make the start-based matching of translated cues ambiguous. */
+const hasDuplicateStarts = main => new Set(main.map(c => c[0])).size !== main.length;
 
 const segmentsOf = (main, map) => main.flatMap((c, i) => (map.has(i) ? [[c[0], map.get(i)]] : []));
 
@@ -356,8 +362,10 @@ async function main(argv = process.argv.slice(2), root = DEFAULT_ROOT, deps = {}
         retryWait: wholeNumber(args['retry-wait'], DEFAULT_RETRY_WAIT_MS), maxTransient: wholeNumber(args['max-transient'], DEFAULT_MAX_TRANSIENT, 1), maxRequests: wholeNumber(args['max-requests'], 0), cues: wholeNumber(args.cues, DRY_RUN_CUES, 1),
     };
     const badNum = Object.entries(nums).find(([, v]) => Number.isNaN(v));
+    const FLAG_OF = { max429: 'max-429', retryWait: 'retry-wait', maxTransient: 'max-transient', maxRequests: 'max-requests' };   // the option as typed
+    const MIN_OF = { batch: 1, max429: 1, maxTransient: 1, cues: 1, timeout: 1000 };
     if (!targets.length || targets.some(l => !['kn', 'en', 'hi'].includes(l)) || badNum) {
-        error(badNum ? `Bad value for --${badNum[0]}: it must be a whole number.` : 'Bad --langs: use kn, en or kn,en.');
+        error(badNum ? `Bad value for --${FLAG_OF[badNum[0]] || badNum[0]}: it must be a whole number${MIN_OF[badNum[0]] > 1 ? ` of at least ${MIN_OF[badNum[0]]}` : (MIN_OF[badNum[0]] === 1 ? ', at least 1' : '')}.` : 'Bad --langs: use kn, en or kn,en.');
         return 2;
     }
 
@@ -374,7 +382,9 @@ async function main(argv = process.argv.slice(2), root = DEFAULT_ROOT, deps = {}
     if (args.check) {
         let left = 0;
         for (const id of ids) {
-            const st = statusOf(readJson(fileOf(id), {}), targets);
+            const tr = readJson(fileOf(id), {});
+            if (hasDuplicateStarts((tr.segments || []).filter(validCue))) { left++; log(`skip   ${id}  (two cues start in the same second: cannot be translated)`); continue; }
+            const st = statusOf(tr, targets);
             const parts = st.langs.map(l => `${l.lang} ${l.done}/${st.cues}`);
             const open = st.langs.some(l => l.done < st.cues);
             if (open) left++;
@@ -446,6 +456,7 @@ async function main(argv = process.argv.slice(2), root = DEFAULT_ROOT, deps = {}
         if (!main.length || !LANG_NAME[source]) { log(`${tag}: skipped (spoken language "${transcript && transcript.lang}")`); continue; }
         const to = targets.filter(l => l !== source);
         if (!to.length) { log(`${tag}: nothing to translate (spoken language ${source})`); continue; }
+        if (hasDuplicateStarts(main)) { log(`${tag}: skipped (two cues start in the same second, so translated cues could not be matched to them; fix the transcript first)`); openVideos++; continue; }
 
         const maps = new Map(to.map(l => [l, args.force ? new Map() : geminiMap(transcript, main, l)]));
         const needed = to.filter(l => maps.get(l).size < main.length);
@@ -467,8 +478,8 @@ async function main(argv = process.argv.slice(2), root = DEFAULT_ROOT, deps = {}
         const result = await translateCues(ctx, items, (i, rec) => {
             for (const l of needed) if (!maps.get(l).has(i)) maps.get(l).set(i, rec[l]);   // a cue already translated stays as it was
             sinceSave++;
-        });
-        if (sinceSave) save();                                // saved after every video, and whatever came before a stop
+        }, () => { if (sinceSave) save(); });                // saved after every accepted batch
+        if (sinceSave) save();
         requests += ctx.requests;
         cuesDone += result.got.size;
         const missing = Math.max(...to.map(l => main.length - maps.get(l).size));
@@ -486,7 +497,7 @@ async function main(argv = process.argv.slice(2), root = DEFAULT_ROOT, deps = {}
 }
 
 module.exports = {
-    main, parseArgs, normalizeGlossary, loadGlossary, termsFor, buildPrompt, validateAnswer, translateCues,
+    hasDuplicateStarts, main, parseArgs, normalizeGlossary, loadGlossary, termsFor, buildPrompt, validateAnswer, translateCues,
     geminiMap, segmentsOf, statusOf, withTracks, SYSTEM, DEFAULT_BATCH, DEFAULT_GLOSSARY,
 };
 
