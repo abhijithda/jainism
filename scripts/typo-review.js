@@ -113,9 +113,9 @@ function mechanicalIssues(line) {
     for (const m of line.text.matchAll(/[\u2060\u200B\uFEFF]/g)) {
         const i = m.index;
         const old = i + 1 < line.text.length ? line.text.slice(i, i + 2) : line.text.slice(i - 1, i + 1);
-        out.push({ key: line.key, old, new: old.replace(/[\u2060\u200B\uFEFF]/g, ''), reason: 'invisible character', confidence: 'clear' });
+        out.push({ key: line.key, old, new: old.replace(/[\u2060\u200B\uFEFF]/g, ''), reason: 'invisible character', confidence: 'clear', exact: true });
     }
-    for (const m of line.text.matchAll(/\S( {2,})\S/g)) out.push({ key: line.key, old: m[0], new: m[0][0] + ' ' + m[0][m[0].length - 1], reason: 'double space', confidence: 'clear' });
+    for (const m of line.text.matchAll(/\S( {2,})\S/g)) out.push({ key: line.key, old: m[0], new: m[0][0] + ' ' + m[0][m[0].length - 1], reason: 'double space', confidence: 'clear', exact: true });
     return out;
 }
 
@@ -291,7 +291,7 @@ function decide(lines, proposals, allowlist) {
         const spans = spansOf(line.text, p.old, false);
         if (!spans.length) { drop('the text is not in the line'); continue; }
         if (spans.some((s) => protectedSpan(line.text, s, allowlist))) { drop('allowlisted spelling or link'); continue; }
-        const base = { key: p.key, blockId: line.blockId, label: line.label, lang: line.lang, index: line.index, old: p.old, new: p.new, reason: String(p.reason || '').slice(0, 160) };
+        const base = { key: p.key, blockId: line.blockId, label: line.label, lang: line.lang, index: line.index, old: p.old, new: p.new, reason: String(p.reason || '').slice(0, 160), ...(p.exact ? { exact: true } : {}) };
         if (line.kind === 'verse') { decided.flags.push({ ...base, flag: true }); continue; }
         const clear = p.mixed
             ? Boolean(p.mixedAuto) && spans.length === 1                       // Kannada to Latin: its own checks are in mixedScriptIssues
@@ -302,11 +302,34 @@ function decide(lines, proposals, allowlist) {
 }
 
 /** Apply replacements to one line, right to left, skipping any that overlaps one already applied. Returns { text, applied, left }. */
+const WORD_CHAR = /[\p{L}\p{M}\p{N}\u200C\u200D]/u;
+
+/**
+ * Where `old` stands in `text` as a whole word: a match that begins or ends with a letter must not touch another letter on
+ * that side. So "chandan" is found as the word in "...chandana lepana ... chandan lepana", never as the first seven letters of
+ * "chandana" (which made "chandanaa"). -1 when it is only ever part of a longer word.
+ */
+function locate(text, old, whole = true) {
+    const chars = [...old];
+    if (!chars.length) return -1;
+    if (!whole) return text.indexOf(old);   // a span with its own context characters (double space, invisible character)
+    const needStart = WORD_CHAR.test(chars[0]);
+    const needEnd = WORD_CHAR.test(chars[chars.length - 1]);
+    for (let i = text.indexOf(old); i >= 0; i = text.indexOf(old, i + 1)) {
+        const before = [...text.slice(0, i)].pop();
+        const after = [...text.slice(i + old.length)][0];
+        if (needStart && before && WORD_CHAR.test(before)) continue;
+        if (needEnd && after && WORD_CHAR.test(after)) continue;
+        return i;
+    }
+    return -1;
+}
+
 function applyToLine(text, changes) {
-    const located = changes.map((c) => ({ c, at: text.indexOf(c.old) })).filter((x) => x.at >= 0).sort((a, b) => b.at - a.at);
+    const located = changes.map((c) => ({ c, at: locate(text, c.old, !c.exact) })).filter((x) => x.at >= 0).sort((a, b) => b.at - a.at);
     let out = text;
     let limit = Infinity;
-    const applied = [], left = changes.filter((c) => text.indexOf(c.old) < 0);
+    const applied = [], left = changes.filter((c) => locate(text, c.old, !c.exact) < 0);
     for (const { c, at } of located) {
         if (at + c.old.length > limit) { left.push(c); continue; }
         out = out.slice(0, at) + c.new + out.slice(at + c.old.length);
@@ -314,7 +337,7 @@ function applyToLine(text, changes) {
         applied.push(c);
     }
     // a change that overlapped another one is tried again on the new text (its own words are usually still there)
-    const retry = left.filter((c) => out.indexOf(c.old) >= 0);
+    const retry = left.filter((c) => locate(out, c.old, !c.exact) >= 0);
     if (retry.length && applied.length) {
         const again = applyToLine(out, retry);
         return { text: again.text, applied: [...applied, ...again.applied], left: [...left.filter((c) => !retry.includes(c)), ...again.left] };
@@ -428,7 +451,7 @@ const esc = (t) => String(t).replace(/\|/g, '\\|').replace(/\n/g, ' ');
 
 module.exports = {
     loadAllowlist, loadEquivalents, skeleton, dropDuplicate, duplicatePairIssues, editDistance, changedBlocks, collectLines, mechanicalIssues, decide, applyToLine, applyFixes,
-    buildSuggestionComments, reviewTypos, renderReport,
+    buildSuggestionComments, reviewTypos, renderReport, locate,
 };
 
 // ── CLI ────────────────────────────────────────────────────────────────────────────────────────────────────

@@ -402,3 +402,44 @@ describe('the spelling style reaches every prompt that writes English', () => {
         expect(TRANSLIT_STYLE).toMatch(/abhisheka not abhishek, Rama not Ram/);
     });
 });
+
+describe('a typo is found as a whole word, never inside a longer word', () => {
+    const LINE = '5. Chuhavana : Similar to Upa lepana but only for feet. In upa lepana, chandana lepana is done for entire pratima. In Chuhavana, chandan lepana is done only for feet.';
+
+    test('"chandan" is the word at the end, not the first letters of "chandana" (which made "chandanaa")', () => {
+        const r = T.applyToLine(LINE, [{ old: 'chandan', new: 'chandana', reason: 'x' }]);
+        expect(r.text).toContain('In upa lepana, chandana lepana is done for entire');
+        expect(r.text).toContain('In Chuhavana, chandana lepana is done only for feet.');
+        expect(r.text).not.toContain('chandanaa');
+        expect(r.applied).toHaveLength(1);
+    });
+
+    test('a word that only exists inside longer words is not found at all', () => {
+        expect(T.locate('chandana lepana', 'chandan')).toBe(-1);
+        expect(T.applyToLine('chandana lepana', [{ old: 'chandan', new: 'chandana' }])).toMatchObject({ text: 'chandana lepana', applied: [], left: [expect.anything()] });
+    });
+
+    test('Kannada words too, and punctuation next to a word does not count as a letter', () => {
+        expect(T.locate('ನೀರಿನ್ನುಗಳು ನೀರಿನ್ನು', 'ನೀರಿನ್ನು')).toBe('ನೀರಿನ್ನುಗಳು '.length);
+        expect(T.locate('(sugandint), x', 'sugandint')).toBe(1);
+        expect(T.locate('say sugandint.', 'sugandint')).toBe(4);
+    });
+
+    test('a span with its own context characters (double space) still matches inside words', () => {
+        const r = T.applyToLine('Navana  = Abhishekas', [{ old: 'a  =', new: 'a =', reason: 'double space', exact: true }]);
+        expect(r.text).toBe('Navana = Abhishekas');
+    });
+
+    test('the one-click suggestion puts the fix on the right "chandan"', async () => {
+        const base = book();
+        const head = clone(base);
+        head[1].blocks.push(blk('m00007', 1, 'paragraph', [], [LINE]));
+        const issue = { key: 'm00007|en|0', old: 'chandan', new: 'chandana', reason: "Sanskrit words keep the final 'a'", confidence: 'doubtful' };
+        const r = await T.reviewTypos(head, base, { ai: fakeAi([issue]), allowlist: [] });
+        expect(r.comments).toHaveLength(1);
+        expect(r.comments[0].body).toContain('In upa lepana, chandana lepana is done for entire');
+        expect(r.comments[0].body).toContain('In Chuhavana, chandana lepana is done only for feet.');
+        expect(r.comments[0].body).not.toContain('chandanaa');
+    });
+});
+

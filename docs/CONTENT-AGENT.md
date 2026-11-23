@@ -314,3 +314,11 @@ nine minutes one run took.
   and missing translations are listed, as before.
 - Typo review and video follow-up do not insert items, so an outage there only means no AI help for that run (typo review still
   makes its mechanical fixes).
+
+### Typos are matched as whole words
+
+A fix or one-click suggestion is placed on the word itself, never on the first letters of a longer word: `chandan → chandana`
+in a line that already says `chandana` earlier is applied to the standalone `chandan`, not to the start of the first
+`chandana` (which once made `chandanaa`). A word that only appears inside longer words is left alone. Spans that carry their own
+neighbouring characters (double spaces, invisible characters) are matched as written.
+
