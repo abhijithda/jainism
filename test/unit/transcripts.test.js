@@ -50,6 +50,15 @@ describe('assets/transcripts', () => {
                 expect(a.source).toBe('translated');
                 expect(a.segments.length).toBeGreaterThan(0);
                 checkCues(a.segments);
+                // made with Gemini (scripts/translate-transcripts.js): each cue sits exactly on a cue of the spoken track,
+                // so a hit opens the video at the same second as the words it was translated from
+                if (a.via) {
+                    expect(a.via).toBe('gemini');
+                    expect(typeof a.model === 'string' && a.model !== '').toBe(true);
+                    const starts = new Set(file.segments.map(s => s[0]));
+                    a.segments.forEach(([s]) => expect(starts.has(s)).toBe(true));
+                    expect(a.segments.length).toBeLessThanOrEqual(file.segments.length);
+                }
             });
         }
     });

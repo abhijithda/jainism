@@ -1,0 +1,749 @@
+{
+ "_about": "Jain terms for scripts/translate-transcripts.js. hi: how the Hindi captions may spell it (a word-start match; several words = exact phrase). kn / en: the spelling to use in the translation. inBook: how often the kn spelling occurs in assets/data.json (0 = my suggestion, not seen in the book). check: true = please look at this one. Edit freely: add entries, fix spellings; the file is only read by the script.",
+ "terms": [
+  {
+   "hi": [
+    "शासन देवता",
+    "शासन देव",
+    "शासनदेवता",
+    "शासन देवी"
+   ],
+   "kn": "ಶಾಸನ ದೇವತೆ",
+   "en": "Shasana Devata",
+   "inBook": 28
+  },
+  {
+   "hi": [
+    "तीर्थंकर",
+    "तीर्थकर"
+   ],
+   "kn": "ತೀರ್ಥಂಕರ",
+   "en": "Tirthankara",
+   "inBook": 15
+  },
+  {
+   "hi": [
+    "अभिषेक"
+   ],
+   "kn": "ಅಭಿಷೇಕ",
+   "en": "Abhisheka",
+   "inBook": 31
+  },
+  {
+   "hi": [
+    "सम्यक्त्व",
+    "सम्यक्तव"
+   ],
+   "kn": "ಸಮ್ಯಕ್ತ್ವ",
+   "en": "Samyaktva",
+   "inBook": 9
+  },
+  {
+   "hi": [
+    "सम्यग्दृष्टि",
+    "सम्यक दृष्टि",
+    "सम्यक् दृष्टि"
+   ],
+   "kn": "ಸಮ್ಯಗ್ದೃಷ್ಟಿ",
+   "en": "Samyag Drishti",
+   "inBook": 1
+  },
+  {
+   "hi": [
+    "मिथ्यात्व",
+    "मिथ्या दृष्टि"
+   ],
+   "kn": "ಮಿಥ್ಯಾತ್ವ",
+   "en": "Mithyatva",
+   "inBook": 1
+  },
+  {
+   "hi": [
+    "गुणस्थान",
+    "गुण स्थान"
+   ],
+   "kn": "ಗುಣಸ್ಥಾನ",
+   "en": "Gunasthana",
+   "inBook": 4
+  },
+  {
+   "hi": [
+    "पद्मावती"
+   ],
+   "kn": "ಪದ್ಮಾವತಿ",
+   "en": "Padmavati",
+   "inBook": 1
+  },
+  {
+   "hi": [
+    "चक्रेश्वरी"
+   ],
+   "kn": "ಚಕ್ರೇಶ್ವರಿ",
+   "en": "Chakreshwari",
+   "inBook": 5
+  },
+  {
+   "hi": [
+    "यक्ष यक्षी",
+    "यक्ष-यक्षी"
+   ],
+   "kn": "ಯಕ್ಷ ಯಕ್ಷಿ",
+   "en": "Yaksha Yakshi",
+   "inBook": 3
+  },
+  {
+   "hi": [
+    "क्षेत्रपाल"
+   ],
+   "kn": "ಕ್ಷೇತ್ರಪಾಲ",
+   "en": "Kshetrapala",
+   "inBook": 0,
+   "check": true
+  },
+  {
+   "hi": [
+    "शांतिधारा",
+    "शांति धारा"
+   ],
+   "kn": "ಶಾಂತಿಧಾರಾ",
+   "en": "Shantidhara",
+   "inBook": 1
+  },
+  {
+   "hi": [
+    "पंचामृत"
+   ],
+   "kn": "ಪಂಚಾಮೃತ",
+   "en": "Panchamruta",
+   "inBook": 9
+  },
+  {
+   "hi": [
+    "निश्चय नय"
+   ],
+   "kn": "ನಿಶ್ಚಯ ನಯ",
+   "en": "Nishchaya Naya",
+   "inBook": 8
+  },
+  {
+   "hi": [
+    "व्यवहार नय"
+   ],
+   "kn": "ವ್ಯವಹಾರ ನಯ",
+   "en": "Vyavahara Naya",
+   "inBook": 2
+  },
+  {
+   "hi": [
+    "समवसरण",
+    "समोशरण"
+   ],
+   "kn": "ಸಮವಸರಣ",
+   "en": "Samavasarana",
+   "inBook": 4
+  },
+  {
+   "hi": [
+    "अरहंत",
+    "अरिहंत"
+   ],
+   "kn": "ಅರಹಂತ",
+   "en": "Arhanta",
+   "inBook": 2
+  },
+  {
+   "hi": [
+    "सिद्ध भगवान",
+    "सिद्ध परमेष्ठी"
+   ],
+   "kn": "ಸಿದ್ಧ",
+   "en": "Siddha",
+   "inBook": 9
+  },
+  {
+   "hi": [
+    "केवली"
+   ],
+   "kn": "ಕೇವಲಿ",
+   "en": "Kevali",
+   "inBook": 0,
+   "check": true
+  },
+  {
+   "hi": [
+    "केवलज्ञान",
+    "केवल ज्ञान"
+   ],
+   "kn": "ಕೇವಲಜ್ಞಾನ",
+   "en": "Kevalajnana",
+   "inBook": 0,
+   "check": true
+  },
+  {
+   "hi": [
+    "मोक्ष"
+   ],
+   "kn": "ಮೋಕ್ಷ",
+   "en": "Moksha",
+   "inBook": 6
+  },
+  {
+   "hi": [
+    "संसार"
+   ],
+   "kn": "ಸಂಸಾರ",
+   "en": "Sansara",
+   "inBook": 2
+  },
+  {
+   "hi": [
+    "श्रावक"
+   ],
+   "kn": "ಶ್ರಾವಕ",
+   "en": "Shravaka",
+   "inBook": 7
+  },
+  {
+   "hi": [
+    "पूजा",
+    "पूजन"
+   ],
+   "kn": "ಪೂಜೆ",
+   "en": "Pooja",
+   "inBook": 35
+  },
+  {
+   "hi": [
+    "अर्घ्य",
+    "अर्घ"
+   ],
+   "kn": "ಅರ್ಘ್ಯ",
+   "en": "Arghya",
+   "inBook": 6
+  },
+  {
+   "hi": [
+    "जिनेन्द्र",
+    "जिनेंद्र"
+   ],
+   "kn": "ಜಿನೇಂದ್ರ",
+   "en": "Jinendra",
+   "inBook": 22
+  },
+  {
+   "hi": [
+    "जिनवाणी"
+   ],
+   "kn": "ಜಿನವಾಣಿ",
+   "en": "Jinavani",
+   "inBook": 0,
+   "check": true
+  },
+  {
+   "hi": [
+    "कुंदकुंद",
+    "कुन्दकुन्द"
+   ],
+   "kn": "ಕುಂದಕುಂದ",
+   "en": "Kundakunda",
+   "inBook": 2
+  },
+  {
+   "hi": [
+    "समंतभद्र",
+    "समन्तभद्र"
+   ],
+   "kn": "ಸಮಂತಭದ್ರ",
+   "en": "Samantabhadra",
+   "inBook": 1
+  },
+  {
+   "hi": [
+    "पूज्यपाद"
+   ],
+   "kn": "ಪೂಜ್ಯಪಾದ",
+   "en": "Poojyapaada",
+   "inBook": 5
+  },
+  {
+   "hi": [
+    "जिनसेन"
+   ],
+   "kn": "ಜಿನಸೇನ",
+   "en": "Jinasena",
+   "inBook": 3
+  },
+  {
+   "hi": [
+    "गुणभद्र"
+   ],
+   "kn": "ಗುಣಭದ್ರ",
+   "en": "Gunabhadra",
+   "inBook": 1
+  },
+  {
+   "hi": [
+    "विद्यासागर"
+   ],
+   "kn": "ವಿದ್ಯಾಸಾಗರ",
+   "en": "Vidyasagar",
+   "inBook": 5
+  },
+  {
+   "hi": [
+    "शांतिसागर"
+   ],
+   "kn": "ಶಾಂತಿಸಾಗರ",
+   "en": "Shantisagar",
+   "inBook": 1
+  },
+  {
+   "hi": [
+    "पद्मपुराण",
+    "पद्म पुराण"
+   ],
+   "kn": "ಪದ್ಮಪುರಾಣ",
+   "en": "Padma Purana",
+   "inBook": 0,
+   "check": true
+  },
+  {
+   "hi": [
+    "हरिवंश पुराण",
+    "हरिवंशपुराण"
+   ],
+   "kn": "ಹರಿವಂಶ ಪುರಾಣ",
+   "en": "Harivamsha Purana",
+   "inBook": 2
+  },
+  {
+   "hi": [
+    "महापुराण",
+    "महा पुराण"
+   ],
+   "kn": "ಮಹಾಪುರಾಣ",
+   "en": "Maha Purana",
+   "inBook": 0,
+   "check": true
+  },
+  {
+   "hi": [
+    "पंचकल्याणक",
+    "पंच कल्याणक"
+   ],
+   "kn": "ಪಂಚಕಲ್ಯಾಣ",
+   "en": "Panchakalyanaka",
+   "inBook": 0,
+   "check": true
+  },
+  {
+   "hi": [
+    "जन्मकल्याणक",
+    "जन्म कल्याणक"
+   ],
+   "kn": "ಜನ್ಮ ಕಲ್ಯಾಣ",
+   "en": "Janma Kalyanaka",
+   "inBook": 5
+  },
+  {
+   "hi": [
+    "वीतराग"
+   ],
+   "kn": "ವೀತರಾಗ",
+   "en": "Veetaraga",
+   "inBook": 4
+  },
+  {
+   "hi": [
+    "प्रतिक्रमण"
+   ],
+   "kn": "ಪ್ರತಿಕ್ರಮಣ",
+   "en": "Pratikramana",
+   "inBook": 2
+  },
+  {
+   "hi": [
+    "देव मूढ़ता",
+    "देवमूढ़ता",
+    "देव मूढता"
+   ],
+   "kn": "ದೇವ ಮೂಢತೆ",
+   "en": "Deva Moodhata",
+   "inBook": 7
+  },
+  {
+   "hi": [
+    "आदिनाथ"
+   ],
+   "kn": "ಆದಿನಾಥ",
+   "en": "Adinatha",
+   "inBook": 5
+  },
+  {
+   "hi": [
+    "बाहुबली"
+   ],
+   "kn": "ಬಾಹುಬಲಿ",
+   "en": "Bahubali",
+   "inBook": 0,
+   "check": true
+  },
+  {
+   "hi": [
+    "महावीर"
+   ],
+   "kn": "ಮಹಾವೀರ",
+   "en": "Mahavira",
+   "inBook": 4
+  },
+  {
+   "hi": [
+    "पार्श्वनाथ"
+   ],
+   "kn": "ಪಾರ್ಶ್ವನಾಥ",
+   "en": "Parshwanatha",
+   "inBook": 1
+  },
+  {
+   "hi": [
+    "नेमिनाथ"
+   ],
+   "kn": "ನೇಮಿನಾಥ",
+   "en": "Neminatha",
+   "inBook": 1
+  },
+  {
+   "hi": [
+    "नंदीश्वर",
+    "नन्दीश्वर"
+   ],
+   "kn": "ನಂದೀಶ್ವರ",
+   "en": "Nandishwara",
+   "inBook": 2
+  },
+  {
+   "hi": [
+    "सिद्धचक्र",
+    "सिद्ध चक्र"
+   ],
+   "kn": "ಸಿದ್ಧಚಕ್ರ",
+   "en": "Siddhachakra",
+   "inBook": 1
+  },
+  {
+   "hi": [
+    "भक्तामर"
+   ],
+   "kn": "ಭಕ್ತಾಮರ",
+   "en": "Bhaktamara",
+   "inBook": 5
+  },
+  {
+   "hi": [
+    "जिनबिंब",
+    "जिन बिंब",
+    "जिन प्रतिमा"
+   ],
+   "kn": "ಜಿನ ಬಿಂಬ",
+   "en": "Jina Bimba",
+   "inBook": 0,
+   "check": true
+  },
+  {
+   "hi": [
+    "अव्रती",
+    "अविरत"
+   ],
+   "kn": "ಅವ್ರತಿ",
+   "en": "Avrati",
+   "inBook": 1
+  },
+  {
+   "hi": [
+    "व्रती"
+   ],
+   "kn": "ವ್ರತಿ",
+   "en": "Vrati",
+   "inBook": 13
+  },
+  {
+   "hi": [
+    "असंयमी"
+   ],
+   "kn": "ಅಸಂಯಮಿ",
+   "en": "Asanyami",
+   "inBook": 7
+  },
+  {
+   "hi": [
+    "कल्याणक"
+   ],
+   "kn": "ಕಲ್ಯಾಣಕ",
+   "en": "Kalyanaka",
+   "inBook": 4
+  },
+  {
+   "hi": [
+    "गंधोदक",
+    "गन्धोदक"
+   ],
+   "kn": "ಗಂಧೋದಕ",
+   "en": "Gandhodhaka",
+   "inBook": 0,
+   "check": true
+  },
+  {
+   "hi": [
+    "सामायिक"
+   ],
+   "kn": "ಸಾಮಾಯಿಕ",
+   "en": "Samayika",
+   "inBook": 0,
+   "check": true
+  },
+  {
+   "hi": [
+    "आहार दान",
+    "आहारदान"
+   ],
+   "kn": "ಆಹಾರ ದಾನ",
+   "en": "Ahara Daana",
+   "inBook": 1
+  },
+  {
+   "hi": [
+    "तप"
+   ],
+   "kn": "ತಪ",
+   "en": "Tapa",
+   "inBook": 4
+  },
+  {
+   "hi": [
+    "साधु"
+   ],
+   "kn": "ಸಾಧು",
+   "en": "Sadhu",
+   "inBook": 3
+  },
+  {
+   "hi": [
+    "आचार्य"
+   ],
+   "kn": "ಆಚಾರ್ಯ",
+   "en": "Acharya",
+   "inBook": 32
+  },
+  {
+   "hi": [
+    "उपाध्याय"
+   ],
+   "kn": "ಉಪಾಧ್ಯಾಯ",
+   "en": "Upadhyaya",
+   "inBook": 0,
+   "check": true
+  },
+  {
+   "hi": [
+    "तत्त्वार्थ सूत्र",
+    "तत्वार्थ सूत्र"
+   ],
+   "kn": "ತತ್ತ್ವಾರ್ಥ ಸೂತ್ರ",
+   "en": "Tattvartha Sutra",
+   "inBook": 0,
+   "check": true
+  },
+  {
+   "hi": [
+    "द्रव्य"
+   ],
+   "kn": "ದ್ರವ್ಯ",
+   "en": "Dravya",
+   "inBook": 4
+  },
+  {
+   "hi": [
+    "शास्त्र"
+   ],
+   "kn": "ಶಾಸ್ತ್ರ",
+   "en": "Shastra",
+   "inBook": 4
+  },
+  {
+   "hi": [
+    "आगम"
+   ],
+   "kn": "ಆಗಮ",
+   "en": "Agama",
+   "inBook": 3
+  },
+  {
+   "hi": [
+    "धर्म"
+   ],
+   "kn": "ಧರ್ಮ",
+   "en": "Dharma",
+   "inBook": 10
+  },
+  {
+   "hi": [
+    "भगवान"
+   ],
+   "kn": "ಭಗವಂತ",
+   "en": "Bhagawan",
+   "inBook": 31
+  },
+  {
+   "hi": [
+    "प्रशस्त"
+   ],
+   "kn": "ಪ್ರಶಸ್ತ",
+   "en": "Prashasta",
+   "inBook": 0,
+   "check": true
+  },
+  {
+   "hi": [
+    "प्रातिहार्य",
+    "प्रतिहार्य"
+   ],
+   "kn": "ಪ್ರಾತಿಹಾರ್ಯ",
+   "en": "Pratiharya",
+   "inBook": 2
+  },
+  {
+   "hi": [
+    "आराधना"
+   ],
+   "kn": "ಆರಾಧನೆ",
+   "en": "Aaradhana",
+   "inBook": 2
+  },
+  {
+   "hi": [
+    "वात्सल्य"
+   ],
+   "kn": "ವಾತ್ಸಲ್ಯ",
+   "en": "Vatsalya",
+   "inBook": 1
+  },
+  {
+   "hi": [
+    "स्वाध्याय"
+   ],
+   "kn": "ಸ್ವಾಧ್ಯಾಯ",
+   "en": "Swadhyaya",
+   "inBook": 0,
+   "check": true
+  },
+  {
+   "hi": [
+    "उपसर्ग"
+   ],
+   "kn": "ಉಪಸರ್ಗ",
+   "en": "Upasarga",
+   "inBook": 1
+  },
+  {
+   "hi": [
+    "मुनिराज"
+   ],
+   "kn": "ಮುನಿರಾಜ",
+   "en": "Muniraja",
+   "inBook": 0,
+   "check": true
+  },
+  {
+   "hi": [
+    "मुनि"
+   ],
+   "kn": "ಮುನಿ",
+   "en": "Muni",
+   "inBook": 12
+  },
+  {
+   "hi": [
+    "श्लोक"
+   ],
+   "kn": "ಶ್ಲೋಕ",
+   "en": "Shloka",
+   "inBook": 15
+  },
+  {
+   "hi": [
+    "मंत्र",
+    "मन्त्र"
+   ],
+   "kn": "ಮಂತ್ರ",
+   "en": "Mantra",
+   "inBook": 3
+  },
+  {
+   "hi": [
+    "व्रत"
+   ],
+   "kn": "ವ್ರತ",
+   "en": "Vrata",
+   "inBook": 17
+  },
+  {
+   "hi": [
+    "पुण्य"
+   ],
+   "kn": "ಪುಣ್ಯ",
+   "en": "Punya",
+   "inBook": 5
+  },
+  {
+   "hi": [
+    "कर्म"
+   ],
+   "kn": "ಕರ್ಮ",
+   "en": "Karma",
+   "inBook": 7
+  },
+  {
+   "hi": [
+    "प्रतिमा"
+   ],
+   "kn": "ಪ್ರತಿಮೆ",
+   "en": "Pratima",
+   "inBook": 8
+  },
+  {
+   "hi": [
+    "इंद्र",
+    "इन्द्र"
+   ],
+   "kn": "ಇಂದ್ರ",
+   "en": "Indra",
+   "inBook": 8
+  },
+  {
+   "hi": [
+    "गौतम"
+   ],
+   "kn": "ಗೌತಮ",
+   "en": "Gautama",
+   "inBook": 5
+  },
+  {
+   "hi": [
+    "श्रद्धा"
+   ],
+   "kn": "ಶ್ರದ್ಧೆ",
+   "en": "Shraddha",
+   "inBook": 0,
+   "check": true
+  },
+  {
+   "hi": [
+    "आयतन"
+   ],
+   "kn": "ಆಯತನ",
+   "en": "Aayatana",
+   "inBook": 0,
+   "check": true
+  }
+ ]
+}

@@ -27,7 +27,8 @@
     "agent:followup": "node scripts/video-followup.js",
     "study:report": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/study-report.js",
     "transcripts": "node scripts/fetch-transcripts.js",
-    "transcripts:check": "node scripts/fetch-transcripts.js --check"
+    "transcripts:check": "node scripts/fetch-transcripts.js --check",
+    "transcripts:translate": "node scripts/translate-transcripts.js"
   },
   "jest": {
     "testEnvironment": "jsdom",

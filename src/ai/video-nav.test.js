@@ -108,6 +108,15 @@ describe('translated tracks (alt)', () => {
         expect(m.start).toBeLessThanOrEqual(60);
     });
 
+    test('the way a track was translated (via) reaches the result, so the page can say who translated it', () => {
+        const withVia = { ...hindi, alt: [{ lang: 'kn', source: 'translated', via: 'gemini', segments: [[60, 'ಶಾಸನ ದೇವತೆಯನ್ನು ಭಗವಂತನ ಸಮಾನವಾಗಿ ಪೂಜಿಸುವುದಿಲ್ಲ']] }, { lang: 'en', source: 'translated', segments: [[60, 'shasana devata is not worshipped as equal to the lord']] }] };
+        expect(normalizeTranscript(withVia).alt.map(a => a.via)).toEqual(['gemini', '']);
+        const idx = createVideoIndex({ data: fixture(), transcripts: { [V3]: withVia } });
+        expect(findMoments(idx, 'ಶಾಸನ ದೇವತೆಯನ್ನು ಭಗವಂತನ ಸಮಾನವಾಗಿ ಪೂಜಿಸುವುದಿಲ್ಲ')[0]).toMatchObject({ source: 'translated', via: 'gemini' });
+        expect(findMoments(idx, 'is shasana devata worshipped as equal to the lord')[0]).toMatchObject({ source: 'translated', via: '' });
+        expect(findMoments(idx, 'शासन देवता की पूजा')[0]).toMatchObject({ source: 'captions', via: '' });
+    });
+
     test('a Kannada question finds it through the Kannada translation', () => {
         const idx = createVideoIndex({ data: fixture(), transcripts: { [V3]: hindi } });
         const [m] = findMoments(idx, 'ಶಾಸನ ದೇವತೆಯನ್ನು ಭಗವಂತನ ಸಮಾನವಾಗಿ ಪೂಜಿಸುವುದಿಲ್ಲ');

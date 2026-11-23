@@ -164,11 +164,16 @@ const SOURCE_NOTES = {
     captions: 'From YouTube\u2019s captions, which can be wrong. Check by listening.',
     whisper: 'From speech-to-text, which can be wrong. Check by listening.',
     translated: 'Machine-translated from YouTube\u2019s captions, so it can be rough or wrong. Check by listening.',
+    // Translated tracks made with Gemini (scripts/translate-transcripts.js) say so: the words above are Gemini\u2019s, and
+    // they come from a transcript that can itself be wrong.
+    'translated:gemini': 'Machine-translated by Gemini from this video\u2019s transcript, so it can be rough or wrong. Check by listening.',
 };
+
+const noteFor = m => SOURCE_NOTES[m.via ? `${m.source}:${m.via}` : m.source] || SOURCE_NOTES[m.source];
 
 function trimMoments(list) {
     return (list || []).map(m => ({
-        videoId: m.videoId, start: m.start, kind: m.kind, snippet: m.snippet || '', source: m.source || '',
+        videoId: m.videoId, start: m.start, kind: m.kind, snippet: m.snippet || '', source: m.source || '', via: m.via || '',
         label: m.label || '', blockId: m.blockId || '',
     }));
 }
@@ -192,7 +197,7 @@ async function momentsFor(question, result) {
  * "Watch" buttons under an answer: one row per video, each opening the player at the moment.
  * Everything is put in as text; nothing is parsed as markup.
  * @param {HTMLElement} container
- * @param {{videoId: string, start: number, kind: string, snippet?: string, source?: string, label?: string}[]} moments
+ * @param {{videoId: string, start: number, kind: string, snippet?: string, source?: string, via?: string, label?: string}[]} moments
  * @param {(m: {videoId: string, start: number, label: string}) => void} onWatch
  */
 export function renderMoments(container, moments, onWatch) {
@@ -227,7 +232,7 @@ export function renderMoments(container, moments, onWatch) {
             snip.textContent = '\u201C' + m.snippet + '\u201D';
             row.appendChild(snip);
         }
-        const note = SOURCE_NOTES[m.source];
+        const note = noteFor(m);
         if (m.kind === 'transcript' && note) {
             const n = document.createElement('div');
             n.className = 'ai-moment-note';

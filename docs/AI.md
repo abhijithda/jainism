@@ -1313,7 +1313,7 @@ ai/
   especially the Kannada and transliterated wording.** Measures search only, not answer quality or model cost.
 - **Planned (measured, not assumed):** eval harness, optional agent step
 
-## Video navigator ("Watch") — ✅ built; transcripts still to be generated
+## Video navigator ("Watch") — ✅ built; transcripts fetched, Gemini translations in progress (done in sessions; `node scripts/translate-transcripts.js --check` shows how far)
 
 The book cites YouTube videos as evidence. Under an answer, **Watch** buttons now open the
 video in a player on the page, at the moment the answer is about. Clicking any video thumbnail
@@ -1337,9 +1337,11 @@ Three kinds of evidence, best first (`src/ai/video-nav.js`):
    transliteration folding work here too (Devanagari is indexed as trigrams as well, for the Hindi transcripts).
    The result starts 2 s early so the first word isn't cut off.
    A file holds a **main track** (the language that is spoken; most of the book's videos are Hindi) and optional
-   **translated tracks** (`alt`: YouTube's machine translation into Kannada and English). Every track is searched by its
-   own words and times, so a Kannada or English question can find a second in a Hindi-spoken video. A hit from a
-   translated track is labelled "Machine-translated ... check by listening".
+   **translated tracks** (`alt`: machine translations into Kannada and English, made with Gemini by
+   `scripts/translate-transcripts.js`, see below; YouTube's own translations are supported too but are poor and often refused).
+   Every track is searched by its own words and times, so a Kannada or English question can find a second in a
+   Hindi-spoken video. A hit from a translated track is labelled "Machine-translated ... check by listening": by
+   "Gemini from this video's transcript" when the track has `via: "gemini"`, otherwise "from YouTube's captions".
 3. **The passage's own video** — a video attached to a block the answer shows is always offered, from its start
    (or the `?t=` already in its link), even if no word of the question matched inside it.
 
@@ -1359,6 +1361,8 @@ node scripts/fetch-transcripts.js            # spoken-language captions (+ Kanna
 node scripts/fetch-transcripts.js --check    # no network: which videos have none; exit 1 if any
 node scripts/fetch-transcripts.js --import-whisper <videoId> out.json --lang kn   # Whisper output (free, local)
 node scripts/fetch-transcripts.js --reindex  # rebuild assets/transcripts/index.json from the files there
+node scripts/translate-transcripts.js --dry-run   # Kannada/English for ONE video, printed next to the Hindi, nothing written
+node scripts/translate-transcripts.js        # the Gemini translations (below); npm run transcripts:translate
 ```
 
 The run goes in two phases (main tracks of every video first, then the translated extras) and saves after every
@@ -1369,6 +1373,102 @@ neither a refusal nor an unexplained failure is ever recorded as "no captions". 
 `--cookies-from-browser edge` can help when YouTube keeps refusing. (yt-dlp also nags about a missing JavaScript
 runtime; if downloads keep failing, `winget install DenoLand.Deno` is what it recommends. Unverified here.)
 
+### Translating the transcripts with Gemini (`scripts/translate-transcripts.js`)
+
+Most videos are spoken in Hindi; the questions and the book are Kannada / English. A Kannada question cannot match
+Devanagari words, so each transcript also gets a Kannada and an English track, translated cue by cue with Gemini
+(`scripts/lib/gemini.js`, free AI Studio key in `GEMINI_API_KEY`; `GEMINI_MODEL` or `--model` to change the model).
+It is a one-time job (about 120 requests for the 38 transcripts of November 2026) and is meant to be run by hand, not in CI.
+
+```
+node scripts/translate-transcripts.js --dry-run                  # first 30 cues of bgldj0TMZB4: Hindi, Kannada, English; writes nothing
+node scripts/translate-transcripts.js --dry-run --ids <videoId> --cues 60
+node scripts/translate-transcripts.js --check                    # no network: per video, how many cues are translated; exit 1 if any are not
+node scripts/translate-transcripts.js                            # everything that is missing; saves after every batch
+node scripts/translate-transcripts.js --max-requests 40          # spread the work over days if the daily quota is small
+```
+Other options: `--ids`, `--langs kn` (Kannada only), `--batch 50`, `--pause 7000` (ms between requests), `--cooldown 65000`
+(wait after an HTTP 429), `--max-429 3`, `--timeout 90000` (give up on one request after this many ms), `--retry-wait 30000`
+(wait after a timeout or a 5xx), `--max-transient 4`, `--force`, `--glossary <file>`. On Windows, a console often cannot draw Kannada:
+use Windows Terminal, or write the dry run to a UTF-8 file (`... --dry-run | Out-File -Encoding utf8 dry.txt`).
+
+**What it writes.** In each `assets/transcripts/<videoId>.json`, for every target language that is not the spoken one, an
+`alt` entry `{ "lang": "kn", "source": "translated", "via": "gemini", "model": "...", "segments": [[start, text], ...] }`.
+The main track is never touched. Each alt cue has exactly the start second of one main cue (a data test checks this), so a
+Kannada hit opens the video at the same second as the Hindi it came from. A Gemini track replaces YouTube's translation of
+the same language; other tracks stay. A video spoken in Kannada gets only English.
+
+**One request = a batch of cues, both languages.** Cues go out as `{i, t}` with the three cues before the batch as
+context; the answer must contain every `i` exactly once, a non-empty text for each language, nothing unknown, the right
+script (Kannada letters for `kn`, Latin for `en`) and a plausible length. Anything else throws away the *whole* answer,
+and the batch is asked again in two halves, down to a single cue; a cue that never comes back right is **left out** (a gap,
+never a shifted timestamp) and a rerun tries just those. Alignment is checked; **meaning is not**.
+
+**Faithful, not corrected: what really happens.** The prompt says to translate what the captions say (mistakes included)
+and to give back unchanged any cue that is not intelligible speech, such as a Sanskrit/Prakrit shloka the recogniser
+garbled. Seen in the first real run (gemini-3.6-flash): garbled shloka cues do come back unchanged, but the model also
+**quietly repairs recognition slips it can recognise** ("भक्तावर" -> Bhaktamara, "अष्ट पाउड" -> Ashtapahuda, "सहयोग केवली" ->
+Sayoga Kevali); the owner checked these and they were right, so this is accepted. Slips it cannot recognise are translated
+literally and come out as nonsense ("विक्री जीव" -> "sold beings"): the Hindi captions are the weakest link, not Gemini. About
+0.5 % of cues keep a few Devanagari words inside the translation (a leftover `[संगीत]` tag, a garbled fragment). Any
+of this is the model's judgement, which is why the page labels these lines and why a **mark** written by hand remains
+the reliable way to point at a shloka.
+
+**Glossary (`scripts/glossary.json`).** Entries `{ hi: [spellings the captions may use], kn, en }`; only the entries whose
+Hindi occurs in a batch are sent with it (for a video spoken in Kannada, those whose Kannada spelling occurs, so its English follows the glossary too), so the Kannada spellings follow the book (86 terms: 68 seed terms plus 18 added after the first real run, e.g. प्रशस्त -> ಪ್ರಶಸ್ತ because Gemini had written ಪ್ರಶಸ್ತಿ, "award"; `inBook` counts how often
+the Kannada spelling occurs in `data.json`; `check: true` marks the 18 that are suggestions the book does not contain yet).
+Edit it freely, then rerun with `--force` for a video to redo it. Not wired to `notes-to-blocks.js` (it could be).
+
+**Free tier, stated plainly.** The script makes about one request every 7 s, waits `--cooldown` after a 429 and stops
+after 3 in a row, saving everything done. Google no longer publishes one fixed free-tier table and the numbers differ per
+project (AI Studio's rate-limit view shows yours), so *how many days the run takes is not known here*. Daily quotas reset at
+midnight Pacific time. Three kinds of failure are told apart, because each needs a different reaction:
+- **429** (quota): wait `--cooldown`, ask the same batch again, stop after `--max-429` in a row.
+- **Timeout, network error or 5xx such as 503 "overloaded"** (Google's side, nothing to do with the answer): wait
+  `--retry-wait`, ask the *same* batch again, stop after `--max-transient` in a row with "Gemini kept timing out…". These are
+  never split: splitting a batch cannot fix a server that is not answering, and only burns requests. (A first version split
+  them; a real dry run showed 10 requests wasted on timeouts and 503s that ended in 429s.)
+- **A wrong answer** (missing cue, bad script ...): split in half as described above; eight in a row stop the run.
+
+Errors that asking again cannot fix (bad key, retired model: HTTP 4xx other than 429) stop the run at once. The client is
+made with `retries: 0`, so this script is the only retry layer and every counted request is one real call to Google; `--timeout`
+defaults to 90 s (the shared client's own default is 240 s, which makes one hung request take four minutes).
+
+**Doing it in several sessions (the normal case on a free key).** The run is built to be repeated:
+1. `node scripts/translate-transcripts.js --max-requests 60` (stops by itself when Google refuses; see above).
+2. `node scripts/translate-transcripts.js --check` shows `done`/`todo` per video and how many cues are translated.
+3. `npx jest test/unit/transcripts.test.js` checks that every translated cue sits on a cue of the spoken track.
+4. Commit `assets/transcripts`. Partly translated videos are fine to publish: a track may have fewer cues than the main
+   one (a Kannada question then finds hits only in the translated part; Hindi questions still find everything), and the
+   next run asks only for the missing cues, even in a video that was stopped halfway.
+Observed in the first real session: 28 requests translated 445 cues (about 16 cues per request instead of the 50 planned),
+because of 3 batches rejected by the checks on the long, shloka-heavy video (garbled short cues that did not come back as
+Kannada or an exact copy, one malformed JSON answer, one length mismatch) and 429s; the third 429 in a row ended the run
+well before `--max-requests`. Expect roughly 100 to 300 requests for the whole job.
+
+**Limits and to be verified by hand.**
+- **What is verified and what is not.** The script's logic is tested with a fake client (no network). On the real
+  output of the first sessions (gemini-3.6-flash) we checked: that every translated cue sits on a cue of the spoken
+  track (the data test), that Kannada, English and Hindi questions find the right video, that the glossary is followed,
+  that garbled shloka cues come back unchanged, and a sample of Kannada and English read by the owner ("some accurate,
+  some not": see above). **Not verified:** the Kannada quality beyond those samples; how the videos not yet translated
+  behave (the long, shloka-heavy ones failed the checks most often); and how many requests and days the whole job
+  needs on a free key.
+- Transcript files grow. Measured on the first real output: about 240 bytes per translated cue (Kannada + English), so
+  the full job takes the folder from 0.74 MB to roughly 1.9 MB raw (about 0.5 MB gzipped, which is what GitHub Pages sends).
+  They are loaded on the first question only and are not in the offline copy. Building the search index over all 38
+  transcripts took about 0.1 s in a test.
+- Cue-by-cue translation leaves seams: because each cue is translated by itself, neighbouring cues sometimes repeat a trailing
+  verb or begin mid-phrase (e.g. one cue ends "ಆಗುತ್ತಿತ್ತು", the next starts "ಇತ್ತು. ಹಾಗಾಗಿ…"). Harmless for search and for the
+  snippet shown next to a Watch button; an expected artifact, not an error.
+- On Windows, an older version of the script could end with `Assertion failed: !(handle->flags & UV_HANDLE_CLOSING) ... win\async.c`
+  after finishing (a Node/libuv problem when a process exits while fetch connections are closing). The output and the saved files
+  were complete; the script now sets `process.exitCode` instead of calling `process.exit()`. It could not be reproduced
+  on Linux, but it did not appear again in the later runs on Windows.
+- `node scripts/fetch-transcripts.js --force` fetches the spoken track again and drops that video's translated tracks (their cues
+  would no longer line up). Whisper's `--import-whisper` keeps them, which is only right if the cue starts did not change:
+  rerun the translation if in doubt (stale cues are ignored, and retranslated).
+
 `index.json` lists what exists so the page never asks for videos that have none; videos without captions go in
 `unavailable.json` so they aren't retried every run. Files are compact (`[seconds, "text"]` per cue) and are loaded
 the first time a question is asked, not at page load, and are **not** part of the offline copy (the player needs the
@@ -1377,8 +1477,8 @@ network anyway; offline, the passage's own video is still named).
 **Limits, stated plainly:**
 - YouTube recognises Hindi (`hi-orig`) reasonably well but, as far as seen, not Kannada: the few Kannada-spoken videos
   may be mis-labelled Hindi or have no captions. The Kannada/English tracks are machine translations of the Hindi
-  captions: rough, but only there to give questions in those languages something to match. YouTube sometimes refuses
-  translated tracks (HTTP 429): the script says so, keeps what it got, and a rerun fetches only what is missing. Whisper handles Kannada reasonably but not perfectly, and no automatic system
+  captions: rough, but only there to give questions in those languages something to match (better ones come from Gemini,
+  see above). YouTube sometimes refuses translated tracks (HTTP 429): the script says so, keeps what it got, and a rerun fetches only what is missing. Whisper handles Kannada reasonably but not perfectly, and no automatic system
   gets Sanskrit/Prakrit shlokas right. Spot-check timestamps by listening before trusting a transcript; for the
   shlokas that matter most, write a **mark** by hand.
 - Some linked videos no longer exist (see the TODO notes in the data). They simply have no transcript; their
