@@ -58,10 +58,10 @@ describe('deciding what is clear', () => {
         const d = T.decide(lines, [P('p2|kn|0', 'ಅಭಿಶೇಕ', 'ಅಭಿಷೇಕ')], []);
         expect(d.fixes).toHaveLength(1);
     });
-    test('the same word twice in a line is only a suggestion (which one?)', () => {
+    test('the same typo several times in a line is one fix that corrects every place (not one run per place)', () => {
         const d = T.decide(lines, [P('p1|en|0', 'abhiseka', 'abhisheka')], []);
-        expect(d.fixes).toHaveLength(0);
-        expect(d.suggestions).toHaveLength(1);
+        expect(d.fixes).toHaveLength(1);
+        expect(d.suggestions).toHaveLength(0);
     });
     test('"doubtful" from the model is only a suggestion, however small the change', () => {
         const d = T.decide(lines, [P('p2|kn|0', 'ಅಭಿಶೇಕ', 'ಅಭಿಷೇಕ', 'doubtful')], []);
@@ -440,6 +440,49 @@ describe('a typo is found as a whole word, never inside a longer word', () => {
         expect(r.comments[0].body).toContain('In upa lepana, chandana lepana is done for entire');
         expect(r.comments[0].body).toContain('In Chuhavana, chandana lepana is done only for feet.');
         expect(r.comments[0].body).not.toContain('chandanaa');
+    });
+});
+
+describe('the same typo several times in one line is fixed in one run', () => {
+    test('all whole-word places are corrected, the count is reported, and words that merely contain it are left alone', () => {
+        const text = 'sugandint dravyo, sugandint jal, sugandint; sugandints stay; (sugandint)';
+        const change = { old: 'sugandint', new: 'sugandhit', reason: 'x' };
+        const r = T.applyToLine(text, [change]);
+        expect(r.text).toBe('sugandhit dravyo, sugandhit jal, sugandhit; sugandints stay; (sugandhit)');
+        expect(r.applied).toEqual([expect.objectContaining({ count: 4 })]);
+    });
+
+    test('ten identical typos: one run, one fix, ten corrections', async () => {
+        const base = book();
+        const head = clone(base);
+        const line = Array.from({ length: 10 }, (_, i) => `abhiseka ${i}`).join(' ');
+        head[1].blocks.push(blk('m00009', 1, 'paragraph', [], [line]));
+        const issue = { key: 'm00009|en|0', old: 'abhiseka', new: 'abhisheka', reason: 'spelling', confidence: 'clear' };
+        const r = await T.reviewTypos(head, base, { ai: fakeAi([issue]), allowlist: [] });
+        expect(r.data[1].blocks[0].content.en[0]).toBe(Array.from({ length: 10 }, (_, i) => `abhisheka ${i}`).join(' '));
+        expect(r.applied).toHaveLength(1);
+        expect(T.renderReport(r)).toMatch(/10 places in this line/);
+    });
+
+    test('a doubtful typo repeated in a line is ONE suggestion that fixes every place', async () => {
+        const base = book();
+        const head = clone(base);
+        head[1].blocks.push(blk('m00008', 1, 'paragraph', [], ['chandan lepana, chandan lepana, chandana lepana']));
+        const issue = { key: 'm00008|en|0', old: 'chandan', new: 'chandana', reason: 'x', confidence: 'doubtful' };
+        const r = await T.reviewTypos(head, base, { ai: fakeAi([issue]), allowlist: [] });
+        expect(r.comments).toHaveLength(1);
+        expect(r.comments[0].body).toContain('chandana lepana, chandana lepana, chandana lepana');
+        expect(r.comments[0].body).toContain('2 places in this line');
+        expect(r.comments[0].body).not.toContain('chandanaa');
+    });
+
+    test('a protected spelling anywhere among the places stops the change (the allowlist wins)', async () => {
+        const base = book();
+        const head = clone(base);
+        head[1].blocks.push(blk('m00010', 1, 'paragraph', [], ['abhiseka and abhiseka']));
+        const issue = { key: 'm00010|en|0', old: 'abhiseka', new: 'abhisheka', reason: 'spelling', confidence: 'clear' };
+        const r = await T.reviewTypos(head, base, { ai: fakeAi([issue]), allowlist: ['abhiseka'] });
+        expect(r.data[1].blocks[0].content.en[0]).toBe('abhiseka and abhiseka');
     });
 });
 

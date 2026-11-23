@@ -288,14 +288,14 @@ function decide(lines, proposals, allowlist) {
         const dedupe = `${p.key}|${p.old}|${p.new}`;
         if (seen.has(dedupe)) continue;
         seen.add(dedupe);
-        const spans = spansOf(line.text, p.old, false);
+        const spans = locateAll(line.text, p.old, !p.exact).map((i) => [i, i + p.old.length]);   // whole words: "chandan" is not inside "chandana"
         if (!spans.length) { drop('the text is not in the line'); continue; }
         if (spans.some((s) => protectedSpan(line.text, s, allowlist))) { drop('allowlisted spelling or link'); continue; }
         const base = { key: p.key, blockId: line.blockId, label: line.label, lang: line.lang, index: line.index, old: p.old, new: p.new, reason: String(p.reason || '').slice(0, 160), ...(p.exact ? { exact: true } : {}) };
         if (line.kind === 'verse') { decided.flags.push({ ...base, flag: true }); continue; }
         const clear = p.mixed
-            ? Boolean(p.mixedAuto) && spans.length === 1                       // Kannada to Latin: its own checks are in mixedScriptIssues
-            : p.confidence === 'clear' && spans.length === 1 && [...p.old].length <= 40 && editDistance(p.old, p.new) <= MAX_EDIT[line.lang];
+            ? Boolean(p.mixedAuto)                                              // Kannada to Latin: its own checks are in mixedScriptIssues
+            : p.confidence === 'clear' && [...p.old].length <= 40 && editDistance(p.old, p.new) <= MAX_EDIT[line.lang];
         (clear ? decided.fixes : decided.suggestions).push(base);
     }
     return decided;
@@ -309,43 +309,46 @@ const WORD_CHAR = /[\p{L}\p{M}\p{N}\u200C\u200D]/u;
  * that side. So "chandan" is found as the word in "...chandana lepana ... chandan lepana", never as the first seven letters of
  * "chandana" (which made "chandanaa"). -1 when it is only ever part of a longer word.
  */
-function locate(text, old, whole = true) {
+function locateAll(text, old, whole = true) {
     const chars = [...old];
-    if (!chars.length) return -1;
-    if (!whole) return text.indexOf(old);   // a span with its own context characters (double space, invisible character)
-    const needStart = WORD_CHAR.test(chars[0]);
-    const needEnd = WORD_CHAR.test(chars[chars.length - 1]);
-    for (let i = text.indexOf(old); i >= 0; i = text.indexOf(old, i + 1)) {
+    const found = [];
+    if (!chars.length) return found;
+    const needStart = whole && WORD_CHAR.test(chars[0]);
+    const needEnd = whole && WORD_CHAR.test(chars[chars.length - 1]);   // whole = false: a span with its own context characters
+    for (let i = text.indexOf(old); i >= 0; i = text.indexOf(old, i + old.length)) {
         const before = [...text.slice(0, i)].pop();
         const after = [...text.slice(i + old.length)][0];
         if (needStart && before && WORD_CHAR.test(before)) continue;
         if (needEnd && after && WORD_CHAR.test(after)) continue;
-        return i;
+        found.push(i);
     }
-    return -1;
+    return found;
 }
+const locate = (text, old, whole = true) => { const all = locateAll(text, old, whole); return all.length ? all[0] : -1; };
 
-function applyToLine(text, changes) {
-    const located = changes.map((c) => ({ c, at: locate(text, c.old, !c.exact) })).filter((x) => x.at >= 0).sort((a, b) => b.at - a.at);
+function applyToLine(text, changes, depth = 0) {
+    // every whole-word occurrence of a typo is fixed in one go: the same word is the same typo in the same line
+    const located = changes.flatMap((c) => locateAll(text, c.old, !c.exact).map((at) => ({ c, at }))).sort((x, y) => y.at - x.at);
     let out = text;
     let limit = Infinity;
-    const applied = [], left = changes.filter((c) => locate(text, c.old, !c.exact) < 0);
+    const applied = [];
+    const skipped = [];
     for (const { c, at } of located) {
-        if (at + c.old.length > limit) { left.push(c); continue; }
+        if (at + c.old.length > limit) { skipped.push(c); continue; }
         out = out.slice(0, at) + c.new + out.slice(at + c.old.length);
         limit = at;
-        applied.push(c);
+        c.count = (c.count || 0) + 1;
+        if (!applied.includes(c)) applied.push(c);
     }
-    // a change that overlapped another one is tried again on the new text (its own words are usually still there)
-    const retry = left.filter((c) => locate(out, c.old, !c.exact) >= 0);
-    if (retry.length && applied.length) {
-        const again = applyToLine(out, retry);
-        return { text: again.text, applied: [...applied, ...again.applied], left: [...left.filter((c) => !retry.includes(c)), ...again.left] };
+    const left = changes.filter((c) => !applied.includes(c) && !skipped.includes(c));
+    // what overlapped another change is tried again on the new text (its own words are usually still there)
+    const retry = [...new Set([...skipped, ...left])].filter((c) => locate(out, c.old, !c.exact) >= 0);
+    if (retry.length && applied.length && depth < 5) {
+        const again = applyToLine(out, retry, depth + 1);
+        return { text: again.text, applied: [...applied, ...again.applied.filter((c) => !applied.includes(c))], left: [...left.filter((c) => !retry.includes(c)), ...again.left] };
     }
-    return { text: out, applied, left };
+    return { text: out, applied, left: [...left, ...skipped.filter((c) => !applied.includes(c) && !left.includes(c))] };
 }
-
-/** New data with the fixes applied (only those lines change), and the suggestions rewritten against the fixed text. */
 function applyFixes(data, decided) {
     const next = JSON.parse(JSON.stringify(data));
     const blocks = Object.fromEntries(next.flatMap((i) => (i.blocks || []).map((b) => [b.id, b])));
@@ -389,7 +392,7 @@ function buildSuggestionComments(data, suggestions, filePath = 'assets/data.json
         const indent = original.match(/^\s*/)[0];
         const comma = original.trimEnd().endsWith(',') ? ',' : '';
         const hash = crypto.createHash('sha1').update(r.applied.map((a) => `${a.blockId}|${a.old}|${a.new}`).join('\n')).digest('hex').slice(0, 10);
-        const why = r.applied.map((a) => `**${a.old}** → **${a.new}**: ${a.reason || 'possible typo'}`).join('\n');
+        const why = r.applied.map((a) => `**${a.old}** → **${a.new}**: ${a.reason || 'possible typo'}${a.count > 1 ? ` (${a.count} places in this line)` : ''}`).join('\n');
         comments.push({
             path: filePath, line: target + 1, side: 'RIGHT', hash,
             body: `Possible typo (${group[0].s.label}). Not changed automatically:\n\n${why}\n\n\`\`\`suggestion\n${indent}${JSON.stringify(r.text)}${comma}\n\`\`\`\n<!-- typo:${hash} -->`,
@@ -429,7 +432,7 @@ function renderReport(r, { all = false } = {}) {
     if (r.applied.length) {
         out.push(`### Fixed in this commit (${r.applied.length}): revert the commit to undo all of them`);
         out.push('| Block | Old | New | Reason |', '| --- | --- | --- | --- |');
-        for (const a of r.applied) out.push(`| ${a.label} (${a.lang}) | ${esc(a.old)} | ${esc(a.new)} | ${esc(a.reason)} |`);
+        for (const a of r.applied) out.push(`| ${a.label} (${a.lang}) | ${esc(a.old)} | ${esc(a.new)} | ${esc(a.reason)}${a.count > 1 ? ` (${a.count} places in this line)` : ''} |`);
     } else out.push('### Fixed in this commit\nNothing needed fixing automatically.');
     out.push('');
     if (r.comments.length) {
@@ -451,7 +454,7 @@ const esc = (t) => String(t).replace(/\|/g, '\\|').replace(/\n/g, ' ');
 
 module.exports = {
     loadAllowlist, loadEquivalents, skeleton, dropDuplicate, duplicatePairIssues, editDistance, changedBlocks, collectLines, mechanicalIssues, decide, applyToLine, applyFixes,
-    buildSuggestionComments, reviewTypos, renderReport, locate,
+    buildSuggestionComments, reviewTypos, renderReport, locate, locateAll,
 };
 
 // ── CLI ────────────────────────────────────────────────────────────────────────────────────────────────────

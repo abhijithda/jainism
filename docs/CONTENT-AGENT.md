@@ -322,3 +322,7 @@ in a line that already says `chandana` earlier is applied to the standalone `cha
 `chandana` (which once made `chandanaa`). A word that only appears inside longer words is left alone. Spans that carry their own
 neighbouring characters (double spaces, invisible characters) are matched as written.
 
+The same typo several times in one line is fixed everywhere in that line in one run (the report says "N places in this line"; a
+one-click suggestion also changes every place), so ten identical typos never mean ten runs. A protected spelling (allowlist or link) in
+any of the places stops the change.
+
