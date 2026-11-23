@@ -101,8 +101,9 @@ function cuesFrom(list) {
 /**
  * Accepts the shapes a transcript file may come in and returns one:
  * `{ lang, source, segments: [{ s, t }], alt: [{ lang, source, segments }] }`, or null if there is nothing usable.
- * `segments` is the main track (the language that is spoken); `alt` holds extra tracks, normally YouTube's
- * machine translations, kept so a question in another language has words to match.
+ * `segments` is the main track (the language that is spoken); `alt` holds extra tracks, machine translations of it
+ * (`via: 'gemini'` for the ones made by scripts/translate-transcripts.js, empty for YouTube's), kept so a question in
+ * another language has words to match.
  * @param {Object} raw
  */
 export function normalizeTranscript(raw) {
@@ -111,7 +112,7 @@ export function normalizeTranscript(raw) {
     const alt = [];
     for (const track of Array.isArray(raw?.alt) ? raw.alt : []) {
         const cues = cuesFrom(track?.segments);
-        if (cues.length) alt.push({ lang: typeof track.lang === 'string' ? track.lang : '', source: typeof track.source === 'string' ? track.source : 'translated', segments: cues });
+        if (cues.length) alt.push({ lang: typeof track.lang === 'string' ? track.lang : '', source: typeof track.source === 'string' ? track.source : 'translated', via: typeof track.via === 'string' ? track.via : '', segments: cues });
     }
     return {
         lang: typeof raw?.lang === 'string' ? raw.lang : '',
@@ -218,10 +219,10 @@ export function createVideoIndex({ data, transcripts = {} }) {
         if (transcript) {
             withTranscript++;
             // The main track, then any translated ones: each is searched by its own words and its own times.
-            const tracks = [{ source: transcript.source, segments: transcript.segments }, ...transcript.alt];
+            const tracks = [{ source: transcript.source, via: '', segments: transcript.segments }, ...transcript.alt];
             for (const track of tracks) {
                 for (const w of windowSegments(track.segments)) {
-                    add({ kind: 'transcript', videoId: video.videoId, start: w.start, blockId: first.blockId, label: first.label, snippet: w.text, source: track.source }, w.text);
+                    add({ kind: 'transcript', videoId: video.videoId, start: w.start, blockId: first.blockId, label: first.label, snippet: w.text, source: track.source, via: track.via }, w.text);
                 }
             }
         }
@@ -250,7 +251,7 @@ function cut(text, n) {
  *   ranked higher, and is offered even if no word of the question matched inside it
  *   (it is the evidence video for what the reader is looking at).
  * @returns {{videoId: string, start: number, kind: 'mark'|'transcript'|'owner', snippet: string,
- *            source?: string, label: string, blockId: string, score: number}[]}
+ *            source?: string, via?: string, label: string, blockId: string, score: number}[]}
  */
 export function findMoments(vindex, query, { passages = [], k = 3, minScore = 0.5 } = {}) {
     if (!vindex || !vindex.chunks.length) return [];
@@ -284,7 +285,7 @@ export function findMoments(vindex, query, { passages = [], k = 3, minScore = 0.
             const lead = m.kind === 'transcript' ? LEAD_IN_SECONDS : 0;
             results.push({
                 videoId, start: Math.max(0, m.start - lead), kind: m.kind, snippet: cut(m.snippet, SNIPPET_CHARS),
-                source: m.source, label, blockId, score: entry.score,
+                source: m.source, via: m.via, label, blockId, score: entry.score,
             });
         } else {
             results.push({ videoId, start: owner.start || 0, kind: 'owner', snippet: '', label, blockId, score: entry.score });

@@ -118,6 +118,24 @@ describe('renderMoments', () => {
         const box = document.createElement('div');
         renderMoments(box, [{ videoId: V1, start: 70, kind: 'transcript', snippet: 'x', source: 'translated', label: 'A-1.1' }], jest.fn());
         expect(box.querySelector('.ai-moment-note').textContent).toMatch(/machine-translated/i);
+        expect(box.querySelector('.ai-moment-note').textContent).toMatch(/YouTube/);
+        expect(box.querySelector('.ai-moment-note').textContent).not.toMatch(/Gemini/);
+    });
+
+    test('a line translated with Gemini says Gemini, not YouTube, and still says to check by listening', () => {
+        const box = document.createElement('div');
+        renderMoments(box, [{ videoId: V1, start: 70, kind: 'transcript', snippet: 'x', source: 'translated', via: 'gemini', label: 'A-1.1' }], jest.fn());
+        const note = box.querySelector('.ai-moment-note').textContent;
+        expect(note).toMatch(/Machine-translated by Gemini/);
+        expect(note).toMatch(/rough or wrong/);
+        expect(note).toMatch(/listening/);
+        expect(note).not.toMatch(/YouTube.s captions/);
+    });
+
+    test('an unknown way of translating falls back to the general note', () => {
+        const box = document.createElement('div');
+        renderMoments(box, [{ videoId: V1, start: 70, kind: 'transcript', snippet: 'x', source: 'translated', via: 'something-new', label: 'A-1.1' }], jest.fn());
+        expect(box.querySelector('.ai-moment-note').textContent).toMatch(/machine-translated/i);
     });
 
     test('a video offered only because it is attached to the passage says so, and plays from the start', () => {

@@ -159,6 +159,17 @@ describe('index and CLI, on a temporary copy of the project', () => {
         expect(console.log.mock.calls.map(c => c[0]).join('\n')).toMatch(/Nothing to fetch/);
     });
 
+    test('tracks made with Gemini count as extras already there: YouTube is not asked for them (no yt-dlp needed)', async () => {
+        fs.mkdirSync(dir, { recursive: true });
+        const gem = lang => ({ lang, source: 'translated', via: 'gemini', model: 'm', segments: [[0, 'x']] });
+        for (const id of [ID, ID2]) fs.writeFileSync(path.join(dir, `${id}.json`), JSON.stringify({ videoId: id, lang: 'hi-orig', segments: [[0, 'x']], alt: [gem('kn'), gem('en')] }));
+        expect(await main(['--yt-dlp', 'definitely-not-installed-yt-dlp'], root)).toBe(0);
+        expect(console.log.mock.calls.map(c => c[0]).join('\n')).toMatch(/Nothing to fetch/);
+        // with only one of the two languages translated, the other could still come from YouTube: that needs yt-dlp
+        fs.writeFileSync(path.join(dir, `${ID}.json`), JSON.stringify({ videoId: ID, lang: 'hi-orig', segments: [[0, 'x']], alt: [gem('kn')] }));
+        expect(await main(['--yt-dlp', 'definitely-not-installed-yt-dlp'], root)).toBe(1);
+    });
+
     test('videos recorded as having no captions are not asked about again unless --retry-unavailable', async () => {
         fs.mkdirSync(dir, { recursive: true });
         fs.writeFileSync(path.join(dir, 'unavailable.json'), JSON.stringify({ [ID]: { checked: '2026-11-18' }, [ID2]: { checked: '2026-11-18' } }));

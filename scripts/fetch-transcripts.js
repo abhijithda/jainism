@@ -38,6 +38,10 @@
 //   * Most of the book's videos are in Hindi, which YouTube recognises reasonably. For the few Kannada ones it may
 //     have no captions at all; a video with none is recorded in assets/transcripts/unavailable.json so it
 //     isn't retried on every run (--retry-unavailable looks again).
+//   * YouTube's translated tracks are rough (Kannada especially) and often refused. Better ones can be made with Gemini:
+//     node scripts/translate-transcripts.js (free key; see docs/AI.md). A language that already has a track is not asked
+//     for again. Note: --force fetches the spoken track again and drops the translated tracks of that video, because their
+//     cues would no longer line up with the new ones.
 //   * Translated tracks are sometimes refused by YouTube (HTTP 429, "too many requests"). The script then says so,
 //     keeps what it has, and does NOT mark the video as done: run it again later (or with --cookies-from-browser).
 //   * Sanskrit/Prakrit shlokas are mis-heard by every automatic system. For the ones that matter, write a mark
@@ -337,7 +341,15 @@ async function main(argv = process.argv.slice(2), root = DEFAULT_ROOT) {
     const fileOf = id => path.join(dir, `${id}.json`);
     const have = id => fs.existsSync(fileOf(id));
     const altLangs = args['alt-langs'] === undefined ? DEFAULT_ALT_LANGS : (args['alt-langs'] === 'none' ? [] : splitList(args['alt-langs']));
-    const needsExtras = id => have(id) && altLangs.length > 0 && !readJson(fileOf(id), {}).altChecked;
+    // A video needs the extras when YouTube was not asked yet AND some wanted language has no track. Tracks made with
+    // Gemini (scripts/translate-transcripts.js) count as present, so this script does not go and ask YouTube for them.
+    const needsExtras = id => {
+        if (!have(id) || !altLangs.length) return false;
+        const t = readJson(fileOf(id), {});
+        if (t.altChecked) return false;
+        const has = new Set((t.alt || []).map(a => a && a.lang));
+        return altLangs.some(l => baseLang(l) !== baseLang(t.lang) && !has.has(l));
+    };
 
     // Phase 1 fetches the main track of every video that has none. Phase 2 then adds the translated extras to every video
     // that lacks them (also ones fetched by an earlier run, or only partly filled because YouTube refused some).
@@ -444,6 +456,7 @@ async function main(argv = process.argv.slice(2), root = DEFAULT_ROOT) {
 
 module.exports = {
     collectVideoIds, mergeShort, parseJson3, fromWhisper, pickSubtitleFile, buildIndex, makeTranscript, parseArgs, main,
+    writeIndex, writeTranscript,
     TRANSCRIPT_DIR, DEFAULT_LANGS, DEFAULT_ALT_LANGS,
 };
 
