@@ -46,7 +46,7 @@ const err429 = () => { throw new Error('Gemini answered 429 (busy or rate-limite
 
 const ctxOf = (over = {}) => ({
     ai: fakeAi(), source: 'hi', targets: ['kn', 'en'], glossary: [], before: () => [], log: () => {}, sleep: async () => {},
-    pause: 0, cooldown: 0, max429: 3, maxRequests: 0, requests: 0, batch: 50, in429: 0, bad: 0, stopped: '', fatal: '', pauseFirst: false, ...over,
+    pause: 0, cooldown: 0, max429: 3, retryWait: 0, maxTransient: 4, maxRequests: 0, requests: 0, batch: 50, in429: 0, inTransient: 0, bad: 0, stopped: '', fatal: '', lastError: '', pauseFirst: false, ...over,
 });
 const itemsOf = n => Array.from({ length: n }, (_, i) => ({ i, t: `शासन देवता की पूजा ${i}` }));
 
@@ -241,12 +241,48 @@ describe('translateCues', () => {
         expect(ai.calls).toHaveLength(1);
     });
 
-    test('a network failure is not mistaken for a wrong answer forever: the run gives up after a few', async () => {
-        const ai = fakeAi(() => { throw new Error('Gemini request failed: fetch failed'); });
-        const ctx = ctxOf({ ai, batch: 40 });
-        await T.translateCues(ctx, itemsOf(40));
-        expect(ctx.stopped).toBe('unreliable');
-        expect(ai.calls.length).toBeLessThanOrEqual(8);
+    test.each([
+        ['a timeout', 'Gemini request failed: The operation was aborted due to timeout'],
+        ['a 503 (overloaded)', 'Gemini answered 503 (busy or rate-limited)'],
+        ['a network error', 'Gemini request failed: fetch failed'],
+    ])('%s is NOT a wrong answer: the same batch is asked again after a wait, never split', async (_, message) => {
+        const sleep = jest.fn(async () => {});
+        const ai = fakeAi(n => (n <= 2 ? (() => { throw new Error(message); })() : undefined));
+        const ctx = ctxOf({ ai, sleep, retryWait: 1234, batch: 40 });
+        const { got } = await T.translateCues(ctx, itemsOf(40));
+        expect(got.size).toBe(40);
+        expect(ctx.stopped).toBe('');
+        expect(ai.calls).toHaveLength(3);
+        expect(ai.calls.map(c => payloadOf(c).cues.length)).toEqual([40, 40, 40]);     // the same 40 cues each time
+        expect(sleep.mock.calls.filter(c => c[0] === 1234)).toHaveLength(2);
+    });
+
+    test('Gemini that keeps failing stops the run after a few tries, without splitting and without burning requests', async () => {
+        const ai = fakeAi(() => { throw new Error('Gemini answered 503 (busy or rate-limited)'); });
+        const ctx = ctxOf({ ai, batch: 40, maxTransient: 4 });
+        const { got } = await T.translateCues(ctx, itemsOf(40));
+        expect(got.size).toBe(0);
+        expect(ctx.stopped).toBe('overloaded');
+        expect(ctx.lastError).toMatch(/503/);
+        expect(ai.calls).toHaveLength(4);
+    });
+
+    test('a success resets the count of such failures, and a 429 in between does too', async () => {
+        const ai = fakeAi(n => {
+            if ([1, 2, 4, 5].includes(n)) throw new Error('Gemini request failed: The operation was aborted due to timeout');
+            if (n === 6) return err429();
+            return undefined;
+        });
+        const ctx = ctxOf({ ai, batch: 2, maxTransient: 3 });
+        const { got } = await T.translateCues(ctx, itemsOf(4));
+        expect(ctx.stopped).toBe('');
+        expect(got.size).toBe(4);
+    });
+
+    test('a wrong answer still splits, but only wrong answers do', async () => {
+        const ai = fakeAi((n, req) => (n === 1 ? { cues: [] } : undefined));
+        await T.translateCues(ctxOf({ ai, batch: 10 }), itemsOf(10));
+        expect(ai.calls.map(c => payloadOf(c).cues.length)).toEqual([10, 5, 5]);
     });
 
     test('--max-requests stops after that many requests', async () => {
@@ -455,7 +491,37 @@ describe('main, on a temporary copy of the project', () => {
         expect(errors.join('\n')).toMatch(/GEMINI_MODEL/);
     });
 
+    test('a dry run against a Gemini that is down says so plainly, makes only a few requests and writes nothing', async () => {
+        const snapshot = files();
+        const ai = fakeAi(() => { throw new Error('Gemini request failed: The operation was aborted due to timeout'); });
+        expect(await run(['--dry-run', '--ids', B, '--retry-wait', '0'], ai)).toBe(0);
+        expect(ai.calls).toHaveLength(4);
+        expect(out.join('\n')).toMatch(/waiting 0 s, then asking the same batch again/);
+        expect(out.join('\n')).toMatch(/not your quota/);
+        expect(out.join('\n')).not.toMatch(/two halves/);
+        expect(files()).toEqual(snapshot);
+    });
+
+    test('a real run against a Gemini that is down stops with the same hint and keeps the exit code 0', async () => {
+        const ai = fakeAi(() => { throw new Error('Gemini answered 503 (busy or rate-limited)'); });
+        expect(await run(['--retry-wait', '0'], ai)).toBe(0);
+        expect(ai.calls).toHaveLength(4);
+        expect(out.join('\n')).toMatch(/on Google's side/);
+        expect(read(A).alt).toBeUndefined();
+    });
+
+    test('the client is made with no retries of its own (this script counts every call) and the --timeout asked for', async () => {
+        const made = [];
+        const createGemini = opts => { made.push(opts); return fakeAi(); };
+        await T.main(['--pause', '0', '--dry-run', '--ids', B, '--timeout', '45000', '--model', 'some-model'], root, { createGemini, sleep: async () => {}, log: () => {}, error: () => {} });
+        expect(made).toEqual([{ model: 'some-model', retries: 0, timeoutMs: 45000 }]);
+        made.length = 0;
+        await T.main(['--pause', '0', '--dry-run', '--ids', B], root, { createGemini, sleep: async () => {}, log: () => {}, error: () => {} });
+        expect(made[0]).toEqual({ model: undefined, retries: 0, timeoutMs: 90000 });
+    });
+
     test('bad options exit 2', async () => {
+        expect(await run(['--timeout', '5'], fakeAi())).toBe(2);
         expect(await run(['--langs', 'xx'], fakeAi())).toBe(2);
         expect(await run(['--batch', 'abc'], fakeAi())).toBe(2);
         expect(await run(['--batch', '0'], fakeAi())).toBe(2);

@@ -15,6 +15,9 @@
 //            --pause 7000           milliseconds between requests (free keys allow only a few requests per minute)
 //            --cooldown 65000       wait after a refusal (HTTP 429) before asking again
 //            --max-429 3            refusals in a row before the run stops
+//            --timeout 90000        give up on one request after this many ms (the client's own default is 240000)
+//            --retry-wait 30000     wait after a timeout or a 5xx (e.g. 503 "overloaded") before asking the SAME batch again
+//            --max-transient 4      such failures in a row before the run stops
 //            --max-requests 0       stop after this many requests (0 = no limit): a way to spread the work over days
 //            --model <name>         Gemini model (default: GEMINI_MODEL, else the default of scripts/lib/gemini.js)
 //            --glossary <file>      Jain terms (default scripts/glossary.json)
@@ -34,7 +37,8 @@
 //   * One request carries a batch of cues and asks for all target languages at once (half the requests of two passes).
 //     Cues are sent as {i, t}; the answer must contain every i exactly once, a non-empty text for every language,
 //     nothing unknown, and plausible lengths and scripts. Otherwise the WHOLE answer is thrown away and the batch is
-//     split in half and asked again, down to a single cue. A cue that never comes back right is left out of the alt track
+//     split in half and asked again, down to a single cue. (A timeout or a 503 says nothing about the answer, so it is
+//     NOT split: the same batch is asked again after a wait, and the run stops if Gemini keeps failing.) A cue that never comes back right is left out of the alt track
 //     (so a gap, never a shifted timestamp) and is tried again on the next run.
 //   * Faithful, not corrected: the prompt says to translate what the captions say, mistakes included, and to give back
 //     unchanged any cue that is not intelligible speech (a Sanskrit/Prakrit shloka or mantra the recogniser garbled).
@@ -59,6 +63,9 @@ const DEFAULT_BATCH = 50;
 const DEFAULT_PAUSE_MS = 7000;
 const DEFAULT_COOLDOWN_MS = 65000;
 const DEFAULT_MAX_429 = 3;
+const DEFAULT_TIMEOUT_MS = 90000;
+const DEFAULT_RETRY_WAIT_MS = 30000;
+const DEFAULT_MAX_TRANSIENT = 4;
 const MAX_BAD_IN_A_ROW = 8;        // errors / wrong answers in a row before the run gives up (the model or network is not working)
 const CONTEXT_CUES = 3;            // cues before a batch, sent as context only
 const DRY_RUN_CUES = 30;
@@ -170,6 +177,8 @@ function validateAnswer(answer, items, targets) {
 // ── Asking, with splitting and stopping ──────────────────────────────────
 
 const is429 = e => /\b429\b/.test(String((e && e.message) || e));
+// Google's side is not working (timeout, network, 5xx such as 503 "overloaded"): says nothing about the cues, so never split
+const isTransient = e => /Gemini request failed|Gemini answered 5\d\d/.test(String((e && e.message) || e));
 const isFatal = e => /Gemini answered 4\d\d/.test(String((e && e.message) || e)) && !is429(e);   // bad key, retired model ...: asking again will not help
 
 /**
@@ -201,17 +210,26 @@ async function translateCues(ctx, items, onCue) {
             } catch (e) {
                 if (is429(e)) {
                     ctx.in429++;
+                    ctx.inTransient = 0;
                     if (ctx.in429 >= ctx.max429) { ctx.stopped = 'rate-limit'; return null; }
                     ctx.log(`      Google refused the request (HTTP 429, ${ctx.in429} of ${ctx.max429} in a row); waiting ${Math.round(ctx.cooldown / 1000)} s`);
                     await ctx.sleep(ctx.cooldown);
                     continue;                                     // the same group again
                 }
                 if (isFatal(e)) { ctx.stopped = 'fatal'; ctx.fatal = e.message; return null; }
+                if (isTransient(e)) {
+                    ctx.inTransient++;
+                    if (ctx.inTransient >= ctx.maxTransient) { ctx.stopped = 'overloaded'; ctx.lastError = e.message; return null; }
+                    ctx.log(`      Gemini did not answer (${e.message.replace(/^Gemini /, '')}; ${ctx.inTransient} of ${ctx.maxTransient} in a row); waiting ${Math.round(ctx.retryWait / 1000)} s, then asking the same batch again`);
+                    await ctx.sleep(ctx.retryWait);
+                    continue;                                     // the same group again, not split
+                }
                 ctx.bad++;
                 if (ctx.bad >= MAX_BAD_IN_A_ROW) { ctx.stopped = 'unreliable'; return null; }
                 return { ok: false, why: e.message };
             }
             ctx.in429 = 0;
+            ctx.inTransient = 0;
             const v = validateAnswer(answer, group, ctx.targets);
             if (v.ok) ctx.bad = 0;
             else { ctx.bad++; if (ctx.bad >= MAX_BAD_IN_A_ROW) { ctx.stopped = 'unreliable'; return null; } }
@@ -295,13 +313,14 @@ const clock = s => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 
 
 const HINTS = {
     'rate-limit': 'Google refused several requests in a row (HTTP 429). If this is the per-minute limit, wait a few minutes; if it is the daily cap it resets at midnight Pacific time. Run the same command again: it continues where it stopped and asks only for what is missing. (AI Studio\'s "rate limit" view shows your limits; --pause 12000 asks more slowly.)',
+    overloaded: 'Gemini kept timing out or answering 5xx (e.g. 503 "overloaded"). That is on Google\'s side, not your quota, and nothing was wasted on splitting. Wait a while and run the same command again, try another model (--model), or ask for less per request (--batch 15, --cues 10 for a dry run).',
     'max-requests': 'Stopped at --max-requests. Run the same command again to continue.',
-    unreliable: 'Stopped: several requests in a row failed or came back wrong, so the model or the network is not working right now. The reasons are printed above. Nothing is lost; try again later.',
+    unreliable: 'Stopped: several answers in a row came back wrong (or failed in some other way), so the model is not translating reliably right now. The reasons are printed above. Nothing is lost; try again later or try another --model.',
 };
 
 function parseArgs(argv) {
     const flags = ['--dry-run', '--check', '--force', '--help'];
-    const values = ['--ids', '--langs', '--cues', '--batch', '--pause', '--cooldown', '--max-429', '--max-requests', '--model', '--glossary'];
+    const values = ['--ids', '--langs', '--cues', '--batch', '--pause', '--cooldown', '--max-429', '--max-requests', '--timeout', '--retry-wait', '--max-transient', '--model', '--glossary'];
     const args = { _: [] };
     for (let i = 0; i < argv.length; i++) {
         const a = argv[i];
@@ -333,7 +352,8 @@ async function main(argv = process.argv.slice(2), root = DEFAULT_ROOT, deps = {}
     const targets = args.langs ? splitList(args.langs) : DEFAULT_TARGETS;
     const nums = {
         batch: wholeNumber(args.batch, DEFAULT_BATCH, 1), pause: wholeNumber(args.pause, DEFAULT_PAUSE_MS), cooldown: wholeNumber(args.cooldown, DEFAULT_COOLDOWN_MS),
-        max429: wholeNumber(args['max-429'], DEFAULT_MAX_429, 1), maxRequests: wholeNumber(args['max-requests'], 0), cues: wholeNumber(args.cues, DRY_RUN_CUES, 1),
+        max429: wholeNumber(args['max-429'], DEFAULT_MAX_429, 1), timeout: wholeNumber(args.timeout, DEFAULT_TIMEOUT_MS, 1000),
+        retryWait: wholeNumber(args['retry-wait'], DEFAULT_RETRY_WAIT_MS), maxTransient: wholeNumber(args['max-transient'], DEFAULT_MAX_TRANSIENT, 1), maxRequests: wholeNumber(args['max-requests'], 0), cues: wholeNumber(args.cues, DRY_RUN_CUES, 1),
     };
     const badNum = Object.entries(nums).find(([, v]) => Number.isNaN(v));
     if (!targets.length || targets.some(l => !['kn', 'en', 'hi'].includes(l)) || badNum) {
@@ -364,7 +384,8 @@ async function main(argv = process.argv.slice(2), root = DEFAULT_ROOT, deps = {}
         return left ? 1 : 0;
     }
 
-    const ai = deps.ai || createGemini({ model: args.model, retries: 1 });
+    // retries: 0, because this script is the only retry layer: every request it counts is one real call to Google
+    const ai = deps.ai || (deps.createGemini || createGemini)({ model: args.model, retries: 0, timeoutMs: nums.timeout });
     if (!ai.available) {
         error('GEMINI_API_KEY is not set. It is free: create a key in Google AI Studio (https://aistudio.google.com/apikey) and set it, e.g. in PowerShell: $env:GEMINI_API_KEY = "...".');
         return 1;
@@ -374,9 +395,9 @@ async function main(argv = process.argv.slice(2), root = DEFAULT_ROOT, deps = {}
 
     const makeContext = (source, main, to) => ({
         ai, source, targets: to, glossary, log, sleep, requests: 0,
-        pause: nums.pause, cooldown: nums.cooldown, max429: nums.max429, maxRequests: dry ? 0 : nums.maxRequests, batch: nums.batch,
+        pause: nums.pause, cooldown: nums.cooldown, max429: nums.max429, retryWait: nums.retryWait, maxTransient: nums.maxTransient, maxRequests: dry ? 0 : nums.maxRequests, batch: nums.batch,
         before: i => main.slice(Math.max(0, i - CONTEXT_CUES), i).map(c => c[1]),
-        in429: 0, bad: 0, stopped: '', fatal: '', pauseFirst: false,
+        in429: 0, inTransient: 0, bad: 0, stopped: '', fatal: '', lastError: '', pauseFirst: false,
     });
 
     // ── --dry-run: one video, nothing written
@@ -470,5 +491,8 @@ module.exports = {
 };
 
 if (require.main === module) {
-    main().then(code => process.exit(code), err => { console.error(err); process.exit(1); });
+    // Not process.exit(): on Windows, leaving while fetch's connections are still closing can crash Node at exit with
+    // "Assertion failed: !(handle->flags & UV_HANDLE_CLOSING) ... win\async.c" after all the work is done. Setting the
+    // exit code and letting the process end by itself avoids that. (Everything is already written by then.)
+    main().then(code => { process.exitCode = code; }, err => { console.error(err); process.exitCode = 1; });
 }

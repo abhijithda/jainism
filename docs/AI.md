@@ -1388,7 +1388,8 @@ node scripts/translate-transcripts.js                            # everything th
 node scripts/translate-transcripts.js --max-requests 40          # spread the work over days if the daily quota is small
 ```
 Other options: `--ids`, `--langs kn` (Kannada only), `--batch 50`, `--pause 7000` (ms between requests), `--cooldown 65000`
-(wait after an HTTP 429), `--max-429 3`, `--force`, `--glossary <file>`. On Windows, a console often cannot draw Kannada:
+(wait after an HTTP 429), `--max-429 3`, `--timeout 90000` (give up on one request after this many ms), `--retry-wait 30000`
+(wait after a timeout or a 5xx), `--max-transient 4`, `--force`, `--glossary <file>`. On Windows, a console often cannot draw Kannada:
 use Windows Terminal, or write the dry run to a UTF-8 file (`... --dry-run | Out-File -Encoding utf8 dry.txt`).
 
 **What it writes.** In each `assets/transcripts/<videoId>.json`, for every target language that is not the spoken one, an
@@ -1416,8 +1417,17 @@ Edit it freely, then rerun with `--force` for a video to redo it. Not wired to `
 **Free tier, stated plainly.** The script makes about one request every 7 s, waits `--cooldown` after a 429 and stops
 after 3 in a row, saving everything done. Google no longer publishes one fixed free-tier table and the numbers differ per
 project (AI Studio's rate-limit view shows yours), so *how many days the run takes is not known here*. Daily quotas reset at
-midnight Pacific time. Errors that asking again cannot fix (bad key, retired model: HTTP 4xx other than 429) stop the run at
-once; eight failures or wrong answers in a row stop it as "not working right now".
+midnight Pacific time. Three kinds of failure are told apart, because each needs a different reaction:
+- **429** (quota): wait `--cooldown`, ask the same batch again, stop after `--max-429` in a row.
+- **Timeout, network error or 5xx such as 503 "overloaded"** (Google's side, nothing to do with the answer): wait
+  `--retry-wait`, ask the *same* batch again, stop after `--max-transient` in a row with "Gemini kept timing out…". These are
+  never split: splitting a batch cannot fix a server that is not answering, and only burns requests. (A first version split
+  them; a real dry run showed 10 requests wasted on timeouts and 503s that ended in 429s.)
+- **A wrong answer** (missing cue, bad script ...): split in half as described above; eight in a row stop the run.
+
+Errors that asking again cannot fix (bad key, retired model: HTTP 4xx other than 429) stop the run at once. The client is
+made with `retries: 0`, so this script is the only retry layer and every counted request is one real call to Google; `--timeout`
+defaults to 90 s (the shared client's own default is 240 s, which makes one hung request take four minutes).
 
 **Limits and to be verified by hand.**
 - **Not verified here:** real Gemini output. Everything above is tested with a fake client (no network): the real
@@ -1425,6 +1435,10 @@ once; eight failures or wrong answers in a row stop it as "not working right now
   allows must be looked at with `--dry-run` and a first real run.
 - Transcript files grow: with both tracks the folder is about three times bigger (0.8 MB -> ~2.3 MB in a test with stand-in
   text). They are loaded on the first question only and are not in the offline copy; the index grows with them.
+- On Windows, an older version of the script could end with `Assertion failed: !(handle->flags & UV_HANDLE_CLOSING) ... win\async.c`
+  after finishing (a Node/libuv problem when a process exits while fetch connections are closing). The output and the saved files
+  were complete; the script now sets `process.exitCode` instead of calling `process.exit()`. Not reproduced on Linux, so
+  whether it is gone on Windows must be checked by running it there.
 - `node scripts/fetch-transcripts.js --force` fetches the spoken track again and drops that video's translated tracks (their cues
   would no longer line up). Whisper's `--import-whisper` keeps them, which is only right if the cue starts did not change:
   rerun the translation if in doubt (stale cues are ignored, and retranslated).
