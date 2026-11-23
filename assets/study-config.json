@@ -1,0 +1,86 @@
+{
+  "topicNames": {
+    "Chakreshwari Devi": {
+      "kn": "ಚಕ್ರೇಶ್ವರಿ ದೇವಿ"
+    },
+    "Chakreshwari Yakshi": {
+      "kn": "ಚಕ್ರೇಶ್ವರಿ ಯಕ್ಷಿ"
+    },
+    "Deva Moodhata": {
+      "kn": "ದೇವ ಮೂಢತೆ"
+    },
+    "Gomukha Yaksha": {
+      "kn": "ಗೋಮುಖ ಯಕ್ಷ"
+    },
+    "Guru Moodhata": {
+      "kn": "ಗುರು ಮೂಢತೆ"
+    },
+    "Harivamsha Purana": {
+      "kn": "ಹರಿವಂಶ ಪುರಾಣ"
+    },
+    "Kali Devi": {
+      "kn": "ಕಾಳಿ ದೇವಿ"
+    },
+    "Loka Moodhata": {
+      "kn": "ಲೋಕ ಮೂಢತೆ"
+    },
+    "Madana Sundari": {
+      "kn": "ಮದನಸುಂದರಿ"
+    },
+    "Maha Purana": {
+      "kn": "ಮಹಾ ಪುರಾಣ"
+    },
+    "Maina Sundari": {
+      "kn": "ಮೈನಾ ಸುಂದರಿ"
+    },
+    "Mithya Drishti": {
+      "kn": "ಮಿತ್ಯಾದೃಷ್ಟಿ"
+    },
+    "Nava Devata": {
+      "kn": "ನವ ದೇವತೆ"
+    },
+    "Nishchaya Naya": {
+      "kn": "ನಿಶ್ಚಯ ನಯ"
+    },
+    "Padma Purana": {
+      "kn": "ಪದ್ಮ ಪುರಾಣ"
+    },
+    "Samyag Drishti": {
+      "kn": "ಸಮ್ಯಗ್ದೃಷ್ಟಿ"
+    },
+    "Shasana Devata": {
+      "kn": "ಶಾಸನ ದೇವತೆ"
+    },
+    "Uttara Purana": {
+      "kn": "ಉತ್ತರ ಪುರಾಣ"
+    },
+    "Vidya Devata": {
+      "kn": "ವಿದ್ಯಾ ದೇವತೆ"
+    },
+    "Vyavahara Naya": {
+      "kn": "ವ್ಯವಹಾರ ನಯ"
+    }
+  },
+  "aliases": {
+    "Govadana Yaksha": "Gomukha Yaksha"
+  },
+  "titleWords": [
+    "queen",
+    "king",
+    "rani",
+    "raja",
+    "raaja",
+    "prince",
+    "princess",
+    "shri",
+    "sri",
+    "lord",
+    "mother",
+    "father",
+    "saint",
+    "sage",
+    "acharya",
+    "muni",
+    "swami"
+  ]
+}

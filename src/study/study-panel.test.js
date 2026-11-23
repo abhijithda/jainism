@@ -2,6 +2,8 @@
 const fs = require('fs');
 const path = require('path');
 const data = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'assets', 'data.json'), 'utf8'));
+const { createStudyConfig } = require('./study-config.js');
+const config = createStudyConfig(JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'assets', 'study-config.json'), 'utf8')));
 const html = fs.readFileSync(path.join(__dirname, '..', '..', 'index.html'), 'utf8');
 
 let panel, mockEngine;
@@ -23,7 +25,7 @@ function boot({ study = true, onCite = jest.fn() } = {}) {
     if (study) localStorage.setItem('settings', JSON.stringify({ studyCompanion: true }));
     mockEngine = null;
     jest.isolateModules(() => { panel = require('./study-panel.js'); });
-    panel.initStudy({ data, onCite });
+    panel.initStudy({ data, onCite, config });
     return onCite;
 }
 
@@ -105,7 +107,7 @@ test('pending questions and the open panel survive a reload of the page', () => 
     document.documentElement.innerHTML = html.replace(/<script[\s\S]*?<\/script>/g, '');
     sessionStorage.setItem('studySession', saved);
     jest.isolateModules(() => { panel = require('./study-panel.js'); });
-    panel.initStudy({ data, onCite() {} });
+    panel.initStudy({ data, onCite() {}, config });
     expect($('study-drawer').hidden).toBe(false);
     expect($('study-body').textContent).toContain('differs from Loka Moodhata');
 });
@@ -176,7 +178,7 @@ describe('panel size, language and drafts', () => {
         document.documentElement.innerHTML = html.replace(/<script[\s\S]*?<\/script>/g, '');
         sessionStorage.setItem('studySession', saved);
         jest.isolateModules(() => { panel = require('./study-panel.js'); });
-        panel.initStudy({ data, onCite() {} });
+        panel.initStudy({ data, onCite() {}, config });
         expect($('study-body').querySelector('.study-answer').value).toBe('my half-written answer');
     });
 
@@ -204,7 +206,7 @@ describe('Study needs Read tracking', () => {
             document.body.classList.toggle('show-read-tracking', $('toggle-read-tracking').checked);
             const s = JSON.parse(localStorage.getItem('settings')); s.readTracking = $('toggle-read-tracking').checked; localStorage.setItem('settings', JSON.stringify(s));
         });
-        panel.initStudy({ data, onCite() {} });
+        panel.initStudy({ data, onCite() {}, config });
         expect($('toggle-read-tracking').checked).toBe(true);
         expect(document.body.classList.contains('show-read-tracking')).toBe(true);
         expect(JSON.parse(localStorage.getItem('settings')).readTracking).toBe(true);

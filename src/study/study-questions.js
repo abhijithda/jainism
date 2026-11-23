@@ -21,7 +21,7 @@
 
 import { search, foldLatin, tokenize } from '../ai/retrieval.js';
 import { isBlockTrackable } from '../core/read-tracking.js';
-import { topicName } from './topic-names.js';
+import { createStudyConfig } from './study-config.js';
 
 const MIN_SCORE = 0.5;                 // same floor retrieval.js uses for "relevant"
 const MAX_PASSAGES_PER_TOPIC = 2;
@@ -52,13 +52,9 @@ const clip = (text, n) => (text.length > n ? `${text.slice(0, n).trimEnd()}\u202
 // Capitalised words that start a sentence rather than name something
 // ("Is Moodhata ...", "The Naya ..."): never the first word of a sibling phrase.
 const NOT_A_NAME = new Set((
-    'a an and are as at be but by for from how i if in is it its no not of on or so that the their then there ' +
+    'a an and are as at be but by for from how i if in is it its male female no not of on or so that the their then there ' +
     'these this to was what when where which who why with you your here also only both each any all one two'
 ).split(' '));
-
-// Titles that start a person's name ("Queen Vishalakshi", "Rani Vishalakshi", "Shri Gautama"): two
-// ways of naming one person are not two topics to compare.
-const TITLE_WORDS = new Set('queen king rani raja raaja prince princess shri sri lord mother father saint sage acharya muni swami'.split(' '));
 
 const lower = s => String(s).trim().toLowerCase();
 const lastWord = phrase => String(phrase).trim().split(/\s+/).pop();
@@ -102,7 +98,8 @@ export function blockText(block, langs, { strict = false } = {}) {
  * Indexes what the question builders need, once per dataset.
  * @param {Object} index  from ai/retrieval.js createIndex()
  */
-export function buildStudyModel(index) {
+export function buildStudyModel(index, config = createStudyConfig({})) {
+    const { canonicalTopic } = config;
     const chunkById = new Map(index.chunks.map(c => [c.id, c]));
     const blockItem = new Map();
     index.data.forEach(item => (item.blocks || []).forEach(b => blockItem.set(b.id, item)));
@@ -135,7 +132,30 @@ export function buildStudyModel(index) {
             if (!text) return;
             for (const m of text.matchAll(re)) {
                 if (NOT_A_NAME.has(lower(m[1]))) continue;
-                addPhrase(headKey, `${m[1]} ${headWord}`, 'text');
+                const name = canonicalTopic(`${m[1]} ${headWord}`);
+                addPhrase(lower(lastWord(name)), name, 'text');
+            }
+        });
+    });
+
+    // Pair families. A paired tag ("Yaksha Yakshi": the male and the female attendant, named together) makes
+    // each of its two words a family of its own ("Gomukha Yaksha", "Chakreshwari Yakshi"); a member of one is
+    // compared with a member of the other that the book names in the same breath. head -> {partner, names}.
+    const pairHeads = new Map();
+    topics.forEach(({ name }) => {
+        const w = name.trim().split(/\s+/);
+        if (w.length !== 2 || w[0].length < 4 || !sameWord(w[0], w[1])) return;
+        [[w[0], w[1]], [w[1], w[0]]].forEach(([head, partner]) => {
+            if (!pairHeads.has(lower(head))) pairHeads.set(lower(head), { head, partner: lower(partner), names: new Map() });
+        });
+    });
+    pairHeads.forEach(fam => {
+        const re = new RegExp(`(?<![\\p{L}\\p{N}])([A-Z][\\p{L}]+)\\s+${escapeRe(fam.head)}(?![\\p{L}])`, 'gu');
+        index.chunks.forEach(c => {
+            for (const m of (c.text.en || '').matchAll(re)) {
+                if (NOT_A_NAME.has(lower(m[1]))) continue;
+                const name = canonicalTopic(`${m[1]} ${fam.head}`);
+                if (!isPairedTerm(name)) fam.names.set(lower(name), name);
             }
         });
     });
@@ -143,9 +163,12 @@ export function buildStudyModel(index) {
     // What each block says in English plus its tags, lower-cased, for "named together" checks.
     const mentions = index.chunks.map(c => lower(`${c.text.en || ''} ${c.tags.join(' ')}`));
 
-    const phrases = [...heads.values()].flatMap(group => [...group.values()].map(v => v.name));
+    const phrases = [...new Set([
+        ...[...heads.values()].flatMap(group => [...group.values()].map(v => v.name)),
+        ...[...pairHeads.values()].flatMap(fam => [...fam.names.values()]),
+    ])];
 
-    return { index, chunkById, blockItem, topics, heads, mentions, phrases };
+    return { index, config, chunkById, blockItem, topics, heads, pairHeads, mentions, phrases };
 }
 
 /**
@@ -157,15 +180,31 @@ export function topicsOf(model, chunk) {
     const out = [...chunk.tags];
     const text = lower(chunk.text.en || '');
     model.phrases.forEach(name => {
-        if (text.includes(lower(name)) && !out.some(t => lower(t) === lower(name))) out.push(name);
+        // a longer form of a tag ("Shasanaadi Devata") is that tag
+        const topic = extendedTag(model, name) || name;
+        if (text.includes(lower(name)) && !out.some(t => lower(t) === lower(topic))) out.push(topic);
+    });
+    // A second name the book uses ("Govadana Yaksha") is the same topic as its main name.
+    model.config.aliasEntries().forEach(([alias, name]) => {
+        if (text.includes(lower(alias)) && !out.some(t => lower(t) === lower(name))) out.push(name);
     });
     return out;
 }
 
+/**
+ * A paired term: its two words are the same word in two forms ("Yaksha Yakshi", the male and female
+ * attendant named together, as the book's Kannada does: "ಗೋಮುಖ ಚಕ್ರೇಶ್ವರಿ ಯಕ್ಷ ಯಕ್ಷಿ"). It is not one member of a
+ * "<qualifier> Yakshi" family, so nothing is compared with it, and it is compared with nothing.
+ */
+const isPairedTerm = phrase => {
+    const words = phrase.trim().split(/\s+/);
+    return words.length === 2 && sameWord(words[0], words[1]);
+};
+
 /** Whether some block of the book names both phrases (in its English text or tags). */
 function namedTogether(model, a, b) {
-    const x = lower(a), y = lower(b);
-    return model.mentions.some(m => m.includes(x) && m.includes(y));
+    const xs = [a, ...model.config.aliasesOf(a)].map(lower), ys = [b, ...model.config.aliasesOf(b)].map(lower);
+    return model.mentions.some(m => xs.some(x => m.includes(x)) && ys.some(y => m.includes(y)));
 }
 
 /**
@@ -174,21 +213,68 @@ function namedTogether(model, a, b) {
  *  - a phrase of the same shape that the text names but doesn't tag, but only
  *    if some block names it together with the topic (the Moodhata note lists Deva, Loka and
  *    Guru together). That keeps out stray capitalised words. A person named two ways
- *    (Rani / Queen Vishalakshi) is not a comparison: see TITLE_WORDS.
+ *    (Rani / Queen Vishalakshi) is not a comparison: see titleWords in study-config.json.
  * Spelling variants of the topic itself are left out. Best first: pairs the
  * book names together, then plain tag siblings.
  * @returns {{name: string, together: boolean}[]}
  */
+/** A shortened form, only ever one the text uses without a tag, of another member of the family ("Vamsha Purana" for "Harivamsha Purana"): the same thing, not a sibling. */
+const isShortenedAlias = (model, group, phrase) => {
+    if (model.topics.has(lower(phrase))) return false;      // a tag is curated: never an alias
+    const first = lower(phrase.trim().split(/\s+/)[0]);
+    return first.length >= 4 && [...group.values()].some(({ name }) => {
+        const other = lower(name.trim().split(/\s+/)[0]);
+        return other !== first && other.includes(first);
+    });
+};
+
+/**
+ * The tag a text-only phrase extends: "Shasanaadi Devata" is "Shasana Devata" and the other devatas (aadi),
+ * so it is that tag, not a topic of its own. null if the phrase is a tag or extends none.
+ */
+function extendedTag(model, phrase) {
+    if (model.topics.has(lower(phrase))) return null;
+    const group = model.heads.get(lower(lastWord(phrase)));
+    if (!group) return null;
+    const first = lower(phrase.trim().split(/\s+/)[0]);
+    for (const { name, source } of group.values()) {
+        const t = lower(name.trim().split(/\s+/)[0]);
+        if (source === 'tag' && t.length >= 5 && t !== first && first.startsWith(t)) return name;
+    }
+    return null;
+}
+
 export function comparisonsFor(model, topic) {
+    if (lower(model.config.canonicalTopic(topic)) !== lower(topic) || extendedTag(model, topic)) return [];       // a second name or a longer form of a tag: use the main one
+    return [...pairPartners(model, topic), ...siblingComparisons(model, topic)];
+}
+
+/**
+ * The other half of a pair, when the book names both in one breath: "Gomukha Yaksha" <-> "Chakreshwari Yakshi"
+ * (the first Tirthankara's two attendants, "Gomukha Chakreshwari Yaksha Yakshi" in the book's Kannada).
+ */
+function pairPartners(model, topic) {
+    const words = topic.trim().split(/\s+/);
+    const fam = model.pairHeads.get(lower(words[words.length - 1]));
+    if (!fam || words.length < 2 || isPairedTerm(topic)) return [];
+    return [...model.pairHeads.get(fam.partner).names.values()]
+        .filter(name => !sameWord(name.trim().split(/\s+/)[0], words[0]))
+        .filter(name => namedTogether(model, topic, name))
+        .map(name => ({ name, together: true }));
+}
+
+function siblingComparisons(model, topic) {
     const group = model.heads.get(lower(lastWord(topic)));
     if (!group || topic.trim().split(/\s+/).length < 2) return [];
     const firstWord = phrase => phrase.trim().split(/\s+/)[0];
+    if (isPairedTerm(topic) || isShortenedAlias(model, group, topic)) return [];
     return [...group.entries()]
         .filter(([key]) => key !== lower(topic))
         .map(([, v]) => ({ ...v, together: namedTogether(model, topic, v.name) }))
         .filter(v => !sameWord(firstWord(v.name), firstWord(topic)))
-        .filter(v => !TITLE_WORDS.has(lower(firstWord(v.name))) && !TITLE_WORDS.has(lower(firstWord(topic))))
+        .filter(v => !model.config.isTitleWord(firstWord(v.name)) && !model.config.isTitleWord(firstWord(topic)))
         .filter(v => v.source === 'tag' || v.together)
+        .filter(v => !isPairedTerm(v.name) && !isShortenedAlias(model, group, v.name) && !extendedTag(model, v.name))
         .sort((a, b) => Number(b.together) - Number(a.together))
         .map(({ name, together }) => ({ name, together }));
 }
@@ -207,17 +293,19 @@ function topicPassages(model, topic, langs, { first, skip = new Set(), readSet }
     const out = [];
     // A passage is about the topic only if it has every word of it ("Loka Moodhata" needs "Loka", not just
     // "Moodhata"); otherwise a topic the book never mentions would borrow another topic's passages.
-    const terms = [...new Set(tokenize(topic))];
+    // (a second name the book uses for the topic counts too: "Govadana Yaksha" passages are about "Gomukha Yaksha")
+    const variants = [topic, ...model.config.aliasesOf(topic)];
+    const termSets = variants.map(v => [...new Set(tokenize(v))]);
     const push = chunk => {
         if (!chunk || chunk.textless || skip.has(chunk.id) || out.some(p => p.id === chunk.id)) return;
-        if (!terms.every(t => chunk.tf.has(t))) return;
+        if (!termSets.some(terms => terms.every(t => chunk.tf.has(t)))) return;
         if (readSet && !readSet.has(chunk.id)) return;   // only what the reader has marked as read: never test what they haven't met
         if (out.length < MAX_PASSAGES_PER_TOPIC) out.push(passageOf(chunk, langs, topic));
     };
     if (first) push(model.chunkById.get(first));
-    search(model.index, topic, { k: 30, textOnly: true })
+    variants.forEach(v => search(model.index, v, { k: 30, textOnly: true })
         .filter(h => h.score >= MIN_SCORE)
-        .forEach(h => push(h.chunk));
+        .forEach(h => push(h.chunk)));
     return out;
 }
 
@@ -240,14 +328,22 @@ export function buildSuggestion(model, desc, { langs = ['en'], blockId, readSet 
         // The other topic picks first: when one note names both (Deva, Loka and Guru Moodhata in one list),
         // it must not be used up by the topic that has many other passages to choose from.
         const theirs = topicPassages(model, b, langs, { readSet });
-        const mine = topicPassages(model, a, langs, { first: blockId, readSet, skip: new Set(theirs.map(p => p.id)) });
+        let mine = topicPassages(model, a, langs, { first: blockId, readSet, skip: new Set(theirs.map(p => p.id)) });
+        let other = theirs;
+        if (!mine.length && theirs.length) {
+            // One passage can be the book's whole evidence for both ("Gomukha Yaksha and Chakreshwari Yakshi" in one
+            // sentence): show it once, for both.
+            mine = topicPassages(model, a, langs, { first: blockId, readSet }).map(p => ({ ...p, topic: `${a} \u00B7 ${b}` }));
+            const shared = new Set(mine.map(p => p.id));
+            other = theirs.filter(p => !shared.has(p.id));
+        }
         if (!mine.length || !theirs.length) return null;
         const wl = wordingLangs(langs);
-        const promptLines = wl.map(lang => ({ lang, text: WORDING[lang].compare(topicName(a, lang), topicName(b, lang)) }));
+        const promptLines = wl.map(lang => ({ lang, text: WORDING[lang].compare(model.config.topicName(a, lang), model.config.topicName(b, lang)) }));
         return {
-            id: suggestionId(desc), desc, kind: 'compare', title: `${topicName(a, primaryLang(wl))} vs ${topicName(b, primaryLang(wl))}`,
+            id: suggestionId(desc), desc, kind: 'compare', title: `${model.config.topicName(a, primaryLang(wl))} vs ${model.config.topicName(b, primaryLang(wl))}`,
             prompt: promptLines.find(l => l.lang === primaryLang(wl)).text, promptLines,
-            passages: [...mine, ...theirs],   // the topic just read first, then the one to compare it with
+            passages: [...mine, ...other],   // the topic just read first, then the one to compare it with
         };
     }
     if (desc?.kind === 'recall') {

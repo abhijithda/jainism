@@ -14,6 +14,8 @@ signal. What it does:
   tags → every module each script imports → every `url()` in the CSS, and saves
   all of it plus `data.json`. There is no file list to maintain; a new module is
   picked up the next time the worker updates.
+- **Saves the study companion's per-book settings** (`assets/study-config.json`) when the file exists; it is
+  optional, so a missing one never stops the install.
 - **Saves the pictures.** After activating, it saves every image `data.json`
   uses, one at a time. A missing image is reported but never breaks the rest.
 - **Shows progress on Home**, under the switch: *Saving a copy…*, *Ready to use

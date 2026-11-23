@@ -16,7 +16,7 @@ function loadWorkerHelpers() {
     const source = fs.readFileSync(path.join(ROOT, 'sw.js'), 'utf8');
     const sandbox = { self: { registration: { scope: SCOPE }, addEventListener() {}, clients: {}, skipWaiting() {} }, URL, console };
     // The worker's top-level consts aren't visible outside it, so return what we need.
-    return vm.runInNewContext(`${source}\n;({ referencesIn, inScope, keyFor, isImageUrl, imageUrlsFromData, thumbnailUrlsFromData, INDEX_URL, DATA_URL })`, sandbox);
+    return vm.runInNewContext(`${source}\n;({ referencesIn, inScope, keyFor, isImageUrl, imageUrlsFromData, thumbnailUrlsFromData, INDEX_URL, DATA_URL, STUDY_CONFIG_URL })`, sandbox);
 }
 
 function fileFor(href) {
@@ -60,6 +60,13 @@ describe('service worker crawl', () => {
         const rels = [...seen.values()].map(f => path.relative(ROOT, f).split(path.sep).join('/'));
         ['src/ai/ai-panel.js', 'src/ai/retrieval.js', 'src/ai/rag.js', 'src/ai/prompt.js', 'src/ai/engines/local.js', 'src/ai/engines/cloud.js', 'src/ai/ai-panel.css']
             .forEach(f => expect(rels).toContain(f));
+    });
+
+    test('the study companion\u2019s per-book config is saved with the offline copy, and its absence cannot stop the install', () => {
+        const { STUDY_CONFIG_URL } = loadWorkerHelpers();
+        expect(fs.existsSync(fileFor(STUDY_CONFIG_URL))).toBe(true);
+        const source = fs.readFileSync(path.join(ROOT, 'sw.js'), 'utf8');
+        expect(source).toMatch(/fetch\(STUDY_CONFIG_URL[\s\S]{0,250}catch/);     // optional: wrapped, unlike index.html and data.json
     });
 
     test('the CDN model library is left alone (not crawled, not saved)', () => {
