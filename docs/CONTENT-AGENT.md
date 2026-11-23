@@ -326,3 +326,10 @@ The same typo several times in one line is fixed everywhere in that line in one 
 one-click suggestion also changes every place), so ten identical typos never mean ten runs. A protected spelling (allowlist or link) in
 any of the places stops the change.
 
+### Typo review: what is never fixed automatically
+
+- Kannada: a change that only swaps a short vowel sign for its long one or back (`ಬಂದರು` / `ಬಂದರೂ`) is a suggestion, never an automatic fix,
+  because both spellings can be real words with different meanings. The suggestion says why.
+- When part of the AI check fails (for example HTTP 429 on the last part), the report says how many parts were not checked and
+  names the first blocks (`not checked: A-5.1, ...`), so you know what to check by hand or run again.
+

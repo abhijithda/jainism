@@ -135,6 +135,7 @@ async function aiIssues(ai, lines, allowlist) {
     const issues = [];
     const failures = [];
     const chunkSize = 60;
+    const notChecked = [];
     for (let i = 0; i < lines.length; i += chunkSize) {
         const chunk = lines.slice(i, i + chunkSize);
         try {
@@ -143,9 +144,12 @@ async function aiIssues(ai, lines, allowlist) {
                 prompt: JSON.stringify({ lines: chunk.map((l) => ({ key: l.key, lang: l.lang, kind: l.kind, text: l.text })) }),
             });
             for (const x of Array.isArray(answer.issues) ? answer.issues : []) issues.push(x);
-        } catch (e) { failures.push(e.message); }
+        } catch (e) { failures.push(e.message); notChecked.push(...chunk.map((l) => l.label)); }
     }
-    return { issues, note: failures.length ? `the AI check failed for part of the text: ${failures[0]}` : '' };
+    const parts = Math.ceil(lines.length / chunkSize);
+    const which = [...new Set(notChecked)];
+    const named = which.length > 8 ? `${which.slice(0, 8).join(', ')} and ${which.length - 8} more` : which.join(', ');
+    return { issues, note: failures.length ? `the AI check failed for part of the text (${failures.length} of ${parts} part(s); not checked: ${named}): ${failures[0]}` : '' };
 }
 
 const KANNADA_LETTER = /[\u0C80-\u0CFF]/;
@@ -275,6 +279,14 @@ async function mixedScriptIssues(ai, lines, allowlist, autoMin = MIXED_AUTO_MIN,
  * Sort every proposal into: fixes (applied), suggestions (one-click), flags (verse), dropped (with the reason).
  * Pure: takes the lines, the proposals and the allowlist.
  */
+// Kannada: a change that only swaps a short vowel sign for its long one (or back), such as ಬಂದರು / ಬಂದರೂ, often turns one real
+// word into another real word with a different meaning, so it is never fixed automatically, only suggested.
+const LONG_TO_SHORT = { 'ೂ': 'ು', 'ೀ': 'ಿ', 'ೇ': 'ೆ', 'ೋ': 'ೊ', 'ಈ': 'ಇ', 'ಊ': 'ಉ', 'ಏ': 'ಎ', 'ಓ': 'ಒ' };
+const vowelLengthOnly = (a, b) => {
+    const n = (t) => [...t].map((c) => LONG_TO_SHORT[c] || c).join('');
+    return a !== b && n(a) === n(b);
+};
+
 function decide(lines, proposals, allowlist) {
     const lineByKey = new Map(lines.map((l) => [l.key, l]));
     const decided = { fixes: [], suggestions: [], flags: [], dropped: [] };
@@ -293,9 +305,11 @@ function decide(lines, proposals, allowlist) {
         if (spans.some((s) => protectedSpan(line.text, s, allowlist))) { drop('allowlisted spelling or link'); continue; }
         const base = { key: p.key, blockId: line.blockId, label: line.label, lang: line.lang, index: line.index, old: p.old, new: p.new, reason: String(p.reason || '').slice(0, 160), ...(p.exact ? { exact: true } : {}) };
         if (line.kind === 'verse') { decided.flags.push({ ...base, flag: true }); continue; }
+        const lengthOnly = !p.mixed && line.lang === 'kn' && vowelLengthOnly(p.old, p.new);
         const clear = p.mixed
             ? Boolean(p.mixedAuto)                                              // Kannada to Latin: its own checks are in mixedScriptIssues
-            : p.confidence === 'clear' && [...p.old].length <= 40 && editDistance(p.old, p.new) <= MAX_EDIT[line.lang];
+            : p.confidence === 'clear' && [...p.old].length <= 40 && editDistance(p.old, p.new) <= MAX_EDIT[line.lang] && !lengthOnly;
+        if (lengthOnly && p.confidence === 'clear') base.reason = `${base.reason} (only the vowel length changes; both spellings can be real words, so please check)`.slice(0, 220);
         (clear ? decided.fixes : decided.suggestions).push(base);
     }
     return decided;
@@ -446,14 +460,19 @@ function renderReport(r, { all = false } = {}) {
         for (const v of r.verses) out.push(`- ${v.label}${v.flagged.length ? ` (the AI doubts: ${v.flagged.map((f) => `${f.old} → ${f.new}`).join('; ')})` : ''}`);
         out.push('');
     }
-    if (r.mixedFound) out.push(`${r.mixedFound} English line(s) contain Kannada-script words (your own wording); the model proposed ${r.mixedProposed} change(s). Those it was sure of, and whose round trip matched, were written in Latin letters above; the others are suggestions.\n`);
+    if (r.mixedFound) {
+        const tail = r.mixedProposed > 0
+            ? ' Those it was sure of, and whose round trip matched, were written in Latin letters above; the others are suggestions.'
+            : /Kannada-in-English check failed/.test(r.note || '') ? ' The check did not finish (see the note above), so run it again.' : ' It found nothing to change.';
+        out.push(`${r.mixedFound} English line(s) contain Kannada-script words (your own wording); the model proposed ${r.mixedProposed} change(s).${tail}\n`);
+    }
     if (r.notApplied.length) out.push(`${r.notApplied.length} fix(es) overlapped another on the same line and were skipped.\n`);
     return out.join('\n') + '\n';
 }
 const esc = (t) => String(t).replace(/\|/g, '\\|').replace(/\n/g, ' ');
 
 module.exports = {
-    loadAllowlist, loadEquivalents, skeleton, dropDuplicate, duplicatePairIssues, editDistance, changedBlocks, collectLines, mechanicalIssues, decide, applyToLine, applyFixes,
+    vowelLengthOnly, loadAllowlist, loadEquivalents, skeleton, dropDuplicate, duplicatePairIssues, editDistance, changedBlocks, collectLines, mechanicalIssues, decide, applyToLine, applyFixes,
     buildSuggestionComments, reviewTypos, renderReport, locate, locateAll,
 };
 

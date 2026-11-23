@@ -486,3 +486,52 @@ describe('the same typo several times in one line is fixed in one run', () => {
     });
 });
 
+describe('Kannada: a change that only swaps a short vowel for a long one is a suggestion', () => {
+    const kn = (text) => [{ key: 'k1|kn|0', blockId: 'k1', label: 'A-3.3', lang: 'kn', index: 0, text, kind: 'prose' }];
+    const P2 = (old, nw, conf = 'clear') => ({ key: 'k1|kn|0', old, new: nw, reason: 'x', confidence: conf });
+
+    test('ಬಂದರು → ಬಂದರೂ (both real words) is only suggested, with a note why', () => {
+        const d = T.decide(kn('ಅವರು ಮನೆಗೆ ಬಂದರು'), [P2('ಬಂದರು', 'ಬಂದರೂ')], []);
+        expect(d.fixes).toHaveLength(0);
+        expect(d.suggestions).toHaveLength(1);
+        expect(d.suggestions[0].reason).toMatch(/only the vowel length changes/);
+    });
+    test('other clear Kannada typos are still fixed automatically', () => {
+        expect(T.decide(kn('ಮಾಡುಕೊಳ್ಳಲು'), [P2('ಮಾಡುಕೊಳ್ಳಲು', 'ಮಾಡಿಕೊಳ್ಳಲು')], []).fixes).toHaveLength(1);   // ು to ಿ is not a length pair
+        expect(T.decide(kn('ಸಾದ್ಯ'), [P2('ಸಾದ್ಯ', 'ಸಾಧ್ಯ')], []).fixes).toHaveLength(1);
+        expect(T.decide(kn('ಮಾಹಾ'), [P2('ಮಾಹಾ', 'ಮಹಾ')], []).fixes).toHaveLength(1);
+    });
+    test('the pairs it knows', () => {
+        expect(T.vowelLengthOnly('ಬಂದರು', 'ಬಂದರೂ')).toBe(true);
+        expect(T.vowelLengthOnly('ಪಿತ', 'ಪೀತ')).toBe(true);
+        expect(T.vowelLengthOnly('ಕೆರೆ', 'ಕೇರೆ')).toBe(true);
+        expect(T.vowelLengthOnly('ಒಂದು', 'ಓಂದು')).toBe(true);
+        expect(T.vowelLengthOnly('ಸಾದ್ಯ', 'ಸಾಧ್ಯ')).toBe(false);
+        expect(T.vowelLengthOnly('same', 'same')).toBe(false);
+    });
+    test('English is not affected', () => {
+        const en = [{ key: 'k1|en|0', blockId: 'k1', label: 'A-3.3', lang: 'en', index: 0, text: 'recieve it', kind: 'prose' }];
+        expect(T.decide(en, [{ key: 'k1|en|0', old: 'recieve', new: 'receive', reason: 'x', confidence: 'clear' }], []).fixes).toHaveLength(1);
+    });
+});
+
+describe('the report says which part the AI could not check', () => {
+    test('a failed part is counted and the block labels are named', async () => {
+        const base = book();
+        const head = clone(base);
+        const many = Array.from({ length: 130 }, (_, i) => `plain English line number ${i}`);
+        head[1].blocks.push(blk('m00020', 1, 'paragraph', [], many));
+        let calls = 0;
+        const ai = { available: true, json: async () => { calls++; if (calls === 2) { const e = new Error('Gemini answered 429 (busy or rate-limited)'); e.unavailable = true; throw e; } return { issues: [] }; } };
+        const r = await T.reviewTypos(head, base, { ai, allowlist: [] });
+        expect(r.note).toMatch(/failed for part of the text \(1 of 3 part\(s\); not checked: [A-Z]-\d+\.\d+/);
+        expect(T.renderReport(r)).toMatch(/not checked/);
+    });
+    test('mixed-script wording: when the check did not run it says so instead of promising Latin letters', () => {
+        const r = { data: [], changed: false, applied: [], comments: [], verses: [], dropped: [], note: 'the Kannada-in-English check failed in part: x', mixedFound: 3, mixedProposed: 0, summary: { lines: 5, blocks: 2, whole: true }, notApplied: [] };
+        const text = T.renderReport(r);
+        expect(text).toMatch(/proposed 0 change\(s\)\. The check did not finish/);
+        expect(text).not.toMatch(/written in Latin letters above/);
+    });
+});
+
