@@ -1313,7 +1313,7 @@ ai/
   especially the Kannada and transliterated wording.** Measures search only, not answer quality or model cost.
 - **Planned (measured, not assumed):** eval harness, optional agent step
 
-## Video navigator ("Watch") — ✅ built; transcripts fetched, Gemini translations still to be generated
+## Video navigator ("Watch") — ✅ built; transcripts fetched, Gemini translations in progress (done in sessions; `node scripts/translate-transcripts.js --check` shows how far)
 
 The book cites YouTube videos as evidence. Under an answer, **Watch** buttons now open the
 video in a player on the page, at the moment the answer is about. Clicking any video thumbnail
@@ -1447,17 +1447,21 @@ Kannada or an exact copy, one malformed JSON answer, one length mismatch) and 42
 well before `--max-requests`. Expect roughly 100 to 300 requests for the whole job.
 
 **Limits and to be verified by hand.**
-- **Not verified here:** real Gemini output. Everything above is tested with a fake client (no network): the real
-  Kannada quality, whether the model leaves shlokas alone, whether the glossary is obeyed and how many requests your quota
-  allows must be looked at with `--dry-run` and a first real run.
+- **What is verified and what is not.** The script's logic is tested with a fake client (no network). On the real
+  output of the first sessions (gemini-3.6-flash) we checked: that every translated cue sits on a cue of the spoken
+  track (the data test), that Kannada, English and Hindi questions find the right video, that the glossary is followed,
+  that garbled shloka cues come back unchanged, and a sample of Kannada and English read by the owner ("some accurate,
+  some not": see above). **Not verified:** the Kannada quality beyond those samples; how the videos not yet translated
+  behave (the long, shloka-heavy ones failed the checks most often); and how many requests and days the whole job
+  needs on a free key.
 - Transcript files grow. Measured on the first real output: about 240 bytes per translated cue (Kannada + English), so
   the full job takes the folder from 0.74 MB to roughly 1.9 MB raw (about 0.5 MB gzipped, which is what GitHub Pages sends).
   They are loaded on the first question only and are not in the offline copy. Building the search index over all 38
   transcripts took about 0.1 s in a test.
 - On Windows, an older version of the script could end with `Assertion failed: !(handle->flags & UV_HANDLE_CLOSING) ... win\async.c`
   after finishing (a Node/libuv problem when a process exits while fetch connections are closing). The output and the saved files
-  were complete; the script now sets `process.exitCode` instead of calling `process.exit()`. Not reproduced on Linux, so
-  whether it is gone on Windows must be checked by running it there.
+  were complete; the script now sets `process.exitCode` instead of calling `process.exit()`. It could not be reproduced
+  on Linux, but it did not appear again in the later runs on Windows.
 - `node scripts/fetch-transcripts.js --force` fetches the spoken track again and drops that video's translated tracks (their cues
   would no longer line up). Whisper's `--import-whisper` keeps them, which is only right if the cue starts did not change:
   rerun the translation if in doubt (stale cues are ignored, and retranslated).
