@@ -13,6 +13,8 @@ const FIX = (n) => fs.readFileSync(path.join(__dirname, 'fixtures', n), 'utf8');
 const EX1 = FIX('notes-example-1.txt');
 const EX2 = FIX('notes-example-2.txt');
 const realData = () => JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'assets', 'data.json'), 'utf8'));
+// the number the next new item gets, whatever the real data.json holds today (it grows with every merged PR)
+const nextNum = (d) => Math.max(0, ...d.filter((i) => Number.isInteger(i.num)).map((i) => i.num)) + 1;
 
 /** A fake model: `plan(prompt)` answers the split request, translation echoes lines with a prefix. */
 function fakeAi({ plan, translate } = {}) {
@@ -168,7 +170,7 @@ describe('example 1 (a Q&A from the Google Doc)', () => {
         const data = realData();
         const r = await convertNotes(EX1, data, { ai: { available: false } });
         const [q, a] = r.data.slice(-2);
-        expect(q.num).toBe(29);
+        expect(q.num).toBe(nextNum(data));
         expect(a.num).toBeUndefined();
         expect(a._agent).toBeUndefined();
     });
@@ -180,7 +182,7 @@ describe('example 1 (a Q&A from the Google Doc)', () => {
         expect(q.blocks[0].content.en).toEqual(['[EN] ' + q.blocks[0].content.kn[0]]);
         expect(a.blocks[0].content.en).toHaveLength(a.blocks[0].content.kn.length);
         expect(r.report).toMatch(/Machine-translated: review this/);
-        expect(r.report).toMatch(/Q-29\.1 → English/);
+        expect(r.report).toMatch(new RegExp(`Q-${nextNum(data)}\\.1 → English`));
         // everything was translated into English: the heading says English once, not "English or English"
         expect(r.report).toMatch(/Machine-translated: review this \(English; never overwrites/);
         expect(r.report).not.toMatch(/English or English/);
@@ -201,7 +203,7 @@ describe('example 2 (rough notes)', () => {
     test('a standalone answer gets its own num and the marker that stops the pipeline treating it as a follow-up', async () => {
         const r = await convertNotes(EX2, realData(), { ai: fakeAi({ plan: goodPlan(lines) }) });
         const added = r.data.slice(realData().length);
-        expect(added.map((i) => [i.type, i.num])).toEqual([['answer', 29], ['answer', 30]]);
+        expect(added.map((i) => [i.type, i.num])).toEqual([['answer', nextNum(realData())], ['answer', nextNum(realData()) + 1]]);
         expect(added.every((i) => i._agent && i._agent.standalone)).toBe(true);
     });
     test('videos stay with the block whose text they follow, ?t= kept, none left in the text', async () => {
@@ -251,7 +253,7 @@ describe('where it goes and how the existing pipeline takes over', () => {
     test('--after puts the items right after that place; nums are still the next free ones', async () => {
         const data = realData();
         const r = await convertNotes(EX1, data, { ai: { available: false }, after: 'A-11' });
-        const i = r.data.findIndex((x) => x.num === 29);
+        const i = r.data.findIndex((x) => x.num === nextNum(data));
         expect(i).toBeGreaterThan(0);
         expect(i).toBeLessThan(data.length);
         expect(r.data.slice(0, i)).toEqual(data.slice(0, i));
@@ -274,7 +276,7 @@ describe('where it goes and how the existing pipeline takes over', () => {
         expect(added[0].id).toMatch(/^[a-z][2-9a-z]{5}$/);
         expect(added[0].timestamp).toBe('2026-11-19T10:00:00Z');
         expect(added[0].references).toBeUndefined();         // not linked to the answer above
-        expect(added[0].num).toBe(29);
+        expect(added[0].num).toBe(nextNum(data));
         expect(JSON.stringify(out.data)).not.toMatch(/_agent/);
         expect(added[0].blocks.every((b) => /^[a-z][2-9a-z]{5}$/.test(b.id))).toBe(true);
     });
