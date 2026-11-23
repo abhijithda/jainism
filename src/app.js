@@ -10,6 +10,7 @@ import { initOffline } from './core/offline.js';
 import { installVideoModal, openVideoModal } from './core/video-modal.js';
 import { initAi, collapseToPill, revealTargetWhenSettled } from './ai/ai-panel.js';
 import { initStudy, closeStudy } from './study/study-panel.js';
+import { loadStudyConfig } from './study/study-config.js';
 import { buildBlockIndex } from './core/blocks.js';
 import { getBookTitle, joinTitle, bookHeaderTitle } from './core/book-title.js';
 import { parseShareHash, resolveShared } from './core/share.js';
@@ -191,6 +192,9 @@ async function init() {
     // Restore saved settings (langs/videos/QR/read-tracking all live under one key)
     applySettings();
 
+    // The study companion's per-book names (assets/study-config.json). Starts now, never fails, awaited where it is used.
+    const studyConfig = loadStudyConfig();
+
     try {
         data = await fetch('assets/data.json').then(r => r.json());
     } catch (err) {
@@ -256,7 +260,7 @@ async function init() {
     });
 
     // ── Study companion (opt-in; see study/): questions after a section is marked read.
-    initStudy({ data, onCite: (blockId) => { closeStudy(); openCitedBlock(blockId); } });
+    initStudy({ data, config: await studyConfig, onCite: (blockId) => { closeStudy(); openCitedBlock(blockId); } });
     document.getElementById('home-btn')?.addEventListener('click', showHome);
     document.getElementById('home-open-book')?.addEventListener('click', () => activateView('book'));
     document.getElementById('home-open-continuous')?.addEventListener('click', () => activateView('continuous'));

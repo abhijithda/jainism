@@ -21,7 +21,7 @@
 
 import { search, foldLatin, tokenize } from '../ai/retrieval.js';
 import { isBlockTrackable } from '../core/read-tracking.js';
-import { topicName, canonicalTopic, aliasesOf, TOPIC_ALIASES } from './topic-names.js';
+import { createStudyConfig } from './study-config.js';
 
 const MIN_SCORE = 0.5;                 // same floor retrieval.js uses for "relevant"
 const MAX_PASSAGES_PER_TOPIC = 2;
@@ -55,10 +55,6 @@ const NOT_A_NAME = new Set((
     'a an and are as at be but by for from how i if in is it its male female no not of on or so that the their then there ' +
     'these this to was what when where which who why with you your here also only both each any all one two'
 ).split(' '));
-
-// Titles that start a person's name ("Queen Vishalakshi", "Rani Vishalakshi", "Shri Gautama"): two
-// ways of naming one person are not two topics to compare.
-const TITLE_WORDS = new Set('queen king rani raja raaja prince princess shri sri lord mother father saint sage acharya muni swami'.split(' '));
 
 const lower = s => String(s).trim().toLowerCase();
 const lastWord = phrase => String(phrase).trim().split(/\s+/).pop();
@@ -102,7 +98,8 @@ export function blockText(block, langs, { strict = false } = {}) {
  * Indexes what the question builders need, once per dataset.
  * @param {Object} index  from ai/retrieval.js createIndex()
  */
-export function buildStudyModel(index) {
+export function buildStudyModel(index, config = createStudyConfig({})) {
+    const { canonicalTopic } = config;
     const chunkById = new Map(index.chunks.map(c => [c.id, c]));
     const blockItem = new Map();
     index.data.forEach(item => (item.blocks || []).forEach(b => blockItem.set(b.id, item)));
@@ -171,7 +168,7 @@ export function buildStudyModel(index) {
         ...[...pairHeads.values()].flatMap(fam => [...fam.names.values()]),
     ])];
 
-    return { index, chunkById, blockItem, topics, heads, pairHeads, mentions, phrases };
+    return { index, config, chunkById, blockItem, topics, heads, pairHeads, mentions, phrases };
 }
 
 /**
@@ -188,7 +185,7 @@ export function topicsOf(model, chunk) {
         if (text.includes(lower(name)) && !out.some(t => lower(t) === lower(topic))) out.push(topic);
     });
     // A second name the book uses ("Govadana Yaksha") is the same topic as its main name.
-    Object.entries(TOPIC_ALIASES).forEach(([alias, name]) => {
+    model.config.aliasEntries().forEach(([alias, name]) => {
         if (text.includes(lower(alias)) && !out.some(t => lower(t) === lower(name))) out.push(name);
     });
     return out;
@@ -206,7 +203,7 @@ const isPairedTerm = phrase => {
 
 /** Whether some block of the book names both phrases (in its English text or tags). */
 function namedTogether(model, a, b) {
-    const xs = [a, ...aliasesOf(a)].map(lower), ys = [b, ...aliasesOf(b)].map(lower);
+    const xs = [a, ...model.config.aliasesOf(a)].map(lower), ys = [b, ...model.config.aliasesOf(b)].map(lower);
     return model.mentions.some(m => xs.some(x => m.includes(x)) && ys.some(y => m.includes(y)));
 }
 
@@ -216,7 +213,7 @@ function namedTogether(model, a, b) {
  *  - a phrase of the same shape that the text names but doesn't tag, but only
  *    if some block names it together with the topic (the Moodhata note lists Deva, Loka and
  *    Guru together). That keeps out stray capitalised words. A person named two ways
- *    (Rani / Queen Vishalakshi) is not a comparison: see TITLE_WORDS.
+ *    (Rani / Queen Vishalakshi) is not a comparison: see titleWords in study-config.json.
  * Spelling variants of the topic itself are left out. Best first: pairs the
  * book names together, then plain tag siblings.
  * @returns {{name: string, together: boolean}[]}
@@ -248,7 +245,7 @@ function extendedTag(model, phrase) {
 }
 
 export function comparisonsFor(model, topic) {
-    if (lower(canonicalTopic(topic)) !== lower(topic) || extendedTag(model, topic)) return [];       // a second name or a longer form of a tag: use the main one
+    if (lower(model.config.canonicalTopic(topic)) !== lower(topic) || extendedTag(model, topic)) return [];       // a second name or a longer form of a tag: use the main one
     return [...pairPartners(model, topic), ...siblingComparisons(model, topic)];
 }
 
@@ -275,7 +272,7 @@ function siblingComparisons(model, topic) {
         .filter(([key]) => key !== lower(topic))
         .map(([, v]) => ({ ...v, together: namedTogether(model, topic, v.name) }))
         .filter(v => !sameWord(firstWord(v.name), firstWord(topic)))
-        .filter(v => !TITLE_WORDS.has(lower(firstWord(v.name))) && !TITLE_WORDS.has(lower(firstWord(topic))))
+        .filter(v => !model.config.isTitleWord(firstWord(v.name)) && !model.config.isTitleWord(firstWord(topic)))
         .filter(v => v.source === 'tag' || v.together)
         .filter(v => !isPairedTerm(v.name) && !isShortenedAlias(model, group, v.name) && !extendedTag(model, v.name))
         .sort((a, b) => Number(b.together) - Number(a.together))
@@ -297,7 +294,7 @@ function topicPassages(model, topic, langs, { first, skip = new Set(), readSet }
     // A passage is about the topic only if it has every word of it ("Loka Moodhata" needs "Loka", not just
     // "Moodhata"); otherwise a topic the book never mentions would borrow another topic's passages.
     // (a second name the book uses for the topic counts too: "Govadana Yaksha" passages are about "Gomukha Yaksha")
-    const variants = [topic, ...aliasesOf(topic)];
+    const variants = [topic, ...model.config.aliasesOf(topic)];
     const termSets = variants.map(v => [...new Set(tokenize(v))]);
     const push = chunk => {
         if (!chunk || chunk.textless || skip.has(chunk.id) || out.some(p => p.id === chunk.id)) return;
@@ -342,9 +339,9 @@ export function buildSuggestion(model, desc, { langs = ['en'], blockId, readSet 
         }
         if (!mine.length || !theirs.length) return null;
         const wl = wordingLangs(langs);
-        const promptLines = wl.map(lang => ({ lang, text: WORDING[lang].compare(topicName(a, lang), topicName(b, lang)) }));
+        const promptLines = wl.map(lang => ({ lang, text: WORDING[lang].compare(model.config.topicName(a, lang), model.config.topicName(b, lang)) }));
         return {
-            id: suggestionId(desc), desc, kind: 'compare', title: `${topicName(a, primaryLang(wl))} vs ${topicName(b, primaryLang(wl))}`,
+            id: suggestionId(desc), desc, kind: 'compare', title: `${model.config.topicName(a, primaryLang(wl))} vs ${model.config.topicName(b, primaryLang(wl))}`,
             prompt: promptLines.find(l => l.lang === primaryLang(wl)).text, promptLines,
             passages: [...mine, ...other],   // the topic just read first, then the one to compare it with
         };

@@ -25,6 +25,20 @@ test.describe('Offline copy (opt-in service worker)', () => {
         expect(await savedState(page)).toEqual({ registrations: 0, caches: [] });
     });
 
+    test('the study companion\u2019s per-book config is part of the saved copy, so its Kannada topic names work offline too', async ({ page }) => {
+        test.setTimeout(60000);
+        await page.goto('/?sw=on');
+        await toggleOfflineCopy(page);
+        await expect(page.locator('#home-offline-status')).toHaveAttribute('data-state', 'ready', { timeout: 30000 });
+        // Right after the save, before any later page load could add it: it is there because the install saved it.
+        const saved = await page.evaluate(async () => {
+            const out = [];
+            for (const name of await caches.keys()) for (const req of await (await caches.open(name)).keys()) out.push(new URL(req.url).pathname);
+            return out;
+        });
+        expect(saved.some(p => p.endsWith('/assets/study-config.json'))).toBe(true);
+    });
+
     test('turning it on saves a copy, then the book still opens with no network', async ({ page, context }) => {
         test.setTimeout(60000);
 

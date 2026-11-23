@@ -4,7 +4,9 @@ const { createIndex } = require('../ai/retrieval.js');
 const Q = require('./study-questions.js');
 
 const data = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'assets', 'data.json'), 'utf8'));
-const model = Q.buildStudyModel(createIndex(data));
+const { createStudyConfig } = require('./study-config.js');
+const config = createStudyConfig(JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'assets', 'study-config.json'), 'utf8')));
+const model = Q.buildStudyModel(createIndex(data), config);
 const allBlocks = data.flatMap(i => (i.blocks || []).map(b => b.id));
 const everythingRead = new Set(allBlocks);
 const blocksWithTag = tag => [...model.topics.get(tag.toLowerCase()).blockIds];
@@ -184,7 +186,7 @@ describe('Shasanaadi Devata (Shasana Devata and the other devatas)', () => {
     test('even a block that says it without the tag counts as Shasana Devata', () => {
         const untagged = JSON.parse(JSON.stringify(data));
         untagged.forEach(i => (i.blocks || []).forEach(b => { if (b.id === blockId) b.tags = (b.tags || []).filter(t => t !== 'Shasana Devata'); }));
-        const m = Q.buildStudyModel(createIndex(untagged));
+        const m = Q.buildStudyModel(createIndex(untagged), config);
         expect(Q.topicsOf(m, m.chunkById.get(blockId))).toContain('Shasana Devata');
         expect(Q.topicsOf(m, m.chunkById.get(blockId))).not.toContain('Shasanaadi Devata');
     });
@@ -200,7 +202,7 @@ describe('wording follows the selected languages', () => {
         expect(s.promptLines.map(l => l.lang)).toEqual(['kn']);
         expect(hasKannada(s.prompt)).toBe(true);
         expect(s.prompt).not.toMatch(/You just read/);
-        expect(s.prompt).toContain('ದೇವ ಮೂಢತೆ');     // topic names in Kannada too (topic-names.js)
+        expect(s.prompt).toContain('ದೇವ ಮೂಢತೆ');     // topic names in Kannada too (study-config.json)
         expect(s.prompt).toContain('ಲೋಕ ಮೂಢತೆ');
     });
 

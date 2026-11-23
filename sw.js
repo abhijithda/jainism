@@ -43,6 +43,8 @@ const SLOW_NETWORK_WINDOW_MS = 30000;
 const SCOPE = new URL(self.registration.scope);
 const INDEX_URL = new URL('index.html', SCOPE).href;
 const DATA_URL = new URL('assets/data.json', SCOPE).href;
+// The study companion's per-book names. Optional: saved when it is there, and its absence never stops the install.
+const STUDY_CONFIG_URL = new URL('assets/study-config.json', SCOPE).href;
 
 let precacheRunning = false;
 let slowUntil = 0;
@@ -119,6 +121,10 @@ async function crawlShell() {
             }
         }
     }
+    try {
+        const res = await fetch(STUDY_CONFIG_URL, { cache: 'reload', credentials: 'same-origin' });
+        if (res.ok) saved.set(keyFor(STUDY_CONFIG_URL), res);
+    } catch (_) { /* optional */ }
     return saved;
 }
 

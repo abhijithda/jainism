@@ -13,6 +13,7 @@ import { getEngine } from '../ai/engines/index.js';
 import { closeDrawer as closeAiDrawer, buildResizeHandle, setPanelWidth, currentPanelWidth, WIDE_PANEL } from '../ai/ai-panel.js';
 import { AI_PANEL_WIDTH_DEFAULT } from '../core/settings.js';
 import { buildStudyModel, buildSuggestion, suggestionsForRead, blockText } from './study-questions.js';
+import { createStudyConfig } from './study-config.js';
 import { loadStudyLog, saveStudyLog, recordResult, reviewList } from './study-log.js';
 import { aiAvailable, generateQuestion, checkAnswer } from './study-ai.js';
 
@@ -23,11 +24,11 @@ const MAX_PENDING = 6;      // waiting in the queue
 const VISIBLE_CARDS = 2;    // shown at once: more than that is too much to take in
 
 const $ = id => document.getElementById(id);
-const state = { data: null, onCite: null, model: null, pending: [], log: {}, lastBlockId: null, nudgeTimer: null, aiBusy: false, aiQuestions: [], aiAsked: [], aiFocusUsed: new Set(), sessionReads: [], showAll: false };
+const state = { data: null, config: null, onCite: null, model: null, pending: [], log: {}, lastBlockId: null, nudgeTimer: null, aiBusy: false, aiQuestions: [], aiAsked: [], aiFocusUsed: new Set(), sessionReads: [], showAll: false };
 
 // ── Model, log and session ───────────────────────────────────────────────
 function model() {
-    if (!state.model) state.model = buildStudyModel(createIndex(state.data));
+    if (!state.model) state.model = buildStudyModel(createIndex(state.data), state.config);
     return state.model;
 }
 const langs = () => loadSettings().langs;
@@ -444,10 +445,11 @@ export function applyStudySetting() {
 }
 
 /**
- * @param {{data: Array, onCite: (blockId: string) => void}} args
+ * @param {{data: Array, onCite: (blockId: string) => void, config?: Object}} args  config: from loadStudyConfig()
  */
-export function initStudy({ data, onCite }) {
+export function initStudy({ data, onCite, config }) {
     state.data = data;
+    state.config = config || createStudyConfig({});   // the book's names, aliases and title words (study-config.json)
     state.onCite = onCite;
     buildDrawer();
     state.log = loadStudyLog(localStorage);

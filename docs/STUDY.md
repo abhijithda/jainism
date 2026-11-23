@@ -23,6 +23,29 @@ that says why (a locked switch is used instead of a disabled one, which would ig
 Nothing is marked, scored or sent anywhere by the reader's own answer: it is for them to compare
 with the passages. (With AI on, see below.)
 
+## The book's own settings: `assets/study-config.json`
+
+Everything the study companion knows about *this book* (as opposed to how to ask questions) is in one JSON file
+next to `data.json`, so another book uses the same code with its own file:
+
+```json
+{
+  "topicNames": { "Kali Devi": { "kn": "ಕಾಳಿ ದೇವಿ" } },
+  "aliases":    { "Govadana Yaksha": "Gomukha Yaksha" },
+  "titleWords": ["queen", "rani", "shri"]
+}
+```
+
+* `topicNames`: the name of a topic (a tag, or a name the text uses) in each language, spelled as the book spells it.
+* `aliases`: a second name the book uses for one topic, pointing at the main name. No chains.
+* `titleWords`: words that start a person's name, so "Queen X" and "Rani X" are not offered as two things to compare.
+
+Every part is optional: with no file (or a broken one) the study companion still works, showing topics as their tags.
+A malformed entry is ignored and listed by the tests and by `npm run study:report`. The file is fetched with the
+page (`loadStudyConfig`, `src/study/study-config.js`) and saved with the offline copy (`sw.js`), but a missing file
+never stops the offline copy installing. What stays in code, on purpose: the wording of the questions and the
+panel's labels (language-level, shared by any book), and the heuristics about the data's shape.
+
 ## Adding content: what you have to do
 
 Almost nothing. The questions are worked out when the page loads, from `data.json` as it is: new blocks, tags and
@@ -31,13 +54,14 @@ answers produce new questions with no code change. Two things are worth a look a
 1. Run **`npm run study:report`** (no AI, no network). It lists every comparison the study companion can ask, so
    a new tag that makes a strange pair is seen before readers see it, and it lists the topics that have no Kannada
    name yet, each with the book's own Kannada line to copy the spelling from.
-2. Add any missing Kannada names to `src/study/topic-names.js` (one line each). Until you do, the question shows
-   the English tag, which works but looks odd in a Kannada sentence.
+2. Add any missing Kannada names to **`assets/study-config.json`** (one line each; the report prints a snippet to
+   paste). Until you do, the question shows the English tag, which works but looks odd in a Kannada sentence.
 
 Two ways the book can name one thing, and what to do:
 
 * **One topic, two names** (Gomukha Yaksha / Govadana Yaksha, the first Tirthankara's yaksha): add the second name
-  to `TOPIC_ALIASES` in `src/study/topic-names.js`. Questions and passages then treat them as one topic.
+  to `aliases` in `assets/study-config.json` (`"Govadana Yaksha": "Gomukha Yaksha"`). Questions and passages then
+  treat them as one topic.
 * **A topic that includes others** ("Shasanaadi Devata" = Shasana Devata and the other devatas): not an alias; tag
   those blocks "Shasana Devata". As a safety net, a name only the text uses that is a tag plus more letters in the
   first word (Shasana + aadi) is treated as that tag, so it never shows up as a second topic or a duplicate card.
@@ -66,7 +90,7 @@ key by design; this report is the same kind of step, and could be added to its P
 * **Language:** the wording of each question follows the languages selected in Settings (`WORDING` in
   `study-questions.js`, Kannada and English). Kannada only gives a Kannada question; both give one whole sentence
   per language, in the selected order (never a Kannada quote inside an English sentence). Topic names are shown
-  in Kannada from `src/study/topic-names.js` (the book's own spelling; a test checks every word against the
+  in Kannada from `topicNames` in `assets/study-config.json` (the book's own spelling; a test checks every word against the
   book's Kannada text). A topic with no entry there is shown as its Latin-script tag, so add new tags to that
   file to get a Kannada name. The panel's buttons stay English like the rest of the app.
 * **What is kept:** the pending questions, the open panel and any typed (unfinished) answers survive a reload in
@@ -130,6 +154,8 @@ What is sent: the reader's answer (for a check) and the passages. The buttons' t
 | `src/study/study-questions.js` | Pure: topic model, comparisons, question building |
 | `src/study/study-log.js` | What the reader answered (localStorage `studyLog`: ids and "got"/"again" only, no book text) |
 | `src/study/study-ai.js` | Prompts and validation for the optional AI parts |
+| `src/study/study-config.js` | Reads and checks the book's settings; `loadStudyConfig()` |
+| `assets/study-config.json` | The book's topic names, aliases and title words (edit this, not code) |
 | `src/study/study-panel.js` / `.css` | Button, nudge, panel, setting; reuses the assistant drawer's look |
 | `src/core/read-tick.js` | Fires `pooja:block-read` (`{blockId, read}`) on every tick click |
 | `src/core/settings.js` | `studyCompanion` (boolean, default false) |
