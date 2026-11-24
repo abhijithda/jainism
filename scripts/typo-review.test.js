@@ -535,3 +535,43 @@ describe('the report says which part the AI could not check', () => {
     });
 });
 
+describe('words that are part of a study topic name (assets/study-config.json)', () => {
+    const config = JSON.stringify({ topicNames: { 'Mithya Drishti': { kn: 'ಮಿತ್ಯಾದೃಷ್ಟಿ' }, 'Deva Moodhata': { kn: 'ದೇವ ಮೂಢತೆ', en: 'Deva Moodhata' } } });
+    const kn = (text) => [{ key: 'k1|kn|0', blockId: 'k1', label: 'A-3.3', lang: 'kn', index: 0, text, kind: 'prose' }];
+    const P3 = (old, nw) => ({ key: 'k1|kn|0', old, new: nw, reason: 'spelling', confidence: 'clear' });
+
+    test('loadStudyWords: the words of every name, per language, each with its topic; bad JSON is nothing', () => {
+        const w = T.loadStudyWords(config);
+        expect(w.get('kn').get('ಮಿತ್ಯಾದೃಷ್ಟಿ')).toBe('Mithya Drishti');
+        expect(w.get('kn').get('ಮೂಢತೆ')).toBe('Deva Moodhata');
+        expect(w.get('en').get('Moodhata')).toBe('Deva Moodhata');
+        expect(T.loadStudyWords('not json').size).toBe(0);
+        expect(T.loadStudyWords('').size).toBe(0);
+    });
+
+    test('a clear fix to such a word is only a suggestion, and the reason names the topic (it would break the study test)', () => {
+        const d = T.decide(kn('ಇದು ಮಿತ್ಯಾದೃಷ್ಟಿ ಎಂದರೆ'), [P3('ಮಿತ್ಯಾದೃಷ್ಟಿ', 'ಮಿಥ್ಯಾದೃಷ್ಟಿ')], [], T.loadStudyWords(config));
+        expect(d.fixes).toHaveLength(0);
+        expect(d.suggestions).toHaveLength(1);
+        expect(d.suggestions[0].reason).toMatch(/study topic name "Mithya Drishti" in assets\/study-config\.json: change the name there too/);
+    });
+
+    test('the same fix without that config, or a different word, or the other language, is unchanged', () => {
+        expect(T.decide(kn('ಇದು ಮಿತ್ಯಾದೃಷ್ಟಿ ಎಂದರೆ'), [P3('ಮಿತ್ಯಾದೃಷ್ಟಿ', 'ಮಿಥ್ಯಾದೃಷ್ಟಿ')], []).fixes).toHaveLength(1);
+        expect(T.decide(kn('ಸಾದ್ಯ'), [P3('ಸಾದ್ಯ', 'ಸಾಧ್ಯ')], [], T.loadStudyWords(config)).fixes).toHaveLength(1);
+        const en = [{ key: 'k1|en|0', blockId: 'k1', label: 'A-3.3', lang: 'en', index: 0, text: 'ಮಿತ್ಯಾದೃಷ್ಟಿ here', kind: 'prose' }];
+        expect(T.decide(en, [{ key: 'k1|en|0', old: 'ಮಿತ್ಯಾದೃಷ್ಟಿ', new: 'Mithyadrishti', reason: 'x', confidence: 'clear', mixed: true, mixedAuto: true }], [], T.loadStudyWords(config)).fixes).toHaveLength(1);
+    });
+
+    test('through the whole review: a posted suggestion carries the warning, and nothing is changed in the data', async () => {
+        const base = book();
+        const head = clone(base);
+        head[1].blocks.push(blk('m00030', 1, 'paragraph', ['ಇದು ಮಿತ್ಯಾದೃಷ್ಟಿ ಎಂದರೆ'], []));
+        const issue = { key: 'm00030|kn|0', old: 'ಮಿತ್ಯಾದೃಷ್ಟಿ', new: 'ಮಿಥ್ಯಾದೃಷ್ಟಿ', reason: 'Sanskrit spelling', confidence: 'clear' };
+        const r = await T.reviewTypos(head, base, { ai: fakeAi([issue]), allowlist: [], studyWords: T.loadStudyWords(config) });
+        expect(r.data[1].blocks[0].content.kn[0]).toBe('ಇದು ಮಿತ್ಯಾದೃಷ್ಟಿ ಎಂದರೆ');
+        expect(r.comments).toHaveLength(1);
+        expect(r.comments[0].body).toMatch(/study topic name "Mithya Drishti"/);
+    });
+});
+

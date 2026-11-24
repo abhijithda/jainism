@@ -333,3 +333,9 @@ any of the places stops the change.
 - When part of the AI check fails (for example HTTP 429 on the last part), the report says how many parts were not checked and
   names the first blocks (`not checked: A-5.1, ...`), so you know what to check by hand or run again.
 
+- **Study topic names**: a word that is part of a topic name in `assets/study-config.json` is never fixed automatically. A fix to it is
+  only a suggestion whose reason names the topic ("change the name there too, or the study test fails"), because
+  `src/study/study-config.test.js` requires every word of a name to be in the book's own text. Example: the book spells
+  `ಮಿತ್ಯಾದೃಷ್ಟಿ` once and the config names the topic `Mithya Drishti` with that spelling; changing the book to the more correct
+  `ಮಿಥ್ಯಾದೃಷ್ಟಿ` is a good idea, but the config name must change with it.
+

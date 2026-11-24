@@ -303,3 +303,35 @@ describe('the Gemini client: a busy server', () => {
     });
 });
 
+describe('the Gemini client: thinking setting with several models', () => {
+    const good = () => ({ ok: true, status: 200, json: async () => ({ candidates: [{ content: { parts: [{ text: '{"a":1}' }] } }], usageMetadata: {} }) });
+    const refuse = () => ({ ok: false, status: 400, json: async () => ({ error: { message: 'Thinking level is not supported for this model' } }) });
+    const busy = () => ({ ok: false, status: 503, json: async () => ({}) });
+    const cfg = (call) => JSON.parse(call[1].body).generationConfig.thinkingConfig;
+    beforeEach(() => { delete process.env.GEMINI_MODELS; delete process.env.GEMINI_THINKING_LEVEL; });
+
+    test('a model that refuses the setting loses it; the next model in the list still gets it', async () => {
+        const lines = [];
+        const calls = [];
+        const answers = { 'model-a': [refuse(), busy(), busy()], 'model-b': [good()] };
+        const fetchImpl = jest.fn(async (url, init) => { calls.push([url, init]); const m = url.includes('model-a') ? 'model-a' : 'model-b'; return answers[m].shift(); });
+        const ai = createGemini({ apiKey: 'k', models: 'model-a,model-b', thinkingLevel: 'low', fetchImpl, retries: 1, sleep: async () => {}, log: (l) => lines.push(l) });
+        expect(await ai.json({ prompt: 'x' })).toEqual({ a: 1 });
+        const a = calls.filter((c) => c[0].includes('model-a'));
+        const b = calls.filter((c) => c[0].includes('model-b'));
+        expect(cfg(a[0])).toEqual({ thinkingLevel: 'low' });     // asked with it, refused
+        expect(cfg(a[1])).toBeUndefined();                       // repeated without it
+        expect(cfg(b[0])).toEqual({ thinkingLevel: 'low' });     // the other model still gets the cap
+        expect(lines.some((l) => /model-a refused the thinking setting.*for this model/.test(l))).toBe(true);
+    });
+
+    test('the usage line names the models that did not accept the setting', async () => {
+        const lines = [];
+        const answers = [refuse(), good()];
+        const ai = createGemini({ apiKey: 'k', models: 'model-a', thinkingLevel: 'low', fetchImpl: async () => answers.shift(), sleep: async () => {}, log: (l) => lines.push(l) });
+        await ai.json({ prompt: 'x' });
+        ai.printUsage();
+        expect(lines[lines.length - 1]).toMatch(/thinking setting: \{"thinkingLevel":"low"\}, not accepted by model-a/);
+    });
+});
+

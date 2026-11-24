@@ -36,6 +36,7 @@ const { TRANSLIT_STYLE, fixFinalA, sameWord } = require('./lib/translit');
 const ROOT = path.join(__dirname, '..');
 const DATA_PATH = path.join(ROOT, 'assets', 'data.json');
 const ALLOWLIST_PATH = path.join(ROOT, 'config', 'spelling-allowlist.txt');
+const STUDY_CONFIG_PATH = path.join(ROOT, 'assets', 'study-config.json');
 const EQUIVALENTS_PATH = path.join(ROOT, 'config', 'translit-equivalents.txt');
 const PROSE = new Set(['paragraph', 'note']);
 const VERSE = new Set(['shloka', 'mantra']);
@@ -287,7 +288,26 @@ const vowelLengthOnly = (a, b) => {
     return a !== b && n(a) === n(b);
 };
 
-function decide(lines, proposals, allowlist) {
+/**
+ * assets/study-config.json: the words of the study topic names, per language, with the topic they belong to. A test
+ * (src/study/study-config.test.js) requires every word of a name to be in the book's own text in that language, so changing
+ * such a word in the book (even to a better spelling) breaks the name unless the config changes too.
+ * @returns {Map<string, Map<string, string>>} lang -> (word -> topic)
+ */
+function loadStudyWords(text) {
+    const out = new Map();
+    let raw;
+    try { raw = JSON.parse(text || '{}'); } catch { return out; }
+    for (const [topic, names] of Object.entries(raw?.topicNames || {})) {
+        for (const [lang, name] of Object.entries(names || {})) {
+            if (!out.has(lang)) out.set(lang, new Map());
+            for (const w of String(name).match(/[\p{L}\p{M}\p{N}\u200C\u200D]+/gu) || []) out.get(lang).set(w, topic);
+        }
+    }
+    return out;
+}
+
+function decide(lines, proposals, allowlist, studyWords = new Map()) {
     const lineByKey = new Map(lines.map((l) => [l.key, l]));
     const decided = { fixes: [], suggestions: [], flags: [], dropped: [] };
     const seen = new Set();
@@ -305,10 +325,12 @@ function decide(lines, proposals, allowlist) {
         if (spans.some((s) => protectedSpan(line.text, s, allowlist))) { drop('allowlisted spelling or link'); continue; }
         const base = { key: p.key, blockId: line.blockId, label: line.label, lang: line.lang, index: line.index, old: p.old, new: p.new, reason: String(p.reason || '').slice(0, 160), ...(p.exact ? { exact: true } : {}) };
         if (line.kind === 'verse') { decided.flags.push({ ...base, flag: true }); continue; }
+        const studyHit = p.exact ? null : [...(p.old.match(/[\p{L}\p{M}\p{N}\u200C\u200D]+/gu) || [])].map((w) => studyWords.get(line.lang)?.get(w)).find(Boolean);
+        if (studyHit) base.reason = `${base.reason} (this word is part of the study topic name "${studyHit}" in assets/study-config.json: change the name there too, or the study test fails)`.slice(0, 300);
         const lengthOnly = !p.mixed && line.lang === 'kn' && vowelLengthOnly(p.old, p.new);
         const clear = p.mixed
             ? Boolean(p.mixedAuto)                                              // Kannada to Latin: its own checks are in mixedScriptIssues
-            : p.confidence === 'clear' && [...p.old].length <= 40 && editDistance(p.old, p.new) <= MAX_EDIT[line.lang] && !lengthOnly;
+            : p.confidence === 'clear' && [...p.old].length <= 40 && editDistance(p.old, p.new) <= MAX_EDIT[line.lang] && !lengthOnly && !studyHit;
         if (lengthOnly && p.confidence === 'clear') base.reason = `${base.reason} (only the vowel length changes; both spellings can be real words, so please check)`.slice(0, 220);
         (clear ? decided.fixes : decided.suggestions).push(base);
     }
@@ -430,7 +452,7 @@ async function reviewTypos(head, base, options = {}) {
     const mechanical = [...proseLines.flatMap(mechanicalIssues), ...proseLines.flatMap(duplicatePairIssues)];
     const ai = await aiIssues(options.ai, lines, allowlist);
     const mixed = await mixedScriptIssues(options.ai, lines, allowlist, options.mixedAutoMin, options.equivalents);
-    const decided = decide(lines, [...mechanical, ...ai.issues, ...mixed.issues], allowlist);
+    const decided = decide(lines, [...mechanical, ...ai.issues, ...mixed.issues], allowlist, options.studyWords || new Map());
     const result = applyFixes(head, decided);
     const comments = buildSuggestionComments(result.data, result.suggestions);
     const verses = entries.filter((e) => VERSE.has(e.block.type)).map((e) => ({ label: e.label, id: e.block.id, flagged: decided.flags.filter((f) => f.blockId === e.block.id) }));
@@ -472,7 +494,7 @@ function renderReport(r, { all = false } = {}) {
 const esc = (t) => String(t).replace(/\|/g, '\\|').replace(/\n/g, ' ');
 
 module.exports = {
-    vowelLengthOnly, loadAllowlist, loadEquivalents, skeleton, dropDuplicate, duplicatePairIssues, editDistance, changedBlocks, collectLines, mechanicalIssues, decide, applyToLine, applyFixes,
+    loadStudyWords, vowelLengthOnly, loadAllowlist, loadEquivalents, skeleton, dropDuplicate, duplicatePairIssues, editDistance, changedBlocks, collectLines, mechanicalIssues, decide, applyToLine, applyFixes,
     buildSuggestionComments, reviewTypos, renderReport, locate, locateAll,
 };
 
@@ -504,7 +526,7 @@ async function main() {
     const base = args.base && fs.existsSync(args.base) ? JSON.parse(fs.readFileSync(args.base, 'utf8')) : null;
     const allowlist = fs.existsSync(args.allowlist) ? loadAllowlist(fs.readFileSync(args.allowlist, 'utf8')) : [];
     const ai = args.noAi ? null : createGemini();
-    const r = await reviewTypos(head, base, { ai, allowlist, all: args.all || !base, mixedAutoMin: args.mixedAutoMin, equivalents: fs.existsSync(args.equivalents) ? loadEquivalents(fs.readFileSync(args.equivalents, 'utf8')) : null });
+    const r = await reviewTypos(head, base, { ai, allowlist, studyWords: fs.existsSync(STUDY_CONFIG_PATH) ? loadStudyWords(fs.readFileSync(STUDY_CONFIG_PATH, 'utf8')) : new Map(), all: args.all || !base, mixedAutoMin: args.mixedAutoMin, equivalents: fs.existsSync(args.equivalents) ? loadEquivalents(fs.readFileSync(args.equivalents, 'utf8')) : null });
     if (ai) ai.printUsage();
     const markdown = renderReport(r, { all: args.all || !base });
     console.log(markdown);

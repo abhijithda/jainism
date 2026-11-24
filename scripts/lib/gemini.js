@@ -15,7 +15,8 @@
 // for a tiny answer. The repository variable GEMINI_THINKING_LEVEL (minimal | low | medium | high) is sent as
 // generationConfig.thinkingConfig.thinkingLevel. Unset (the default) sends nothing: the model's own default. Gemini 2.5
 // models take a number of tokens instead (GEMINI_THINKING_BUDGET); the API refuses both together, so only one is sent.
-// If the model rejects the setting (HTTP 400 naming thinking) the call is repeated once without it and the log says so.
+// If a model rejects the setting (HTTP 400 naming thinking) the call is repeated once without it and the log says so; that
+// model is then asked without it for the rest of the run, and the other models in GEMINI_MODELS still get the setting.
 //
 // Busy server (HTTP 429 / 5xx / timeout): each call is tried again a few times with growing pauses. If it is still busy after
 // that, the client stops asking for the rest of the run (every later call fails at once with a clear message), so a Gemini
@@ -86,6 +87,7 @@ function createGemini(options = {}) {
     const models = modelsFrom(options.models, options.model || process.env.GEMINI_MODEL);
     let current = 0;                                  // index of the model that answered last (later calls start there)
     const skipped = new Set();                        // models the key cannot use (404)
+    const noThinking = new Set();                     // models that refused the thinking setting
     const perModel = {};                              // calls per model, for the usage line
     const fetchImpl = options.fetchImpl || globalThis.fetch;
     const retries = options.retries ?? 3;
@@ -93,7 +95,7 @@ function createGemini(options = {}) {
     let unavailable = null; // set when Gemini stayed busy after every retry: later calls fail at once
     const sleep = options.sleep || ((ms) => new Promise((r) => setTimeout(r, ms)));
     const log = options.log || ((line) => console.log(line));
-    let thinking = thinkingConfigFrom(options.thinkingLevel ?? process.env.GEMINI_THINKING_LEVEL, options.thinkingBudget ?? process.env.GEMINI_THINKING_BUDGET);
+    const thinking = thinkingConfigFrom(options.thinkingLevel ?? process.env.GEMINI_THINKING_LEVEL, options.thinkingBudget ?? process.env.GEMINI_THINKING_BUDGET);
     const totals = { calls: 0, prompt: 0, output: 0, thinking: 0, total: 0, ms: 0 };
 
     /** Count and log one answer's token usage (usageMetadata), whatever the answer was. */
@@ -117,10 +119,10 @@ function createGemini(options = {}) {
     async function json({ system, prompt, parts = [], temperature = 0 }) {
         if (!apiKey) throw new Error('GEMINI_API_KEY is not set');
         if (unavailable) throw unavailableError(`Gemini not asked again in this run: it stayed unavailable earlier (${unavailable})`);
-        const makeBody = () => ({
+        const makeBody = (forModel) => ({
             ...(system ? { systemInstruction: { parts: [{ text: system }] } } : {}),
             contents: [{ role: 'user', parts: [...parts, { text: prompt }] }],
-            generationConfig: { temperature, responseMimeType: 'application/json', ...(thinking ? { thinkingConfig: thinking } : {}) },
+            generationConfig: { temperature, responseMimeType: 'application/json', ...(thinking && !noThinking.has(forModel) ? { thinkingConfig: thinking } : {}) },
         });
         let lastError;
         const order = models.map((name, i) => ({ name, i })).filter((m) => m.i >= current && !skipped.has(m.name));
@@ -138,7 +140,7 @@ function createGemini(options = {}) {
                     res = await fetchImpl(`${ENDPOINT}/${encodeURIComponent(useModel)}:generateContent`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
-                        body: JSON.stringify(makeBody()),
+                        body: JSON.stringify(makeBody(useModel)),
                         signal: AbortSignal.timeout(timeoutMs),
                     });
                 } catch (e) { lastError = new Error(`Gemini request failed: ${e.message}`); continue; }
@@ -155,10 +157,10 @@ function createGemini(options = {}) {
                     continue;
                 }
                 const payload = await res.json().catch(() => ({}));
-                if (!res.ok && res.status === 400 && thinking && /think/i.test(payload.error?.message || '')) {
-                    // this model does not accept the thinking setting: say so once, drop it for the rest of the run, and repeat the call
-                    log(`[gemini] the model refused the thinking setting (${payload.error.message}); continuing without it`);
-                    thinking = null;
+                if (!res.ok && res.status === 400 && thinking && !noThinking.has(useModel) && /think/i.test(payload.error?.message || '')) {
+                    // this model does not accept the thinking setting: say so once, drop it for this model for the rest of the run, and repeat the call
+                    log(`[gemini] ${useModel} refused the thinking setting (${payload.error.message}); continuing without it for this model`);
+                    noThinking.add(useModel);
                     attempt--;
                     continue;
                 }
@@ -184,7 +186,9 @@ function createGemini(options = {}) {
     /** One summary line for the end of a run (nothing when no call was made). */
     function printUsage() {
         if (!totals.calls) return;
-        const level = thinking ? ` (thinking setting: ${JSON.stringify(thinking)})` : ' (thinking setting: model default)';
+        const level = thinking
+            ? ` (thinking setting: ${JSON.stringify(thinking)}${noThinking.size ? `, not accepted by ${[...noThinking].join(', ')}` : ''})`
+            : ' (thinking setting: model default)';
         log(`[gemini] ${Object.entries(perModel).map(([m, n]) => `${m}${models.length > 1 ? ` x${n}` : ''}`).join(', ')}: ${totals.calls} call(s), in ${totals.prompt}, out ${totals.output}, thinking ${totals.thinking}, total ${totals.total} tokens, ${(totals.ms / 1000).toFixed(1)}s${level}`);
     }
 
