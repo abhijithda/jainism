@@ -134,6 +134,11 @@ describe('buildPrompt', () => {
         expect(p).toMatch(/Translate from xx into yy \(code "yy"\) and Kannada/);
     });
 
+    test('the instructions ask for valid JSON: no straight double quotes inside a translation', () => {
+        expect(T.SYSTEM).toMatch(/straight double quote/);
+        expect(T.SYSTEM).toMatch(/nothing outside the JSON/);
+    });
+
     test('the instructions say to translate faithfully and to leave garbled shlokas alone', () => {
         expect(T.SYSTEM).toMatch(/Do NOT correct/);
         expect(T.SYSTEM).toMatch(/EXACTLY as given/);
@@ -184,6 +189,113 @@ describe('validateAnswer', () => {
 });
 
 // ── asking: batches, splitting, stopping ─────────────────────────────────
+
+/** An answer that is right except that the Kannada of the given cues is not Kannada. */
+const wrongKn = (req, ids) => ({ cues: good(req).cues.map(c => (ids.includes(c.i) ? { ...c, kn: 'plain latin text here' } : c)) });
+const has = (req, id) => payloadOf(req).cues.some(c => c.i === id);
+const sizes = ai => ai.calls.map(c => payloadOf(c).cues.length);
+
+describe('a bad cue is isolated, a structural failure is halved', () => {
+    test('one cue that is wrong costs 3 requests plus its retry, not a halving chain; it is kept unchanged', async () => {
+        const ai = fakeAi((n, req) => (has(req, 4) ? wrongKn(req, [4]) : undefined));
+        const ctx = ctxOf({ ai, batch: 10 });
+        const { got, failed, unchanged } = await T.translateCues(ctx, itemsOf(10));
+        expect(sizes(ai)).toEqual([10, 4, 1, 1, 5]);                     // all 10, the cues before 4, 4 alone twice, the cues after 4
+        expect(got.size).toBe(10);
+        expect(failed).toEqual([]);
+        expect(unchanged).toEqual([4]);
+        expect(got.get(4)).toEqual({ kn: itemsOf(10)[4].t, en: itemsOf(10)[4].t });
+        expect(got.get(3).kn).toMatch(/ಕನ್ನಡ/);
+    });
+
+    test('a cue at the start or the end of a batch leaves no empty request behind', async () => {
+        const first = fakeAi((n, req) => (has(req, 0) ? wrongKn(req, [0]) : undefined));
+        await T.translateCues(ctxOf({ ai: first, batch: 10 }), itemsOf(10));
+        expect(sizes(first)).toEqual([10, 1, 1, 9]);
+        const last = fakeAi((n, req) => (has(req, 9) ? wrongKn(req, [9]) : undefined));
+        await T.translateCues(ctxOf({ ai: last, batch: 10 }), itemsOf(10));
+        expect(sizes(last)).toEqual([10, 9, 1, 1]);
+    });
+
+    test.each([
+        ['Kannada that is not Kannada', (c) => ({ ...c, kn: 'plain latin text here' })],
+        ['an empty English text', (c) => ({ ...c, en: '' })],
+        ['an absurdly long Kannada text', (c) => ({ ...c, kn: 'ಕ'.repeat(900) })],
+    ])('%s for one cue is a problem with that cue: it is isolated and kept unchanged', async (_, damage) => {
+        const ai = fakeAi((n, req) => (has(req, 2) ? { cues: good(req).cues.map(c => (c.i === 2 ? damage(c) : c)) } : undefined));
+        const { got, unchanged } = await T.translateCues(ctxOf({ ai, batch: 6 }), itemsOf(6));
+        expect(unchanged).toEqual([2]);
+        expect(got.size).toBe(6);
+    });
+
+    test('a cue whose answers are broken as a whole (bad JSON) is halved down to it and then left out, not kept unchanged', async () => {
+        const ai = fakeAi((n, req) => { if (has(req, 3)) throw new Error('Expected \',\' or \'}\' after property value in JSON at position 2882'); return undefined; });
+        const { got, failed, unchanged } = await T.translateCues(ctxOf({ ai, batch: 8 }), itemsOf(8));
+        expect(failed).toEqual([3]);
+        expect(unchanged).toEqual([]);
+        expect(got.size).toBe(7);
+        expect(got.has(3)).toBe(false);
+    });
+
+    test('a model that gets every cue wrong does not turn the whole video into unchanged copies: the run stops after a few', async () => {
+        const ai = fakeAi((n, req) => wrongKn(req, payloadOf(req).cues.map(c => c.i)));
+        const ctx = ctxOf({ ai, batch: 50 });
+        const { got, unchanged } = await T.translateCues(ctx, itemsOf(50));
+        expect(ctx.stopped).toBe('unreliable');
+        expect(unchanged.length).toBeLessThanOrEqual(3);
+        expect(got.size).toBeLessThanOrEqual(3);
+        expect(ai.calls.length).toBeLessThan(15);
+    });
+
+    test('a cluster of stubborn cues is fine as long as batches in between are accepted', async () => {
+        const stubborn = [3, 9, 15, 21];
+        const ai = fakeAi((n, req) => { const ids = stubborn.filter(i => has(req, i)); return ids.length ? wrongKn(req, ids) : undefined; });
+        const ctx = ctxOf({ ai, batch: 30 });
+        const { got, unchanged } = await T.translateCues(ctx, itemsOf(30));
+        expect(ctx.stopped).toBe('');
+        expect(unchanged.sort((a, b) => a - b)).toEqual(stubborn);
+        expect(got.size).toBe(30);
+    });
+});
+
+describe('the batch size follows the failures', () => {
+    test('after a failure of the answer as a whole the next batches are half as big', async () => {
+        const ai = fakeAi(n => (n === 1 ? { cues: [] } : undefined));
+        const { got } = await T.translateCues(ctxOf({ ai, batch: 40 }), itemsOf(100));
+        expect(sizes(ai)).toEqual([40, 20, 20, 20, 20, 20]);
+        expect(got.size).toBe(100);
+    });
+
+    test('a failure because of one cue does not change the size', async () => {
+        const ai = fakeAi((n, req) => (has(req, 5) ? wrongKn(req, [5]) : undefined));
+        await T.translateCues(ctxOf({ ai, batch: 40 }), itemsOf(100));
+        expect(sizes(ai)).toEqual([40, 5, 1, 1, 34, 40, 20]);
+    });
+
+    test('three good batches in a row make them grow again, never beyond --batch, never below 8', async () => {
+        const lines = [];
+        const ai = fakeAi(n => (n === 1 ? { cues: [] } : undefined));
+        await T.translateCues(ctxOf({ ai, batch: 40, log: m => lines.push(m) }), itemsOf(300));
+        expect(sizes(ai).slice(0, 8)).toEqual([40, 20, 20, 20, 20, 20, 30, 30]);
+        expect(Math.max(...sizes(ai))).toBe(40);
+        expect(lines.join('\n')).toMatch(/batches of 20 cues from now on/);
+        expect(lines.join('\n')).toMatch(/batches of 30 cues again/);
+        const small = fakeAi((n, req) => ({ cues: [] }));
+        await T.translateCues(ctxOf({ ai: small, batch: 40 }), itemsOf(40));
+        expect(Math.min(...sizes(small))).toBeGreaterThanOrEqual(1);     // halving inside a batch still goes down to one cue
+        const floor = fakeAi((n, req) => (n <= 3 ? { cues: [] } : undefined));
+        const ctx = ctxOf({ ai: floor, batch: 40 });
+        await T.translateCues(ctx, itemsOf(400));
+        const topLevel = sizes(floor).filter((s, i) => i > 6);
+        expect(Math.min(...topLevel.slice(0, 4))).toBeGreaterThanOrEqual(8);
+    });
+
+    test('--batch smaller than 8 is respected', async () => {
+        const ai = fakeAi(n => (n === 1 ? { cues: [] } : undefined));
+        await T.translateCues(ctxOf({ ai, batch: 3 }), itemsOf(9));
+        expect(Math.max(...sizes(ai))).toBeLessThanOrEqual(3);
+    });
+});
 
 describe('telling errors apart', () => {
     const err = m => new Error(m);
@@ -543,6 +655,24 @@ describe('main, on a temporary copy of the project', () => {
         expect(ai.calls[0].prompt).toMatch(/^ಅಭಿಷೇಕ -> English: Abhisheka$/m);        // "ಅಭಿಷೇಕ ಮಾಡುವ ವಿಧಾನ ಹೀಗಿದೆ" is one of C's cues
         expect(ai.calls[0].prompt).not.toMatch(/Tapa/);
         expect(read(C).alt.map(x => x.lang)).toEqual(['en']);
+    });
+
+    test('a cue the model keeps getting wrong is kept unchanged in the file, the video is complete, and a rerun asks for nothing', async () => {
+        const ai = fakeAi((n, req) => (has(req, 2) ? wrongKn(req, [2]) : undefined));
+        await run(['--ids', A, '--batch', '8'], ai);
+        expect(sizes(ai)).toEqual([8, 2, 1, 1, 5]);
+        const a = read(A);
+        expect(a.alt[0].segments).toHaveLength(8);
+        expect(a.alt[0].segments[2]).toEqual([20, HI_A[2]]);          // kept as it is, on its own start second
+        expect(a.alt[0].segments[1][1]).toBe(`ಕನ್ನಡ ${HI_A[1]}`);
+        expect(a.alt[1].segments[2]).toEqual([20, HI_A[2]]);
+        expect(out.join('\n')).toMatch(/cue 2 would not come back right .*kept unchanged/);
+        expect(out.join('\n')).toMatch(/\(1 of them kept unchanged\)/);
+        const again = fakeAi();
+        await run(['--ids', A], again);
+        expect(again.calls).toHaveLength(0);
+        out = [];
+        expect(await T.main(['--check', '--ids', A], root, deps(again))).toBe(0);
     });
 
     test('the glossary file is used, and only for the terms that occur', async () => {

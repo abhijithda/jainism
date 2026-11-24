@@ -1401,8 +1401,17 @@ the same language; other tracks stay. A video spoken in Kannada gets only Englis
 **One request = a batch of cues, both languages.** Cues go out as `{i, t}` with the three cues before the batch as
 context; the answer must contain every `i` exactly once, a non-empty text for each language, nothing unknown, the right
 script (Kannada letters for `kn`, Latin for `en`) and a plausible length. Anything else throws away the *whole* answer,
-and the batch is asked again in two halves, down to a single cue; a cue that never comes back right is **left out** (a gap,
-never a shifted timestamp) and a rerun tries just those. Alignment is checked; **meaning is not**.
+and what happens next depends on what was wrong:
+- **One named cue is unusable** (not in the language, empty, absurd length): that cue is taken out and asked alone, and the
+  cues before and after it are asked as two batches (3 requests instead of a halving chain). A cue that is wrong again alone,
+  twice, is **kept unchanged** in the alt track, which is what the prompt asks for with a garbled shloka anyway (the log says
+  "kept unchanged"). Three such cues in a row with no good batch between stop the run ("the model is not working"), so a
+  broken model cannot turn a whole video into copies of the Hindi.
+- **The answer is broken as a whole** (bad JSON, unknown or repeated ids, cues missing): the batch is asked again in two
+  halves, down to a single cue; a cue that still fails is **left out** (a gap, never a shifted timestamp) and a rerun tries
+  just that one. After such a failure the next batches are half as big (down to 8, or to `--batch` if smaller), and after
+  three good ones they grow back, because long answers break more often.
+Alignment is checked; **meaning is not**.
 
 **Faithful, not corrected: what really happens.** The prompt says to translate what the captions say (mistakes included)
 and to give back unchanged any cue that is not intelligible speech, such as a Sanskrit/Prakrit shloka the recogniser
@@ -1441,10 +1450,16 @@ defaults to 90 s (the shared client's own default is 240 s, which makes one hung
 4. Commit `assets/transcripts`. Partly translated videos are fine to publish: a track may have fewer cues than the main
    one (a Kannada question then finds hits only in the translated part; Hindi questions still find everything), and the
    next run asks only for the missing cues, even in a video that was stopped halfway.
-Observed in the first real session: 28 requests translated 445 cues (about 16 cues per request instead of the 50 planned),
-because of 3 batches rejected by the checks on the long, shloka-heavy video (garbled short cues that did not come back as
-Kannada or an exact copy, one malformed JSON answer, one length mismatch) and 429s; the third 429 in a row ended the run
-well before `--max-requests`. Expect roughly 100 to 300 requests for the whole job.
+Observed so far (gemini-3.6-flash): the first session translated 445 cues in 28 requests, stopped by 429s well before
+`--max-requests`. A later session of 60 requests translated 463 cues of the long shloka-heavy video (7.7 cues per request) and
+the next one 690 cues across eight videos (11.5 per request), against the 50 planned. About 40 % of the requests were answers
+that failed the checks. In the 60-request session with the best data, 22 of them did: 11 malformed JSON (`Expected ',' or '}'`,
+`Expected ':'`), 6 "not in Kannada" (3 different cues), 4 "has no en/kn" and 1 absurd length. The JSON failures also hit
+small batches (one at 12 cues, broken at character 670), so length is not the whole story; the likely cause is a straight
+double quote inside a translation, which is why the prompt now forbids those (**unverified**: if malformed JSON keeps
+happening, the raw failing answer is needed to see why). Isolating the bad cue, keeping it unchanged and the adaptive batch
+size were added after these logs, to waste fewer requests; their effect on real requests is not measured yet. Expect
+roughly 150 to 300 more requests for the rest of the job.
 
 **Limits and to be verified by hand.**
 - **What is verified and what is not.** The script's logic is tested with a fake client (no network). On the real
