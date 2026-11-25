@@ -27,6 +27,7 @@
     <meta property="og:image:height" content="630">
     <meta property="og:image:alt" content="Jainism F.A.Q.s: a carved stone relief of a seated Tirthankara">
     <meta name="twitter:card" content="summary_large_image">
+    <link rel="privacy-policy" href="privacy.html">
     <link rel="stylesheet" href="src/header/header.css">
     <link rel="stylesheet" href="src/home/home.css">
     <link rel="stylesheet" href="src/core/media.css">
@@ -38,6 +39,7 @@
     <link rel="stylesheet" href="src/core/font-scale.css">
     <link rel="stylesheet" href="src/ai/ai-panel.css">
     <link rel="stylesheet" href="src/study/study-panel.css">
+    <link rel="stylesheet" href="src/sync/sync.css">
     <link rel="stylesheet" id="css-continuous" href="src/views/continuous/continuous-view.css">
     <link rel="stylesheet" id="css-book"       href="src/views/book/book-view.css">
     <!-- @page can't be scoped to a body attribute/class in plain CSS, so the
@@ -123,6 +125,7 @@
                         <span class="slider"></span>
                     </label>
                 </div>
+                <div class="menu-section menu-section--sync" data-sync hidden></div>
                 <div class="menu-section menu-section--ai">
                     <label for="ai-engine-select" title="Ask questions about the book. Off by default.">💬 AI assistant:</label>
                     <select id="ai-engine-select">
@@ -237,6 +240,7 @@
                 <button type="button" id="home-ai-config-btn" class="ai-config-btn" hidden>Configure…</button>
             </div>
             <p id="home-ai-engine-note" class="home-offline-hint"></p>
+            <div class="home-section" data-sync hidden></div>
             <div class="home-section home-row">
                 <label for="home-paper-size-select">🖨️ Paper size</label>
                 <select id="home-paper-size-select">

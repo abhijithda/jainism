@@ -32,6 +32,9 @@ your own pace and come back to it.
   the same content ([printing guide](docs/PRINTING.md)). New sets are attached to
   the [Releases](https://github.com/abhijithda/jainism/releases) page when I
   publish them.
+- **Keep your progress on every device.** Optionally sign in with Google to save your read
+  ticks, study answers and display settings in your own Drive's hidden app folder
+  ([how it works](docs/SYNC.md)). Signed out, everything stays on this device.
 - **Ask a question.** An optional AI panel can answer from the book's own content.
 
 ## Spotted a mistake, or want something credited or removed?

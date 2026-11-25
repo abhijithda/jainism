@@ -8,6 +8,26 @@
 
 import { getReadBlocks, saveReadBlocks, toggleBlockRead, updateProgressDisplay } from './read-tracking.js';
 
+const paintReadTick = (tick, read) => {
+    tick.classList.toggle('read', read);
+    tick.textContent = read ? '✓' : '';
+    tick.title = read ? 'Marked as read' : 'Mark as read';
+    tick.setAttribute('aria-label', tick.title);
+};
+
+/**
+ * Repaints every tick on the page from `readSet` (used when another device's ticks arrive through sync).
+ * @param {Set<string>} readSet
+ * @param {ParentNode} [root]
+ */
+export function repaintReadTicks(readSet, root = document) {
+    root.querySelectorAll('.read-tick[data-block-id]').forEach(tick => {
+        const read = readSet.has(tick.dataset.blockId);
+        paintReadTick(tick, read);
+        tick.closest('.block-row')?.classList.toggle('read', read);
+    });
+}
+
 /**
  * @param {Object} block
  * @param {Object} opts
@@ -20,13 +40,9 @@ export function buildReadTick(block, { isRead = false, totalBlockCount = 0, onTo
     const tick = document.createElement('button');
     tick.type = 'button';
     tick.className = 'read-tick';
+    tick.dataset.blockId = block.id;
 
-    const paint = read => {
-        tick.classList.toggle('read', read);
-        tick.textContent = read ? '✓' : '';
-        tick.title = read ? 'Marked as read' : 'Mark as read';
-        tick.setAttribute('aria-label', tick.title);
-    };
+    const paint = read => paintReadTick(tick, read);
     paint(isRead);
 
     tick.onclick = e => {
@@ -46,5 +62,5 @@ export function buildReadTick(block, { isRead = false, totalBlockCount = 0, onTo
 
 // CommonJS shim for Jest
 if (typeof module !== 'undefined' && module.exports) {
-    Object.assign(module.exports, { buildReadTick });
+    Object.assign(module.exports, { buildReadTick, repaintReadTicks });
 }

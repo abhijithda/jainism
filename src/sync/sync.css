@@ -1,0 +1,47 @@
+/* sync/sync.css — the "Sync" row in Settings and on Home (built by sync-ui.js). */
+[data-sync][hidden] { display: none; }
+.menu-section[data-sync]:not([hidden]) { display: block; }   /* :not([hidden]) so a mount with no sign-in configured stays fully hidden */
+.sync-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.sync-label { display: inline; }
+.sync-state { display: inline-flex; align-items: center; vertical-align: -3px; margin-left: 6px; }
+.sync-state[hidden] { display: none; }
+.sync-state--ok { color: #2e7d32; }
+.sync-state--warn { color: #b26a00; }
+.sync-state--off { color: #777; }
+.sync-state--spin { color: #777; }
+.sync-state--spin svg { animation: sync-spin 1.1s linear infinite; }
+@keyframes sync-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .sync-state--spin svg { animation: none; } }
+.sync-actions { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
+.sync-btn { font: inherit; font-size: 13px; padding: 5px 10px; border: 1px solid #ccc; border-radius: 6px; background: #fff; color: #222; cursor: pointer; }
+.sync-btn--primary { border-color: #4285f4; color: #1a56c4; font-weight: 600; }
+.sync-btn:disabled { opacity: .55; cursor: default; }
+.sync-ib { width: 32px; height: 32px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 6px; background: none; color: #444; cursor: pointer; }
+.sync-ib:hover, .sync-ib[aria-expanded="true"] { background: rgba(0, 0, 0, .07); }
+.sync-btn[hidden], .sync-ib[hidden] { display: none; }
+.sync-ib[data-sync-action="account"] { margin-right: -7px; }   /* (32px button - 18px icon) / 2: the icon, not its tap area, lines up with the controls above */
+/* Home rows use 15px scaled by the font-size setting; this row follows it. */
+.home-section[data-sync] { font-size: calc(15px * var(--font-scale, 1)); }
+.sync-menu { margin: 4px 0 6px 40px; padding: 6px; background: #fff; border: 1px solid #ddd; border-radius: 10px; }
+.sync-menu[hidden] { display: none; }
+.sync-who { display: flex; align-items: center; gap: 10px; padding: 6px 8px 8px; min-width: 0; }
+.sync-avatar { width: 26px; height: 26px; border-radius: 50%; background: #e3edfd; color: #1a56c4; display: inline-flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 600; flex: none; }
+.sync-email { font-size: 13px; color: #555; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sync-sep { border-top: 1px solid #eee; margin: 4px 0; }
+.sync-mi { display: flex; align-items: center; gap: 10px; width: 100%; height: 38px; padding: 0 8px; border: 0; border-radius: 6px; background: none; font: inherit; font-size: 14px; color: #222; text-align: left; text-decoration: none; cursor: pointer; }
+.sync-mi:hover { background: rgba(0, 0, 0, .06); }
+.sync-mi svg { color: #666; flex: none; }
+.sync-mi--danger, .sync-mi--danger svg { color: #a33; }
+.sync-hint { margin: 0 0 4px; font-size: 12px; line-height: 1.45; color: #666; }
+.sync-hint[hidden] { display: none; }
+.sync-hint a, .sync-link { color: #1a56c4; }
+.sync-link { font: inherit; padding: 0; border: 0; background: none; text-decoration: underline; cursor: pointer; }
+/* Hover hints (desktop). Touch has no hover, so nothing here is the only way to learn something. */
+[data-sync] [data-tip] { position: relative; }
+[data-sync] [data-tip]:hover::after, [data-sync] [data-tip]:focus-visible::after {
+    content: attr(data-tip); position: absolute; bottom: calc(100% + 6px); right: 0; z-index: 20; width: max-content; max-width: 230px;
+    padding: 6px 9px; border-radius: 6px; background: #222; color: #fff; font-size: 12px; font-weight: 400; line-height: 1.4; text-align: left; white-space: normal;
+}
+[data-sync] .tl:hover::after, [data-sync] .tl:focus-visible::after, [data-sync] .sync-state:hover::after, [data-sync] .sync-state:focus-visible::after { left: 0; right: auto; }
+@media (max-width: 700px) { .sync-ib { width: 40px; height: 40px; } .sync-ib[data-sync-action="account"] { margin-right: -11px; } .sync-btn { font-size: 14px; padding: 9px 12px; } .sync-mi { height: 44px; } }
+@media print { [data-sync] { display: none !important; } }
