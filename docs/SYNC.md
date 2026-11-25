@@ -27,7 +27,7 @@ other devices. Signed out, the site works exactly as before (everything stays in
   meanwhile; it syncs after reconnecting.
 - Two devices syncing in the very same moment can overwrite each other's upload once; each keeps its own data and
   merges again at its next sync.
-- Sign-out keeps the history on the device. "Sign out and delete my cloud copy" also removes the Drive file.
+- Sign-out keeps the history on the device. "Delete cloud copy" signs out and also removes the Drive file.
 
 ## One-time setup (site owner)
 

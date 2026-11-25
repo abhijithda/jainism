@@ -22,7 +22,7 @@ test('it states what Google requires: the scope used, where data lives, and that
 test('it names the file really written to Drive, and the real ways to sign out and delete', () => {
     const drive = fs.readFileSync(path.join(ROOT, 'src', 'sync', 'drive.js'), 'utf8');
     expect(page).toContain(drive.match(/FILE_NAME = '([^']+)'/)[1]);
-    expect(page).toContain('Sign out and delete my cloud copy');
+    expect(page).toContain('Delete cloud copy');
     expect(page).toContain('myaccount.google.com/permissions');
 });
 

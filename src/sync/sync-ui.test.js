@@ -26,6 +26,12 @@ describe('describe', () => {
     });
 });
 
+test('the explanation shows only before signing in, and the status line stays short', () => {
+    expect(describeSync({ status: 'signed-out' }).hint).toBe(true);
+    expect(describeSync({ status: 'synced', account: { email: 'a@x.com' }, lastSyncAt: 1000 }, 1000).hint).toBe(false);
+    expect(describeSync({ status: 'synced', account: { email: 'a@x.com' }, lastSyncAt: 1000 }, 1000).text).toBe('✓ Synced as a@x.com · just now');
+});
+
 test('the Apply button and its note agree: unknown keys alone offer nothing', () => {
     const { pendingKeys } = require('./sync-ui');
     expect(pendingKeys({ pendingPrefs: { mystery: 1 } })).toEqual([]);

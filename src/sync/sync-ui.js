@@ -21,12 +21,12 @@ export const pendingKeys = snap => Object.keys((snap && snap.pendingPrefs) || {}
 /** What to say and which buttons to offer for an engine snapshot. Pure. */
 export function describe(snap, now = Date.now()) {
     const who = snap.account && (snap.account.email || snap.account.name);
-    const out = { text: '', actions: [] };
+    const out = { text: '', actions: [], hint: !snap.account };   // the explanation is for people who have not signed in
     switch (snap.status) {
         case 'connecting':   out.text = 'Signing in…'; break;
         case 'syncing':      out.text = 'Syncing…'; break;
         case 'synced':
-            out.text = `✓ Saved to your Google Drive${who ? ` (${who})` : ''} · ${snap.lastSyncAt ? formatAgo(snap.lastSyncAt, now) : 'just now'}`;
+            out.text = `✓ Synced${who ? ` as ${who}` : ''} · ${snap.lastSyncAt ? formatAgo(snap.lastSyncAt, now) : 'just now'}`;
             out.actions = ['sync', 'signout', 'delete']; break;
         case 'offline':
             out.text = '📴 Offline — your progress is kept on this device and will sync when you are back online.';
@@ -47,7 +47,7 @@ export function describe(snap, now = Date.now()) {
 
 const LABELS = {
     signin: 'Sign in with Google', reconnect: 'Reconnect', sync: 'Sync now', signout: 'Sign out',
-    delete: 'Sign out and delete my cloud copy', apply: 'Use settings from my other device',
+    delete: 'Delete cloud copy', apply: 'Use settings from my other device',
 };
 
 /**
@@ -65,10 +65,11 @@ export function initSyncUi({ engine, auth, doc = document, win = typeof window !
         sections.forEach(sec => {
             sec.hidden = false;
             // The privacy link is added only once sign-in is actually offered (a page with no sign-in has no such link).
+            sec.querySelectorAll('[data-sync-hint]').forEach(h => { h.hidden = !d.hint; });
             sec.querySelectorAll('[data-sync-privacy]').forEach(slot => {
                 if (slot.firstChild) return;
                 const a = doc.createElement('a');
-                a.href = 'privacy.html'; a.target = '_blank'; a.rel = 'noopener'; a.textContent = 'Privacy policy';
+                a.href = 'privacy.html'; a.target = '_blank'; a.rel = 'noopener'; a.textContent = 'Privacy'; a.title = 'Privacy policy';
                 slot.appendChild(a);
             });
             const text = sec.querySelector('[data-sync-status]');
