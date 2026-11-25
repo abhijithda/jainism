@@ -23,6 +23,7 @@ export function createSyncEngine({ storage, auth, drive, isKnownId, onApplied, o
     let pending = {};          // newer display settings found on Drive, { key: value }
     let lastMerged = null;     // the last merged document, kept for "apply settings"
     let running = null, rerun = false, timer = null, applying = false, installed = false;
+    let reconnectArmed = false, reconnectTried = false;
 
     function loadState() {
         try {
@@ -41,12 +42,27 @@ export function createSyncEngine({ storage, auth, drive, isKnownId, onApplied, o
     const snapshot = () => ({ status, message, account: state.account, lastSyncAt: state.lastSyncAt, pendingPrefs: { ...pending } });
     const online = () => win.navigator.onLine !== false;
 
+    // Browsers block Google's quiet re-sign-in popup when nobody has clicked yet (every page load), but allow it
+    // during a click or key press. So after a quiet failure, the reader's first tap or key press tries once more:
+    // if they already approved this site it closes by itself and sync resumes without the Reconnect button.
+    // Tried once per page load, so a failing browser never gets a popup on every click.
+    function armReconnect() {
+        if (reconnectArmed || reconnectTried || !state.account) return;
+        reconnectArmed = true;
+        const go = () => {
+            reconnectArmed = false; reconnectTried = true;
+            ['pointerdown', 'keydown'].forEach(ev => doc.removeEventListener(ev, go, true));
+            if (status === 'needs-signin') syncNow();
+        };
+        ['pointerdown', 'keydown'].forEach(ev => doc.addEventListener(ev, go, true));
+    }
+
     async function once() {
         if (!online()) return setStatus('offline');
         setStatus('syncing');
         let token;
         try { token = await auth.getToken({ interactive: false }); }
-        catch (_) { return setStatus('needs-signin'); }
+        catch (_) { setStatus('needs-signin'); armReconnect(); return; }
         try {
             let meta = loadMeta(storage);
             const fileId = await drive.findFile(token);
@@ -67,7 +83,7 @@ export function createSyncEngine({ storage, auth, drive, isKnownId, onApplied, o
             setStatus('synced');
             if ((res.changed.read || res.changed.study) && onApplied) onApplied(res.changed);
         } catch (e) {
-            if (e && e.status === 401) { auth.forget(); setStatus('needs-signin'); }
+            if (e && e.status === 401) { auth.forget(); setStatus('needs-signin'); armReconnect(); }
             else if (!online()) setStatus('offline');
             else setStatus('error', e && e.status === 403 ? 'Google Drive refused access. Sign in again and allow saving to Drive.' : 'Could not reach Google Drive. Will try again.');
         }

@@ -127,6 +127,32 @@ describe('failure modes keep the book working', () => {
         expect(engine.snapshot().status).toBe('needs-signin');
         expect(read()).toEqual(['a']);
     });
+    test('after a quiet failure, the first tap tries once more and sync resumes; it never retries on every click', async () => {
+        localStorage.setItem(SYNC_STATE_KEY, JSON.stringify({ account: { email: 'a@x.com' }, lastSyncAt: 5 }));
+        let ok = false;
+        const getToken = jest.fn(async () => { if (!ok) throw new Error('popup_failed_to_open'); return 'tok'; });
+        const { engine } = make({ auth: fakeAuth({ getToken }) });
+        engine.start();
+        await engine.syncNow();
+        expect(engine.snapshot().status).toBe('needs-signin');
+
+        ok = true;                                           // the browser allows it now: we are inside a click
+        document.dispatchEvent(new Event('pointerdown'));
+        await engine.syncNow();                              // waits for the sync the tap started
+        expect(engine.snapshot().status).toBe('synced');
+
+        // a browser that keeps refusing is tried only once per page load
+        const again = make({ auth: fakeAuth({ getToken: jest.fn(async () => { throw new Error('x'); }) }) });
+        again.engine.start();
+        await again.engine.syncNow();
+        document.dispatchEvent(new Event('keydown'));
+        await again.engine.syncNow();
+        const calls = again.auth.getToken.mock.calls.length;
+        document.dispatchEvent(new Event('keydown'));
+        document.dispatchEvent(new Event('pointerdown'));
+        await again.engine.syncNow();
+        expect(again.auth.getToken.mock.calls.length).toBe(calls + 1);   // only the explicit syncNow above, no tap-triggered retries
+    });
     test('401 from Drive means reconnect; other errors retry later', async () => {
         const drive = fakeDrive(); const { engine, auth } = make({ drive });
         await engine.signIn();

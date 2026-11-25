@@ -4,7 +4,9 @@
 .menu-section[data-sync] { flex-direction: column; align-items: stretch; }
 .sync-status { font-size: 13px; line-height: 1.4; color: #555; }
 .home-section[data-sync] .sync-status { font-size: calc(13px * var(--font-scale, 1)); color: #666; }
-.sync-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.sync-status { margin: 4px 0 8px; }
+.sync-actions { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 12px; }
+.home-section[data-sync] .home-offline-hint { margin-top: 0; }
 .sync-btn { font-size: 13px; padding: 5px 10px; border: 1px solid #ccc; border-radius: 6px; background: #fff; color: #222; cursor: pointer; }
 .sync-btn[data-sync-action="signin"], .sync-btn[data-sync-action="reconnect"] { border-color: #4285f4; color: #1a56c4; font-weight: 600; }
 .sync-btn[data-sync-action="delete"] { color: #a33; border-color: #e0b4b4; }
