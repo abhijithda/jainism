@@ -27,7 +27,7 @@ other devices. Signed out, the site works exactly as before (everything stays in
   meanwhile; it syncs after reconnecting.
 - Two devices syncing in the very same moment can overwrite each other's upload once; each keeps its own data and
   merges again at its next sync.
-- Sign-out keeps the history on the device. "Delete cloud copy" signs out and also removes the Drive file.
+- Sign-out keeps the history on the device. "Delete synced data" (in the account menu) signs out and also removes the Drive file.
 
 ## One-time setup (site owner)
 
@@ -58,7 +58,7 @@ other devices. Signed out, the site works exactly as before (everything stays in
 | `src/sync/drive.js` | The five Drive calls (find, read, write, delete, who am I) |
 | `src/sync/sync-merge.js` | Change times, the merge, applying it to `localStorage` |
 | `src/sync/sync-engine.js` | When to sync; status; sign-out |
-| `src/sync/sync-ui.js`, `sync.css` | The Settings/Home section |
+| `src/sync/sync-ui.js`, `icons.js`, `sync.css` | The Sync row (status icon, refresh, account menu), built into both Settings and Home |
 | `src/sync/index.js` | Wires it together for `app.js` |
 | `privacy.html` | The privacy policy Google's consent screen links to (also linked from Settings and Home) |
 

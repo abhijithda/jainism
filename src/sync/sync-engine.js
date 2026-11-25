@@ -13,6 +13,7 @@ import {
 import { loadSettings } from '../core/settings.js';
 
 export const SYNC_STATE_KEY = 'syncState';   // { account: {name, email}, lastSyncAt }
+export const LAST_EMAIL_KEY = 'syncLastEmail'; // just the address, kept after sign-out so the next sign-in can preselect that account
 export const DEBOUNCE_MS = 4000;
 export const RESUME_AFTER_MS = 60 * 1000;
 
@@ -41,6 +42,8 @@ export function createSyncEngine({ storage, auth, drive, isKnownId, onApplied, o
     function setStatus(s, msg = '') { status = s; message = msg; if (onStatus) onStatus(snapshot()); }
     const snapshot = () => ({ status, message, account: state.account, lastSyncAt: state.lastSyncAt, pendingPrefs: { ...pending } });
     const online = () => win.navigator.onLine !== false;
+    const lastEmail = () => { try { return storage.getItem(LAST_EMAIL_KEY) || ''; } catch (_) { return ''; } };
+    const rememberEmail = email => { try { if (email) storage.setItem(LAST_EMAIL_KEY, email); } catch (_) { /* ignore */ } };
 
     // Browsers block Google's quiet re-sign-in popup when nobody has clicked yet (every page load), but allow it
     // during a click or key press. So after a quiet failure, the reader's first tap or key press tries once more:
@@ -130,13 +133,16 @@ export function createSyncEngine({ storage, auth, drive, isKnownId, onApplied, o
         /** Start tracking changes and, if this device was signed in before, sync quietly. */
         start() {
             track();
-            if (state.account) { auth.setHint(state.account.email); syncNow(); }
+            auth.setHint((state.account && state.account.email) || lastEmail());
+            if (state.account) syncNow();
         },
 
         /** From a click. */
         async signIn() {
             setStatus('connecting');
             let token;
+            const last = lastEmail();
+            if (last) auth.setHint(last);                 // Google opens with the account used last time preselected
             try { token = await auth.getToken({ interactive: true }); }
             catch (e) {
                 setStatus('signed-out', e && e.code === 'scope_denied' ? e.message : e && /popup|closed|access_denied/.test(e.code || '') ? '' : (e && e.message) || 'Sign-in did not complete');
@@ -145,6 +151,7 @@ export function createSyncEngine({ storage, auth, drive, isKnownId, onApplied, o
             const who = await drive.whoAmI(token);
             state = { account: who || { name: '', email: '' }, lastSyncAt: 0 };
             auth.setHint(state.account.email);
+            rememberEmail(state.account.email);
             saveState();
             saveMeta(adoptLegacyPrefs(loadMeta(storage), loadSettings(), now()), storage);
             await syncNow();
@@ -197,4 +204,4 @@ export function createSyncEngine({ storage, auth, drive, isKnownId, onApplied, o
 }
 
 // CommonJS shim for Jest
-if (typeof module !== 'undefined' && module.exports) Object.assign(module.exports, { SYNC_STATE_KEY, DEBOUNCE_MS, RESUME_AFTER_MS, createSyncEngine });
+if (typeof module !== 'undefined' && module.exports) Object.assign(module.exports, { SYNC_STATE_KEY, LAST_EMAIL_KEY, DEBOUNCE_MS, RESUME_AFTER_MS, createSyncEngine });

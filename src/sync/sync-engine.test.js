@@ -1,4 +1,4 @@
-const { createSyncEngine, SYNC_STATE_KEY } = require('./sync-engine');
+const { createSyncEngine, SYNC_STATE_KEY, LAST_EMAIL_KEY } = require('./sync-engine');
 const { loadMeta } = require('./sync-merge');
 
 // An in-memory Drive and a fake sign-in, so the whole flow runs without Google.
@@ -171,6 +171,29 @@ describe('failure modes keep the book working', () => {
         await engine.syncNow();
         expect(engine.snapshot().status).toBe('offline');
         expect(auth.getToken).not.toHaveBeenCalled();
+    });
+});
+
+describe('remembering the account', () => {
+    test('the address is kept after sign-out and preselects the next sign-in (and quiet reconnects)', async () => {
+        const first = make();
+        await first.engine.signIn();
+        expect(localStorage.getItem(LAST_EMAIL_KEY)).toBe('asha@example.com');
+        await first.engine.signOut();
+        expect(localStorage.getItem(SYNC_STATE_KEY)).toBeNull();
+        expect(localStorage.getItem(LAST_EMAIL_KEY)).toBe('asha@example.com');
+
+        const again = make();
+        again.engine.start();
+        expect(again.auth.setHint).toHaveBeenCalledWith('asha@example.com');
+        again.auth.setHint.mockClear();
+        await again.engine.signIn();
+        expect(again.auth.setHint.mock.calls[0][0]).toBe('asha@example.com');    // before the Google popup opens
+    });
+    test('nothing is remembered if the reader never signs in', async () => {
+        const { engine } = make({ auth: fakeAuth({ getToken: async () => { const e = new Error('closed'); e.code = 'popup_closed'; throw e; } }) });
+        await engine.signIn();
+        expect(localStorage.getItem(LAST_EMAIL_KEY)).toBeNull();
     });
 });
 
