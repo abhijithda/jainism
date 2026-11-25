@@ -9,7 +9,8 @@ import { initHomeControls, refreshHomeView } from './home/home.js';
 import { initOffline } from './core/offline.js';
 import { installVideoModal, openVideoModal } from './core/video-modal.js';
 import { initAi, collapseToPill, revealTargetWhenSettled } from './ai/ai-panel.js';
-import { initStudy, closeStudy } from './study/study-panel.js';
+import { initStudy, closeStudy, refreshStudyLog } from './study/study-panel.js';
+import { initSync } from './sync/index.js';
 import { loadStudyConfig } from './study/study-config.js';
 import { buildBlockIndex } from './core/blocks.js';
 import { getBookTitle, joinTitle, bookHeaderTitle } from './core/book-title.js';
@@ -258,6 +259,17 @@ async function init() {
 
     // ── Study companion (opt-in; see study/): questions after a section is marked read.
     initStudy({ data, config: await studyConfig, onCite: (blockId) => { closeStudy(); openCitedBlock(blockId); } });
+
+    // ── Optional Google sign-in + saved history (see sync/ and docs/SYNC.md). Does nothing unless
+    // assets/sync-config.json has a client ID, and never stops the book from working if it fails.
+    initSync({
+        data,
+        onApplied: changed => {
+            if (changed.study) refreshStudyLog();
+            if (currentScreen === 'home') refreshHomeView();
+        },
+    }).catch(err => console.warn('Sync unavailable:', err));
+
     document.getElementById('home-btn')?.addEventListener('click', showHome);
     document.getElementById('home-open-book')?.addEventListener('click', () => activateView('book'));
     document.getElementById('home-open-continuous')?.addEventListener('click', () => activateView('continuous'));

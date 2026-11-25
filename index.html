@@ -38,6 +38,7 @@
     <link rel="stylesheet" href="src/core/font-scale.css">
     <link rel="stylesheet" href="src/ai/ai-panel.css">
     <link rel="stylesheet" href="src/study/study-panel.css">
+    <link rel="stylesheet" href="src/sync/sync.css">
     <link rel="stylesheet" id="css-continuous" href="src/views/continuous/continuous-view.css">
     <link rel="stylesheet" id="css-book"       href="src/views/book/book-view.css">
     <!-- @page can't be scoped to a body attribute/class in plain CSS, so the
@@ -122,6 +123,19 @@
                         <input type="checkbox" id="toggle-offline">
                         <span class="slider"></span>
                     </label>
+                </div>
+                <div class="menu-section menu-section--sync" data-sync hidden>
+                    <label title="Keep your read ticks, study answers and display settings in your own Google Drive">☁️ Save progress:</label>
+                    <span class="sync-status" data-sync-status role="status" aria-live="polite"></span>
+                    <p class="sync-note" data-sync-prefs-note hidden>Display settings from your other device are available.</p>
+                    <div class="sync-actions">
+                        <button type="button" class="sync-btn" data-sync-action="signin" hidden></button>
+                        <button type="button" class="sync-btn" data-sync-action="reconnect" hidden></button>
+                        <button type="button" class="sync-btn" data-sync-action="apply" hidden></button>
+                        <button type="button" class="sync-btn" data-sync-action="sync" hidden></button>
+                        <button type="button" class="sync-btn" data-sync-action="signout" hidden></button>
+                        <button type="button" class="sync-btn" data-sync-action="delete" hidden></button>
+                    </div>
                 </div>
                 <div class="menu-section menu-section--ai">
                     <label for="ai-engine-select" title="Ask questions about the book. Off by default.">💬 AI assistant:</label>
@@ -237,6 +251,20 @@
                 <button type="button" id="home-ai-config-btn" class="ai-config-btn" hidden>Configure…</button>
             </div>
             <p id="home-ai-engine-note" class="home-offline-hint"></p>
+            <div class="home-section" data-sync hidden>
+                <label class="home-section-label">☁️ Save progress</label>
+                <p class="sync-status" data-sync-status role="status" aria-live="polite"></p>
+                <p class="sync-note" data-sync-prefs-note hidden>Display settings from your other device are available.</p>
+                <div class="sync-actions">
+                    <button type="button" class="sync-btn" data-sync-action="signin" hidden></button>
+                    <button type="button" class="sync-btn" data-sync-action="reconnect" hidden></button>
+                    <button type="button" class="sync-btn" data-sync-action="apply" hidden></button>
+                    <button type="button" class="sync-btn" data-sync-action="sync" hidden></button>
+                    <button type="button" class="sync-btn" data-sync-action="signout" hidden></button>
+                    <button type="button" class="sync-btn" data-sync-action="delete" hidden></button>
+                </div>
+                <p class="home-offline-hint">Optional. Keeps your read ticks, study answers and display settings in a private, hidden folder of your own Google Drive, so they follow you to other devices. This site never sees or stores them. Without signing in, everything stays on this device as before.</p>
+            </div>
             <div class="home-section home-row">
                 <label for="home-paper-size-select">🖨️ Paper size</label>
                 <select id="home-paper-size-select">
