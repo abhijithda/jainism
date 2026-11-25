@@ -575,3 +575,23 @@ describe('words that are part of a study topic name (assets/study-config.json)',
     });
 });
 
+describe('dropDuplicate: the English can come first, in brackets', () => {
+    const lineOf = (text) => ({ key: 'k|en|0', text, lang: 'en', kind: 'prose' });
+    const iss = (old, nw) => ({ key: 'k|en|0', old, new: nw, reason: 'x', confidence: 'clear' });
+
+    test('"Navana (ಣವಣ)" becomes "Navana": the bracket pair goes with the Kannada word', () => {
+        const r = T.dropDuplicate(iss('ಣವಣ', 'Navana'), lineOf('1. Navana (ಣವಣ) = Abhishekas'));
+        expect(r.old).toBe('Navana (ಣವಣ)');
+        expect(r.new).toBe('Navana');
+        expect(T.applyToLine('1. Navana (ಣವಣ) = Abhishekas', [r]).text).toBe('1. Navana = Abhishekas');
+    });
+    test('"Navana / ಣವಣ" and "ಣವಣ (Navana)" still work', () => {
+        expect(T.applyToLine('Navana / ಣವಣ = x', [T.dropDuplicate(iss('ಣವಣ', 'Navana'), lineOf('Navana / ಣವಣ = x'))]).text).toBe('Navana = x');
+        expect(T.applyToLine('ಣವಣ (Navana) = x', [T.dropDuplicate(iss('ಣವಣ', 'Navana'), lineOf('ಣವಣ (Navana) = x'))]).text).toBe('Navana = x');
+    });
+    test('an opening bracket without a closing one is not made worse', () => {
+        const r = T.dropDuplicate(iss('ಣವಣ', 'Navana'), lineOf('Navana (ಣವಣ = x'));
+        expect(T.applyToLine('Navana (ಣವಣ = x', [r]).text).toBe('Navana = x');
+    });
+});
+

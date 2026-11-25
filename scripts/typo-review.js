@@ -17,7 +17,7 @@
 //   invisible characters (word joiner, zero-width space, BOM) pasted from Google Docs / WhatsApp: removed (ZWJ/ZWNJ are kept: Kannada needs them)
 //
 // The AI only PROPOSES { old, new, reason, confidence }; this code decides what is clear. A fix is applied automatically
-// only when `old` occurs exactly once in the line, is short, differs from `new` by at most a few letters (2 in Kannada,
+// only when `old` is found as a whole word in the line (all its places there are fixed together), is short, differs from `new` by at most a few letters (2 in Kannada,
 // where the model is less reliable), does not touch an allowlisted spelling or a link, and the model said "clear".
 // Everything else, including any Sanskrit/Prakrit looking word, is a suggestion at most.
 //
@@ -207,9 +207,11 @@ function dropDuplicate(issue, line) {
         const span = issue.old + right[1] + right[2] + close;
         return { ...issue, old: span, new: right[2], reason: `${issue.reason}; your own English "${right[2]}" is the same, so the duplicate is dropped` };
     }
-    const left = text.slice(0, at).match(new RegExp(`(${phrase})([\\s\\/\\-–=),:]+)$`));
+    const left = text.slice(0, at).match(new RegExp(`(${phrase})([\\s\\/\\-–=(),:]+)$`));
     if (left && sameWord(left[1], issue.new)) {
-        const span = left[1] + left[2] + issue.old;
+        // "Navana (ಣವಣ)": the opening bracket goes with the Kannada word, so its closing bracket goes too
+        const close = left[2].includes('(') && text.slice(at + issue.old.length).startsWith(')') ? ')' : '';
+        const span = left[1] + left[2] + issue.old + close;
         return { ...issue, old: span, new: left[1], reason: `${issue.reason}; your own English "${left[1]}" is the same, so the duplicate is dropped` };
     }
     return issue;

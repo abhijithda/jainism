@@ -369,3 +369,15 @@ describe('when Gemini itself is down (busy after every retry): stop and change n
     });
 });
 
+describe('tidyPairs: every pair in a line', () => {
+    test('two pairs in one line are both reduced to the writer\'s own Kannada word', () => {
+        expect(tidyPairs('ಣವಣ / Navana and ಉಪ ಲೇಪನ / Upa Lepana', 'ಣವಣ / ನವಣ ಮತ್ತು ಉಪ ಲೇಪನ / ಉಪಲೇಪನ', 'kn')).toBe('ಣವಣ ಮತ್ತು ಉಪ ಲೇಪನ');
+    });
+    test('the same pair twice in a line is reduced both times', () => {
+        expect(tidyPairs('ಣವಣ / Navana, ಣವಣ / Navana', 'ಣವಣ / ನವಣ, ಣವಣ / ನವಣ', 'kn')).toBe('ಣವಣ, ಣವಣ');
+    });
+    test('English output: every pair becomes the Latin word', () => {
+        expect(tidyPairs('x', 'ಣವಣ / Navana, ಉಪ ಲೇಪನ / Upa Lepana', 'en')).toBe('Navana, Upa Lepana');
+    });
+});
+

@@ -79,6 +79,7 @@ jobs:
           GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
           GEMINI_MODELS: ${{ vars.GEMINI_MODELS }}
           GEMINI_THINKING_LEVEL: ${{ vars.GEMINI_THINKING_LEVEL }}
+          GEMINI_THINKING_BUDGET: ${{ vars.GEMINI_THINKING_BUDGET }}
         run: node scripts/notes-to-blocks.js --report "$RUNNER_TEMP/notes-report.md"
 
       - name: 🤖 Run the content agent
