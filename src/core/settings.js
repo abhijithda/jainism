@@ -149,6 +149,8 @@ export function saveSettings(partial) {
     if ('aiCustom' in partial) merged.aiCustom = loadAiCustom(partial.aiCustom);
     if ('aiLocalServer' in partial) merged.aiLocalServer = loadAiLocalServer(partial.aiLocalServer);
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(merged));
+    // Lets features that follow settings (sync) hear about a change without this file knowing them.
+    if (typeof document !== 'undefined') document.dispatchEvent(new CustomEvent('pooja:settings-saved', { detail: { keys: Object.keys(partial) } }));
     return merged;
 }
 

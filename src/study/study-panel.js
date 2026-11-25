@@ -149,6 +149,8 @@ function finish(entry, status) {
     if (entry.sug.desc) {
         state.log = recordResult(state.log, entry.sug.id, entry.sug.desc, status);
         saveStudyLog(state.log, localStorage);
+        // Lets sync hear about it without this file knowing it.
+        document.dispatchEvent(new CustomEvent('pooja:study-logged', { detail: { id: entry.sug.id } }));
     }
     state.pending = state.pending.filter(e => e !== entry);
     state.aiQuestions = state.aiQuestions.filter(q => q !== entry);
@@ -442,6 +444,13 @@ export function applyStudySetting() {
     });
     LOCK_NOTES.forEach(id => { const n = $(id); if (n) { n.textContent = LOCK_TEXT; n.hidden = !on; } });
     if (!on) { closeStudy(); hideNudge(); }
+}
+
+/** Reloads the saved log after sync stored another device's answers (so the next answer does not overwrite them). */
+export function refreshStudyLog() {
+    state.log = loadStudyLog(localStorage);
+    updateBadge();
+    if (drawerOpen()) render();
 }
 
 /**
