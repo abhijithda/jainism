@@ -120,8 +120,7 @@ function activateView(mode) {
     if (mode === 'book') {
         initBookView(data, activeLangs);
     } else {
-        const cLang = activeLangs.length === 1 ? activeLangs[0] : 'all';
-        renderContinuousView(data, continuous(), cLang);
+        renderContinuousView(data, continuous(), activeLangs);
         updateMediaVisibility();
 
         // Restore continuous view's scroll position every time it becomes
@@ -164,8 +163,7 @@ function renderSharedView(ids) {
         return;
     }
     const activeLangs = getActiveLangs();
-    const cLang = activeLangs.length === 1 ? activeLangs[0] : 'all';
-    renderContinuousView(items, container, cLang, { indexData: data });
+    renderContinuousView(items, container, activeLangs, { indexData: data });
     updateMediaVisibility();
 }
 
@@ -225,8 +223,7 @@ async function init() {
             if (mode === 'book') {
                 onBookLangChange(newActiveLangs);
             } else {
-                const cLang = newActiveLangs.length === 1 ? newActiveLangs[0] : 'all';
-                renderContinuousView(data, continuous(), cLang);
+                renderContinuousView(data, continuous(), newActiveLangs);
                 updateMediaVisibility();
             }
         },

@@ -366,3 +366,92 @@ describe('initZenModeControl', () => {
         expect(document.body.classList.contains('zen-header-visible')).toBe(false);
     });
 });
+
+describe('initLangPicker: at most two languages', () => {
+    test('lists Hindi as a third choice', () => {
+        initLangPicker(() => {});
+        document.getElementById('lang-trigger').click();
+        expect(document.getElementById('lang-chk-hi')).not.toBeNull();
+        expect(document.getElementById('lang-chk-hi').checked).toBe(false);
+    });
+
+    test('with two languages active, the others are disabled and a hint says why', () => {
+        initLangPicker(() => {});
+        document.getElementById('lang-trigger').click();
+        expect(document.getElementById('lang-chk-kn').disabled).toBe(false);
+        expect(document.getElementById('lang-chk-en').disabled).toBe(false);
+        expect(document.getElementById('lang-chk-hi').disabled).toBe(true);
+        expect(document.querySelector('#lang-list .lang-hint').textContent).toContain('up to 2');
+    });
+
+    test('unchecking one frees the others; picking Hindi then compares Kannada with Hindi', () => {
+        const onChange = jest.fn();
+        initLangPicker(onChange);
+        document.getElementById('lang-trigger').click();
+
+        const en = document.getElementById('lang-chk-en');
+        en.checked = false;
+        en.dispatchEvent(new Event('change'));
+        expect(onChange).toHaveBeenLastCalledWith(['kn']);
+        expect(document.getElementById('lang-chk-hi').disabled).toBe(false);
+
+        const hi = document.getElementById('lang-chk-hi');
+        hi.checked = true;
+        hi.dispatchEvent(new Event('change'));
+        expect(onChange).toHaveBeenLastCalledWith(['kn', 'hi']);
+        expect(getActiveLangs()).toEqual(['kn', 'hi']);
+        expect(document.getElementById('lang-summary').textContent).toBe('ಕನ್ನಡ, हिन्दी');
+        expect(document.getElementById('lang-chk-en').disabled).toBe(true);
+    });
+
+    test('a Hindi or Tamil reader can compare English with Hindi, without Kannada', () => {
+        saveActiveLangs(['en', 'hi']);
+        initLangPicker(() => {});
+        document.getElementById('lang-trigger').click();
+        expect(getActiveLangs()).toEqual(['en', 'hi']);
+        expect(document.getElementById('lang-chk-kn').disabled).toBe(true);
+    });
+
+    test('a third language can never be saved, even if the box is forced on', () => {
+        const onChange = jest.fn();
+        initLangPicker(onChange);
+        document.getElementById('lang-trigger').click();
+        const hi = document.getElementById('lang-chk-hi');
+        hi.disabled = false;
+        hi.checked = true;
+        hi.dispatchEvent(new Event('change'));
+        expect(hi.checked).toBe(false);
+        expect(onChange).not.toHaveBeenCalled();
+        expect(getActiveLangs()).toEqual(['kn', 'en']);
+    });
+});
+
+describe('initLangPicker: keyboard focus', () => {
+    test('toggling a language updates the other rows in place: the same checkbox keeps the focus', () => {
+        initLangPicker(() => {});
+        document.getElementById('lang-trigger').click();
+        const en = document.getElementById('lang-chk-en');
+        en.focus();
+        expect(document.activeElement).toBe(en);
+
+        en.checked = false;
+        en.dispatchEvent(new Event('change'));
+
+        expect(document.getElementById('lang-chk-en')).toBe(en);          // the node was not rebuilt
+        expect(document.activeElement).toBe(en);                          // so the focus stayed
+        expect(document.getElementById('lang-chk-hi').disabled).toBe(false);   // and the other rows were updated in place
+    });
+    test('checking the second language disables the third, again without rebuilding', () => {
+        initLangPicker(() => {});
+        document.getElementById('lang-trigger').click();
+        const en = document.getElementById('lang-chk-en');
+        en.checked = false; en.dispatchEvent(new Event('change'));
+        const hi = document.getElementById('lang-chk-hi');
+        hi.focus();
+        hi.checked = true; hi.dispatchEvent(new Event('change'));
+        expect(document.getElementById('lang-chk-hi')).toBe(hi);
+        expect(document.activeElement).toBe(hi);
+        expect(document.getElementById('lang-chk-en').disabled).toBe(true);
+    });
+});
+

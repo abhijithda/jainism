@@ -27,6 +27,7 @@ const path = require('path');
 const { createGemini } = require('./lib/gemini');
 const { findLinks, parseYouTube } = require('./lib/youtube');
 const { insertIndex, maxNum, snippet } = require('./lib/book');
+const { TRANSLIT_STYLE } = require('./lib/translit');
 
 const ROOT = path.join(__dirname, '..');
 const DATA_PATH = path.join(ROOT, 'assets', 'data.json');
@@ -205,7 +206,11 @@ async function makePlan(ai, lines) {
         try {
             const plan = await ai.json({ system: PLAN_SYSTEM, prompt: error ? `${prompt}\n\nYour previous answer was rejected: ${error}\nAnswer again.` : prompt });
             return { plan: validatePlan(plan, lines), source: 'ai' };
-        } catch (e) { error = e.message; if (/GEMINI_API_KEY|answered 4\d\d/.test(error)) break; }
+        } catch (e) {
+            if (e.unavailable) throw e;     // Gemini itself is down: stop, change nothing (see main)
+            error = e.message;
+            if (/GEMINI_API_KEY|answered 4\d\d/.test(error)) break;
+        }
     }
     return { plan: fallback(), source: 'rules', note: `the AI split was not usable (${error}); the rule-based split was used` };
 }
@@ -274,9 +279,40 @@ function verifyPreservation(originalText, items, meta) {
 // ── 4. the other language ────────────────────────────────────────────────────────────────────────────────────
 
 const LANG_NAME = { kn: 'Kannada', en: 'English' };
+
+/**
+ * The label a block will show in the app (src/core/blocks.js): shloka S, note N, mantra M, images I; a plain paragraph takes
+ * its item's letter (Q / A). So the PR says N-29.8 for a note, the same as the book and the typo review do.
+ */
+const BLOCK_LETTERS = { shloka: 'S', note: 'N', images: 'I', mantra: 'M' };
+function reportLabel(item, block, shownNum) {
+    return `${BLOCK_LETTERS[block.type] || item.type[0].toUpperCase()}-${shownNum ?? '?'}.${block.num}`;
+}
 const TRANSLATE_SYSTEM = `You translate lines from a Jainism Q&A book. Return JSON only: {"blocks":[{"key":"...","lines":["..."]}]}.
 Rules: one output line for every input line, same order, so the count must match exactly; keep numbering such as "1." and proper names; keep Sanskrit and Prakrit technical terms (abhisheka, kalasha, dravya ...) in the target script rather than explaining them; never add comments, notes or links.
-Blocks with "mode":"transliterate" are verses or mantras: do NOT translate the meaning, write the same words in the other script (Kannada script <-> Latin letters), as faithfully as possible.`;
+Pairs: the writer sometimes types a Kannada word and its Latin spelling together, "<Kannada> / <Latin>". In a Kannada translation keep ONLY the writer's own Kannada word, never add a second Kannada spelling ("ಣವಣ / Navana" gives "ಣವಣ", not "ಣವಣ / ನವಣ"). In an English translation write only the Latin word ("ಣವಣ / Navana" gives "Navana"); an English translation never contains Kannada letters.
+Blocks with "mode":"transliterate" are verses or mantras: do NOT translate the meaning, write the same words in the other script (Kannada script <-> Latin letters), as faithfully as possible.
+${TRANSLIT_STYLE}`;
+
+const KN_RUN = '[\\u0C80-\\u0CFF]+(?:[ \\t][\\u0C80-\\u0CFF]+)*';
+
+/**
+ * The writer typed "<Kannada> / <Latin>" (ಣವಣ / Navana): the translation keeps only the writer's own word, even if the model
+ * added a second spelling. Kannada out: "ಣವಣ / ನವಣ" becomes "ಣವಣ" (only after a Kannada word the writer typed in that line,
+ * and only one more word, so nothing after it is lost). English out: "ಣವಣ / Navana" becomes "Navana".
+ * @param {string} sourceLine the writer's line  @param {string} out the translated line  @param {'kn'|'en'} to
+ */
+function tidyPairs(sourceLine, out, to) {
+    if (to === 'en') return out.replace(new RegExp(`${KN_RUN}\\s*\\/\\s*(?=[A-Za-z])`, 'g'), '');
+    let result = out;
+    for (const m of String(sourceLine).matchAll(new RegExp(`(${KN_RUN})\\s*\\/\\s*[A-Za-z]`, 'g'))) {
+        const k = m[1].trim();
+        const esc = k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        // the same words again, or one more Kannada word (a second spelling, "ಉಪ ಲೇಪನ / ಉಪಲೇಪನ"); never more than that
+        result = result.replace(new RegExp(`(${esc})\\s*\\/\\s*(?:${esc}|[\\u0C80-\\u0CFF]+)`, 'g'), '$1');
+    }
+    return result;
+}
 
 /** Fill the empty language of every block with a machine translation. Records on `meta` what happened. */
 async function translateBlocks(ai, items, meta) {
@@ -303,10 +339,13 @@ async function translateBlocks(ai, items, meta) {
                     for (const out of answer.blocks || []) {
                         const job = chunk.find((j) => j.key === out.key);
                         if (!job || !Array.isArray(out.lines) || out.lines.length !== job.lines.length || out.lines.some((l) => typeof l !== 'string')) continue;
-                        job.block.content[job.to] = out.lines.map((l) => l.trim());
+                        job.block.content[job.to] = out.lines.map((l, k) => tidyPairs(job.lines[k], l.trim(), job.to));
                         job.m.translated = true;
                     }
-                } catch (e) { chunk.forEach((j) => { j.m.translationNote = `translation failed: ${e.message}`; }); }
+                } catch (e) {
+                    if (e.unavailable) throw e;  // Gemini itself is down: stop, change nothing (see main)
+                    chunk.forEach((j) => { j.m.translationNote = `translation failed: ${e.message}`; });
+                }
             }
             todo = todo.filter((j) => !j.m.translated);
         }
@@ -387,7 +426,7 @@ function renderReport({ name, prepared, built, placed, planSource, planNote, at,
         out.push(`**${item.type[0].toUpperCase() + item.type.slice(1)} ${i + 1}**${item.num !== undefined ? ` (num ${item.num})` : ''}`);
         item.blocks.forEach((b, j) => {
             const m = built.meta[i].blocks[j];
-            const label = `${item.type[0].toUpperCase()}-${shownNum ?? '?'}.${b.num}`;
+            const label = reportLabel(item, b, shownNum);
             const vids = b.videos.map((v) => `${v.youtubeId}${/[?&]t=/.test(v.url) ? ` (${v.url.match(/[?&]t=([^&]+)/)[1]})` : ''}`);
             out.push(`- ${label} · ${b.type} · you wrote it in ${LANG_NAME[m.lang]} (${b.content[m.lang].length} line(s))${vids.length ? ` · video: ${vids.join(', ')}` : ''}: ${clip(b.content[m.lang][0])}`);
             if (m.translated) review.push({ label, m, b });
@@ -398,7 +437,8 @@ function renderReport({ name, prepared, built, placed, planSource, planNote, at,
         out.push('');
     });
     if (review.length) {
-        out.push(`#### Machine-translated: review this (${LANG_NAME[review[0].m.other]} or English, never overwrites a language you wrote)`);
+        const targets = [...new Set(review.map((r) => LANG_NAME[r.m.other]))].join(' and ');
+        out.push(`#### Machine-translated: review this (${targets}; never overwrites a language you wrote)`);
         for (const { label, m, b } of review) {
             const tag = b.type === 'shloka' || b.type === 'mantra' ? ' (transliteration, check against the source)' : '';
             out.push(`- ${label} → ${LANG_NAME[m.other]}${tag}: ${clip(b.content[m.other].join(' / '), 160)}`);
@@ -417,7 +457,7 @@ function renderReport({ name, prepared, built, placed, planSource, planNote, at,
 
 module.exports = {
     parseInbox, prepare, stripVideoLinks, detectLang, skeletonOf, fallbackPlan, validatePlan, makePlan, buildItems,
-    verifyPreservation, translateBlocks, numberAndMark, convertNotes, renderReport, snippet,
+    verifyPreservation, translateBlocks, numberAndMark, convertNotes, renderReport, snippet, reportLabel, tidyPairs,
 };
 
 // ── CLI ──────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -450,21 +490,35 @@ async function main() {
     let data = JSON.parse(raw);
     const ai = args.noAi ? null : createGemini();
     const reports = [];
+    const done = [];
     for (const file of files) {
         const text = fs.readFileSync(file, 'utf8');
-        const result = await convertNotes(text, data, { ai, name: path.basename(file), after: args.after, lang: args.lang, followup: args.followup });
+        let result;
+        try {
+            result = await convertNotes(text, data, { ai, name: path.basename(file), after: args.after, lang: args.lang, followup: args.followup });
+        } catch (e) {
+            if (e.unavailable) {
+                console.error(`notes-to-blocks: Gemini is unavailable (${e.message}).\nNothing was changed: data.json is as it was and every note is still in ${INBOX}/. Run the Content Agent workflow again when Gemini is back (Actions > Content Agent > Re-run jobs), or set GEMINI_MODELS to a list with a second model.`);
+                if (ai && ai.printUsage) ai.printUsage();
+                process.exit(2);
+            }
+            throw e;
+        }
         data = result.data;
         reports.push(result.report);
         console.log(result.report);
-        if (!args.dryRun && !args.keep && path.dirname(file) === INBOX) {
-            fs.mkdirSync(path.join(INBOX, 'done'), { recursive: true });
-            fs.renameSync(file, path.join(INBOX, 'done', path.basename(file)));
-        }
+        if (!args.keep && path.dirname(file) === INBOX) done.push(file);
     }
+    if (ai && ai.printUsage) ai.printUsage();
     const markdown = `## Content pipeline agent: notes to blocks\n\n${reports.join('\n\n')}\n`;
     if (args.report) fs.writeFileSync(args.report, markdown);
     if (args.dryRun) { console.log('(dry run: nothing written)'); return; }
     fs.writeFileSync(args.data, JSON.stringify(data, null, 2) + (raw.endsWith('\n') ? '\n' : ''));
+    // the notes move out of the inbox only after data.json is written, so a failure above never loses a note
+    for (const file of done) {
+        fs.mkdirSync(path.join(INBOX, 'done'), { recursive: true });
+        fs.renameSync(file, path.join(INBOX, 'done', path.basename(file)));
+    }
     if (process.env.GITHUB_OUTPUT) fs.appendFileSync(process.env.GITHUB_OUTPUT, 'notes=true\n');
 }
 

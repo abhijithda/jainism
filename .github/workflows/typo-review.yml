@@ -12,7 +12,7 @@
 #
 # Needs the repository secret GEMINI_API_KEY (free key from Google AI Studio). Without it only the mechanical fix
 # (double spaces) runs and the comment says the AI check was skipped. The model can be changed with the repository
-# variable GEMINI_MODEL.
+# variable GEMINI_MODELS (a comma-separated list, first = preferred) or GEMINI_MODEL (one name).
 
 name: Typo Review
 
@@ -63,6 +63,9 @@ jobs:
           NODE_OPTIONS: --no-warnings
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
+          GEMINI_MODELS: ${{ vars.GEMINI_MODELS }}
+          GEMINI_THINKING_LEVEL: ${{ vars.GEMINI_THINKING_LEVEL }}
+          GEMINI_THINKING_BUDGET: ${{ vars.GEMINI_THINKING_BUDGET }}
           WHOLE_BOOK: ${{ github.event.inputs.whole_book }}
         run: |
           git show "origin/${BASE}:assets/data.json" > "$RUNNER_TEMP/base.json" 2>/dev/null || echo '[]' > "$RUNNER_TEMP/base.json"

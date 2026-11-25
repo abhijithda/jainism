@@ -179,12 +179,16 @@ does not start workflows by itself), or by hand: Actions, *Typo Review*, Run wor
 | --- | --- |
 | Clear typo in plain prose (paragraph / note) | fixed in **one commit** (`typo-review: fix N clear typo(s)...`); revert that commit to undo all; listed old, new, reason |
 | Doubtful case | **not changed**; a *Commit suggestion* button on that line of the PR |
+| Kannada-script words inside an English line (your own mixed notes) | written in Latin letters **automatically only if** the model says clear, scores it 0.9 or more, **and** a second call turning the Latin back into Kannada gives your word, counting the letters in `config/translit-equivalents.txt` as the same (ಣ = ನ, ಲ = ಳ, ಸ = ಶ = ಷ, vowel length, the ಾ sign; edit that file as you like); otherwise a *Commit suggestion* |
+| A Kannada word next to the same English word (`ಣವಣ / Navana`, also several words: `ಉಪ ಲೇಪನ / Upa Lepana`) | one version is kept, in your spelling (`Navana`, `Upa Lepana`), when the converted words are the same; a different spelling stays as a pair. The same English word typed twice by you (`Navana / Navana`) is only a suggestion |
+| Final "a" of Sanskrit words | the book's style is `abhisheka`, `Rama`, not the Hindi `abhishek`, `Ram`. Every prompt that writes English says so, and where the Kannada word is known the code puts a dropped final "a" back |
+| Invisible characters (word joiner, zero-width space, BOM) from copy-paste | removed automatically (the joiners Kannada conjuncts need are kept) |
 | Shloka / mantra block | **never changed**, never suggested; listed under "check against the source" |
 | A spelling in `config/spelling-allowlist.txt` | never flagged, never changed |
 
 The AI only proposes `{ old, new, reason, confidence }`; the code decides. A fix is automatic only if the model said clear,
-`old` occurs **once** in the line, is short, differs from `new` by at most 3 letters (2 in Kannada), and does not overlap
-the allowlist or a link. Anything else is a suggestion at most. The only fix that needs no AI is a double space. Without the key
+`old` is found as a whole word in the line (every place where it stands there is fixed together, see below), is short, differs from `new` by at most 3 letters (2 in Kannada), and does not overlap
+the allowlist or a link. Anything else is a suggestion at most. The only fixes that need no AI are a double space and invisible characters. Without the key
 only that runs, and the comment says the AI check was skipped. Re-running updates the PR comment and does not repeat
 a suggestion that is already there.
 
@@ -220,13 +224,46 @@ Honest limits:
   private; this site's content and public videos are not private).
 - The points are paraphrases of what the speaker said: a draft to check, never a source.
 
+## Hindi (third language)
+
+Decided: Hindi is a third language, `hi`, in `data.json` and the app, **written in Devanagari**. A reader of Latin-letter Hindi
+can mostly read English, so Latin-letter Hindi would add little.
+
+- **Reader chooses at most two languages** (Settings, language picker): a main language and one to compare with, for example
+  Kannada + English (the default), Kannada + Hindi, or English + Hindi. With two chosen the other rows are disabled until one
+  is unchecked. Saved settings with more than two are cut to two.
+- **What is on screen is what is printed**: language, QR and video switches all follow the screen, so there is no per-language
+  print list to maintain.
+- **Adding a language** (Tamil later): one entry in `src/core/langs.js`, the text in `data.json` (`content.ta`, optional per
+  block), a font if the browser has none, and the CSS lines for `.col-ta`, `.book-lang-line.lang-ta` and
+  `.title-style-text-line.lang-ta`. The picker and views read the registry.
+- `assets/schema.json`: `content.hi` and `caption.hi` are optional; `kn` and `en` stay required.
+
+Not done yet (agent side): detecting Hindi written in Latin letters in a note, converting it to Devanagari (machine, listed in
+the PR as unreviewed), keeping it out of typo review, and the follow-up job writing it. Until then such a sentence still
+counts as English and the Kannada is machine-translated from it.
+
+Known gaps in the app: the cover title is still Kannada + English only; a reader who picks only Hindi sees blank rows for blocks
+that have no Hindi yet.
+
 ## Setup for jobs 1 to 3
 
 1. A free key from Google AI Studio, saved as the repository secret `GEMINI_API_KEY` (Settings, Secrets and variables, Actions).
-2. Optional: repository variable `GEMINI_MODEL`. The default in `scripts/lib/gemini.js` is a model name taken from Google's current
-   documentation, which renames and retires models often, so if every call fails with a 404 or 400 naming the model, this is the
-   first thing to change.
-3. The permissions from "One-time GitHub setup" above (workflow read and write, allow Actions to create pull requests).
+2. Optional: repository variable `GEMINI_MODELS`, a comma-separated list in order of preference, for example
+   `gemini-3.8-flash,<a second model>`. The first is used. If it stays busy after its retries, its quota is used up (HTTP 429)
+   or the key cannot use it (404), the next one is tried and later calls start with the one that answered. After about two minutes the first model is tried again (a per-minute 429 passes; a daily limit just moves on again at once). Each model
+   has its own free-tier quota, so a second model is also a second quota. Names are used exactly as written (the code does not
+   know which exist), so check them in Google AI Studio. `GEMINI_MODEL` (one name) still works when `GEMINI_MODELS` is empty. The workflows also pass `GEMINI_THINKING_BUDGET` (Gemini 2.5 models only, see below).
+   The default in `scripts/lib/gemini.js` is a model name taken from Google's documentation, which renames and retires models
+   often, so if every call fails with a 404 or 400 naming the model, this is the first thing to change.
+3. Optional: repository variable `GEMINI_THINKING_LEVEL` (`minimal`, `low`, `medium` or `high`), sent as
+   `generationConfig.thinkingConfig.thinkingLevel`. Unset sends nothing (the model's own default). Gemini 3 models think before
+   they answer, and those tokens count and take time even for a tiny answer. Look at the log first: every call prints
+   `[gemini] call 3: in 1200, out 310, thinking 2950, total 4460 tokens, 12.4s` and each script ends with a totals line. If
+   thinking is most of the total and the answers are fine, set `low` (or `minimal`) and compare the next run. If the model
+   rejects the setting (HTTP 400 naming thinking) the call is repeated without it and the log says so. Gemini 2.5 models use
+   `GEMINI_THINKING_BUDGET` (a number of tokens) instead; never set both.
+4. The permissions from "One-time GitHub setup" above (workflow read and write, allow Actions to create pull requests).
 
 ## First run: what has not been seen working
 
@@ -254,3 +291,51 @@ branch that has a typo you know about.
 | `config/spelling-allowlist.txt` | Your intentional spellings |
 | `content-inbox/` | Where notes files go (processed files move to `content-inbox/done/`) |
 | `scripts/new-id.js` | Unchanged; the agent reuses `fillMissingIds` |
+
+### Pairs like `ಣವಣ / Navana` in the translation step
+
+When you type a Kannada word and its Latin spelling together, the machine translation keeps only your own word in the other
+language: the Kannada translation keeps `ಣವಣ` (never adds a second spelling `ನವಣ`), and the English translation has only
+`Navana` (never Kannada letters). The model is told this, and code checks it afterwards (it removes at most one extra word, so
+nothing else in the line is lost). The typo review's report always says how many English lines had Kannada words and how many
+changes the model proposed, so an empty result is visible.
+
+### When Gemini is down
+
+A call that gets HTTP 429, 5xx or a timeout is tried again a few times with growing pauses (then the next model in
+`GEMINI_MODELS`, if any). If every model stays busy, the run stops asking Gemini at all, so an outage costs minutes, not the
+nine minutes one run took.
+
+- **Notes to blocks stops and changes nothing**: `data.json` is as it was, no block is added, and every note stays in
+  `content-inbox/` (it moves to `done/` only after `data.json` is written). The step exits with code 2 and says so. When Gemini
+  is back: Actions, Content Agent, **Re-run jobs**. This is on purpose: a split by rules and missing translations would put
+  half-finished blocks into the PR.
+- A Gemini answer that arrives but is not usable (bad JSON, wrong number of lines) is different: the rule-based split is used
+  and missing translations are listed, as before.
+- Typo review and video follow-up do not insert items, so an outage there only means no AI help for that run (typo review still
+  makes its mechanical fixes).
+
+### Typos are matched as whole words
+
+A fix or one-click suggestion is placed on the word itself, never on the first letters of a longer word: `chandan → chandana`
+in a line that already says `chandana` earlier is applied to the standalone `chandan`, not to the start of the first
+`chandana` (which once made `chandanaa`). A word that only appears inside longer words is left alone. Spans that carry their own
+neighbouring characters (double spaces, invisible characters) are matched as written.
+
+The same typo several times in one line is fixed everywhere in that line in one run (the report says "N places in this line"; a
+one-click suggestion also changes every place), so ten identical typos never mean ten runs. A protected spelling (allowlist or link) in
+any of the places stops the change.
+
+### Typo review: what is never fixed automatically
+
+- Kannada: a change that only swaps a short vowel sign for its long one or back (`ಬಂದರು` / `ಬಂದರೂ`) is a suggestion, never an automatic fix,
+  because both spellings can be real words with different meanings. The suggestion says why.
+- When part of the AI check fails (for example HTTP 429 on the last part), the report says how many parts were not checked and
+  names the first blocks (`not checked: A-5.1, ...`), so you know what to check by hand or run again.
+
+- **Study topic names**: a word that is part of a topic name in `assets/study-config.json` is never fixed automatically. A fix to it is
+  only a suggestion whose reason names the topic ("change the name there too, or the study test fails"), because
+  `src/study/study-config.test.js` requires every word of a name to be in the book's own text. Example: the book spells
+  `ಮಿತ್ಯಾದೃಷ್ಟಿ` once and the config names the topic `Mithya Drishti` with that spelling; changing the book to the more correct
+  `ಮಿಥ್ಯಾದೃಷ್ಟಿ` is a good idea, but the config name must change with it.
+

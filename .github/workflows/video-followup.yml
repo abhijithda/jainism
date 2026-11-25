@@ -11,7 +11,7 @@
 #               Try your first video this way.
 #
 # The Gemini API reads the YouTube link itself (GitHub's servers never download the video, so YouTube cannot block them).
-# Needs the repository secret GEMINI_API_KEY. Model: repository variable GEMINI_MODEL (default in scripts/lib/gemini.js).
+# Needs the repository secret GEMINI_API_KEY. Models: repository variable GEMINI_MODELS (comma-separated, first = preferred) or GEMINI_MODEL (one name); default in scripts/lib/gemini.js.
 #
 # Without dry run: the new answer is added on the branch staging/followup-<target>-<video id>, the content pipeline runs on
 # it (id, timestamp, cross-references), the Pull Request is opened, and the typo review starts. You review and merge.
@@ -86,6 +86,9 @@ jobs:
           NODE_OPTIONS: --no-warnings
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
+          GEMINI_MODELS: ${{ vars.GEMINI_MODELS }}
+          GEMINI_THINKING_LEVEL: ${{ vars.GEMINI_THINKING_LEVEL }}
+          GEMINI_THINKING_BUDGET: ${{ vars.GEMINI_THINKING_BUDGET }}
           TARGET: ${{ github.event.inputs.target }}
           URL: ${{ github.event.inputs.video_url }}
           START: ${{ github.event.inputs.start }}

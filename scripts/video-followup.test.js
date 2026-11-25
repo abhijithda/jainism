@@ -7,6 +7,8 @@ const V = require('./video-followup');
 
 const real = () => JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'assets', 'data.json'), 'utf8'));
 const URL_ = 'https://youtu.be/AbCdEfGhIjK';
+// the number a new item gets, whatever the real data.json holds today (it grows with every merged PR)
+const nextNum = (d) => Math.max(0, ...d.filter((i) => Number.isInteger(i.num)).map((i) => i.num)) + 1;
 
 /** A fake Gemini: the transcript call is the one that carries the video part. */
 function fakeAi({ transcript, points, language = 'kn' }) {
@@ -96,7 +98,7 @@ describe('the follow-up', () => {
         expect(item).toBe(r.item);
         expect(item.type).toBe('answer');
         expect(item.references).toEqual([hit.block.id]);
-        expect(item.num).toBe(29);
+        expect(item.num).toBe(nextNum(real()));
         expect(item.id).toBeUndefined();
     });
     test('the paragraph block: speaker line, points in both languages, video at the clip start, only backed points kept', async () => {
@@ -157,7 +159,7 @@ describe('the follow-up', () => {
     test('then the existing pipeline: id, timestamp, block ids; references kept; no follow-up guess; the num stays', async () => {
         const r = await run();
         const out = processDraft(r.data, { retrieval, now: new Date('2026-11-19T10:00:00Z'), minScore: 1000 });
-        const item = out.data[out.data.findIndex((x) => x.num === 29)];
+        const item = out.data[out.data.findIndex((x) => x.num === nextNum(real()))];
         expect(item.id).toMatch(/^[a-z][2-9a-z]{5}$/);
         expect(item.timestamp).toBe('2026-11-19T10:00:00Z');
         expect(item.references).toEqual(r.item.references);

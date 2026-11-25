@@ -6,12 +6,15 @@ const { processDraft } = require('./content-agent');
 const {
     parseInbox, prepare, stripVideoLinks, detectLang, fallbackPlan, validatePlan, makePlan, buildItems,
     verifyPreservation, translateBlocks, convertNotes, numberAndMark,
+    reportLabel, tidyPairs,
 } = require('./notes-to-blocks');
 
 const FIX = (n) => fs.readFileSync(path.join(__dirname, 'fixtures', n), 'utf8');
 const EX1 = FIX('notes-example-1.txt');
 const EX2 = FIX('notes-example-2.txt');
 const realData = () => JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'assets', 'data.json'), 'utf8'));
+// the number the next new item gets, whatever the real data.json holds today (it grows with every merged PR)
+const nextNum = (d) => Math.max(0, ...d.filter((i) => Number.isInteger(i.num)).map((i) => i.num)) + 1;
 
 /** A fake model: `plan(prompt)` answers the split request, translation echoes lines with a prefix. */
 function fakeAi({ plan, translate } = {}) {
@@ -167,7 +170,7 @@ describe('example 1 (a Q&A from the Google Doc)', () => {
         const data = realData();
         const r = await convertNotes(EX1, data, { ai: { available: false } });
         const [q, a] = r.data.slice(-2);
-        expect(q.num).toBe(29);
+        expect(q.num).toBe(nextNum(data));
         expect(a.num).toBeUndefined();
         expect(a._agent).toBeUndefined();
     });
@@ -179,7 +182,10 @@ describe('example 1 (a Q&A from the Google Doc)', () => {
         expect(q.blocks[0].content.en).toEqual(['[EN] ' + q.blocks[0].content.kn[0]]);
         expect(a.blocks[0].content.en).toHaveLength(a.blocks[0].content.kn.length);
         expect(r.report).toMatch(/Machine-translated: review this/);
-        expect(r.report).toMatch(/Q-29\.1 → English/);
+        expect(r.report).toMatch(new RegExp(`Q-${nextNum(data)}\\.1 → English`));
+        // everything was translated into English: the heading says English once, not "English or English"
+        expect(r.report).toMatch(/Machine-translated: review this \(English; never overwrites/);
+        expect(r.report).not.toMatch(/English or English/);
         expect(r.report).toMatch(/lines in your text are exactly the lines/);
     });
 });
@@ -197,7 +203,7 @@ describe('example 2 (rough notes)', () => {
     test('a standalone answer gets its own num and the marker that stops the pipeline treating it as a follow-up', async () => {
         const r = await convertNotes(EX2, realData(), { ai: fakeAi({ plan: goodPlan(lines) }) });
         const added = r.data.slice(realData().length);
-        expect(added.map((i) => [i.type, i.num])).toEqual([['answer', 29], ['answer', 30]]);
+        expect(added.map((i) => [i.type, i.num])).toEqual([['answer', nextNum(realData())], ['answer', nextNum(realData()) + 1]]);
         expect(added.every((i) => i._agent && i._agent.standalone)).toBe(true);
     });
     test('videos stay with the block whose text they follow, ?t= kept, none left in the text', async () => {
@@ -247,7 +253,7 @@ describe('where it goes and how the existing pipeline takes over', () => {
     test('--after puts the items right after that place; nums are still the next free ones', async () => {
         const data = realData();
         const r = await convertNotes(EX1, data, { ai: { available: false }, after: 'A-11' });
-        const i = r.data.findIndex((x) => x.num === 29);
+        const i = r.data.findIndex((x) => x.num === nextNum(data));
         expect(i).toBeGreaterThan(0);
         expect(i).toBeLessThan(data.length);
         expect(r.data.slice(0, i)).toEqual(data.slice(0, i));
@@ -270,7 +276,7 @@ describe('where it goes and how the existing pipeline takes over', () => {
         expect(added[0].id).toMatch(/^[a-z][2-9a-z]{5}$/);
         expect(added[0].timestamp).toBe('2026-11-19T10:00:00Z');
         expect(added[0].references).toBeUndefined();         // not linked to the answer above
-        expect(added[0].num).toBe(29);
+        expect(added[0].num).toBe(nextNum(data));
         expect(JSON.stringify(out.data)).not.toMatch(/_agent/);
         expect(added[0].blocks.every((b) => /^[a-z][2-9a-z]{5}$/.test(b.id))).toBe(true);
     });
@@ -284,3 +290,94 @@ describe('where it goes and how the existing pipeline takes over', () => {
         expect(out.data[data.indexOf(q) + 1].references).toEqual([q.id]);
     });
 });
+
+describe('report labels match the book', () => {
+    test('a note is N, a shloka S, a mantra M, a plain paragraph takes its item letter', () => {
+        const answer = { type: 'answer' };
+        expect(reportLabel(answer, { type: 'paragraph', num: 1 }, 29)).toBe('A-29.1');
+        expect(reportLabel(answer, { type: 'note', num: 8 }, 29)).toBe('N-29.8');
+        expect(reportLabel(answer, { type: 'shloka', num: 2 }, 29)).toBe('S-29.2');
+        expect(reportLabel(answer, { type: 'mantra', num: 3 }, 29)).toBe('M-29.3');
+        expect(reportLabel({ type: 'question' }, { type: 'paragraph', num: 1 }, 31)).toBe('Q-31.1');
+        expect(reportLabel(answer, { type: 'paragraph', num: 1 }, undefined)).toBe('A-?.1');
+    });
+});
+
+describe('a Kannada word the writer typed next to its Latin spelling', () => {
+    test('the Kannada translation keeps only the writer\'s own Kannada word (no second spelling)', () => {
+        expect(tidyPairs('1. ಣವಣ / Navana  = Abhishekas', '1. ಣವಣ / ನವಣ = ಅಭಿಷೇಕಗಳು', 'kn')).toBe('1. ಣವಣ = ಅಭಿಷೇಕಗಳು');
+        expect(tidyPairs('2. ಉಪ ಲೇಪನ / Upa Lepana', '2. ಉಪ ಲೇಪನ / ಉಪಲೇಪನ: ಉದಾಹರಣೆಗಳು', 'kn')).toBe('2. ಉಪ ಲೇಪನ: ಉದಾಹರಣೆಗಳು');
+        expect(tidyPairs('2. ಉಪ ಲೇಪನ / Upa Lepana', '2. ಉಪ ಲೇಪನ / ಉಪ ಲೇಪನ', 'kn')).toBe('2. ಉಪ ಲೇಪನ');
+    });
+    test('it removes at most one more word, so the rest of the line is never lost', () => {
+        expect(tidyPairs('x ಉಪ ಲೇಪನ / Upa Lepana done', 'x ಉಪ ಲೇಪನ / ಉಪಲೇಪನ ಮಾಡಿದ', 'kn')).toBe('x ಉಪ ಲೇಪನ ಮಾಡಿದ');
+    });
+    test('a slash the writer did not type next to Latin letters is left alone', () => {
+        expect(tidyPairs('plain English', 'ಯಾವುದೋ ಸಾಲು / ಇನ್ನೊಂದು', 'kn')).toBe('ಯಾವುದೋ ಸಾಲು / ಇನ್ನೊಂದು');
+    });
+    test('an English translation has only the Latin word: "ಣವಣ / Navana" becomes "Navana"', () => {
+        expect(tidyPairs('ಣವಣ / Navana = x', 'ಣವಣ / Navana = Abhishekas', 'en')).toBe('Navana = Abhishekas');
+        expect(tidyPairs('plain', 'a plain English line', 'en')).toBe('a plain English line');
+    });
+    test('translateBlocks applies it to the lines the model returns', async () => {
+        const items = [{ type: 'answer', blocks: [{ num: 1, type: 'paragraph', content: { kn: [], en: ['1. ಣವಣ / Navana  = Abhishekas'] }, tags: [], videos: [], images: [] }] }];
+        const meta = [{ blocks: [{ lang: 'en', other: 'kn' }] }];
+        const ai = { available: true, json: async ({ prompt }) => ({ blocks: [{ key: '0.0', lines: ['1. ಣವಣ / ನವಣ = ಅಭಿಷೇಕಗಳು'] }] }) };
+        await translateBlocks(ai, items, meta);
+        expect(items[0].blocks[0].content.kn).toEqual(['1. ಣವಣ = ಅಭಿಷೇಕಗಳು']);
+    });
+    test('the translation prompt states the rule', async () => {
+        const items = [{ type: 'answer', blocks: [{ num: 1, type: 'paragraph', content: { kn: [], en: ['x'] }, tags: [], videos: [], images: [] }] }];
+        const meta = [{ blocks: [{ lang: 'en', other: 'kn' }] }];
+        let system = '';
+        await translateBlocks({ available: true, json: async (o) => { system = o.system; return { blocks: [] }; } }, items, meta);
+        expect(system).toMatch(/keep ONLY the writer's own Kannada word/);
+    });
+});
+
+describe('when Gemini itself is down (busy after every retry): stop and change nothing', () => {
+    const down = () => { const e = new Error('Gemini answered 503 (busy or rate-limited)'); e.unavailable = true; return e; };
+
+    test('the split: the error goes up, nothing is returned to write', async () => {
+        const ai = { available: true, json: async () => { throw down(); } };
+        const err = await convertNotes(EX1, realData(), { ai }).catch((e) => e);
+        expect(err.unavailable).toBe(true);
+        expect(err.message).toMatch(/503/);
+    });
+
+    test('the translation: the error goes up too, instead of leaving empty languages behind', async () => {
+        const items = [{ type: 'answer', blocks: [{ num: 1, type: 'paragraph', content: { kn: [], en: ['hello'] }, tags: [], videos: [], images: [] }] }];
+        const meta = [{ blocks: [{ lang: 'en', other: 'kn' }] }];
+        const ai = { available: true, json: async () => { throw down(); } };
+        await expect(translateBlocks(ai, items, meta)).rejects.toMatchObject({ unavailable: true });
+        expect(items[0].blocks[0].content.kn).toEqual([]);
+    });
+
+    test('an answer that simply was not usable still falls back to the rule-based split', async () => {
+        const ai = { available: true, json: async () => ({ nothing: 'useful' }) };
+        const r = await convertNotes(EX1, realData(), { ai });
+        expect(r.report).toMatch(/the AI split was not usable/);
+        expect(r.count).toBeGreaterThan(0);
+    });
+
+    test('a translation error that is not an outage is listed as a missing translation, as before', async () => {
+        const items = [{ type: 'answer', blocks: [{ num: 1, type: 'paragraph', content: { kn: [], en: ['hello'] }, tags: [], videos: [], images: [] }] }];
+        const meta = [{ blocks: [{ lang: 'en', other: 'kn' }] }];
+        const ai = { available: true, json: async () => { throw new Error('Gemini answered 400: bad'); } };
+        await translateBlocks(ai, items, meta);
+        expect(meta[0].blocks[0].translationNote).toMatch(/translation failed/);
+    });
+});
+
+describe('tidyPairs: every pair in a line', () => {
+    test('two pairs in one line are both reduced to the writer\'s own Kannada word', () => {
+        expect(tidyPairs('ಣವಣ / Navana and ಉಪ ಲೇಪನ / Upa Lepana', 'ಣವಣ / ನವಣ ಮತ್ತು ಉಪ ಲೇಪನ / ಉಪಲೇಪನ', 'kn')).toBe('ಣವಣ ಮತ್ತು ಉಪ ಲೇಪನ');
+    });
+    test('the same pair twice in a line is reduced both times', () => {
+        expect(tidyPairs('ಣವಣ / Navana, ಣವಣ / Navana', 'ಣವಣ / ನವಣ, ಣವಣ / ನವಣ', 'kn')).toBe('ಣವಣ, ಣವಣ');
+    });
+    test('English output: every pair becomes the Latin word', () => {
+        expect(tidyPairs('x', 'ಣವಣ / Navana, ಉಪ ಲೇಪನ / Upa Lepana', 'en')).toBe('Navana, Upa Lepana');
+    });
+});
+

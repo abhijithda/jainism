@@ -61,17 +61,24 @@ function queryFor(item) {
 }
 
 /** A short one-line label for reports: the first non-blank line of the first block, English preferred. */
+function snippetOfBlock(block, max = 70) {
+    for (const lang of ['en', 'kn']) {
+        const line = (block?.content?.[lang] || []).find((l) => String(l).trim() !== '');
+        if (line) {
+            const text = String(line).trim().replace(/\s+/g, ' ');
+            return text.length > max ? text.slice(0, max - 1) + '…' : text;
+        }
+    }
+    const caption = block?.images?.[0]?.caption;
+    if (caption?.en || caption?.kn) return String(caption.en || caption.kn).slice(0, max);
+    return null;
+}
+
+/** The first text of an item (its first block that has any): the item's title in reports. */
 function snippetOf(item, max = 70) {
     for (const block of item.blocks || []) {
-        for (const lang of ['en', 'kn']) {
-            const line = (block.content?.[lang] || []).find((l) => String(l).trim() !== '');
-            if (line) {
-                const text = String(line).trim().replace(/\s+/g, ' ');
-                return text.length > max ? text.slice(0, max - 1) + '…' : text;
-            }
-        }
-        const caption = block.images?.[0]?.caption;
-        if (caption?.en || caption?.kn) return String(caption.en || caption.kn).slice(0, max);
+        const text = snippetOfBlock(block, max);
+        if (text) return text;
     }
     return '(no text)';
 }
@@ -171,7 +178,8 @@ function findRelated(index, retrieval, item, position, positionOf, opts) {
             itemId: chunk.itemId,
             label: chunk.label,
             score: Math.round(score * 10) / 10,
-            snippet: snippetOf(index.itemById[chunk.itemId]),
+            // the text of the block that matched (not the item's first block), so the line in the PR is the block it names
+            snippet: snippetOfBlock(index.blockById[chunk.id]) || snippetOf(index.itemById[chunk.itemId]),
         }));
 }
 
@@ -347,7 +355,7 @@ function renderReport(report) {
     return lines.join('\n') + '\n';
 }
 
-module.exports = { processDraft, findRelated, findFollowUpBlocks, renderReport, queryFor, snippetOf, itemNeedsNum, DEFAULTS };
+module.exports = { processDraft, findRelated, findFollowUpBlocks, renderReport, queryFor, snippetOf, snippetOfBlock, itemNeedsNum, DEFAULTS };
 
 // ── CLI ────────────────────────────────────────────────────────────────────────────────────────────────────
 function parseArgs(argv) {

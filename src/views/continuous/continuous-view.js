@@ -51,7 +51,7 @@ export function renderContinuousView(data, container, lang = 'all', opts = {}) {
 
     const readBlocks      = getReadBlocks(localStorage);
     const totalBlockCount = countTrackableBlocks(indexData);
-    const langs           = activeLangCodes(lang);   // 'kn' | 'en' | 'all' -> ['kn'] | ['en'] | ['kn','en']
+    const langs           = activeLangCodes(lang);   // ['kn','hi'] (the picker's choice); a code or 'all' also works
 
     data.forEach(item => {
         const card = document.createElement('div');
@@ -202,7 +202,7 @@ export function renderContinuousView(data, container, lang = 'all', opts = {}) {
             const row = document.createElement('div');
             // .media-only = no text at all; distinct from isBlockTrackable —
             // a video-only block has no text (gets this class) but IS trackable.
-            const hasText   = hasAnyText(block);
+            const hasText   = hasAnyText(block, langs);
             const trackable = isBlockTrackable(block);
             const isRead    = trackable && readBlocks.has(block.id);
             row.className = `block-row ${block.type}${hasText ? '' : ' media-only'}${isRead ? ' read' : ''}`;
@@ -234,19 +234,15 @@ export function renderContinuousView(data, container, lang = 'all', opts = {}) {
             if (block.images && block.images.length > 0) {
                 mediaCol.classList.add('has-images');
                 block.images.forEach(img => {
-                    const capKn = img.caption?.kn || '';
-                    const capEn = img.caption?.en || '';
-                    const altText = (lang === 'kn') ? capKn : (lang === 'en') ? capEn : (capKn || capEn);
-                    // Each active language gets its own caption line —
-                    // never joined onto one line with "/" — same as every
-                    // other multi-language caption/title in the app.
-                    let captionsHtml = '';
-                    if ((lang === 'kn' || lang === 'all') && capKn) {
-                        captionsHtml += `<p class="image-caption lang-kn">${capKn}</p>`;
-                    }
-                    if ((lang === 'en' || lang === 'all') && capEn) {
-                        captionsHtml += `<p class="image-caption lang-en">${capEn}</p>`;
-                    }
+                    // One caption line per active language that has one, in
+                    // registry order; never joined onto one line with "/".
+                    const caps = langs
+                        .map(l => ({ l, text: img.caption?.[l] || '' }))
+                        .filter(c => c.text);
+                    const altText = caps.length ? caps[0].text : '';
+                    const captionsHtml = caps
+                        .map(c => `<p class="image-caption lang-${c.l}">${c.text}</p>`)
+                        .join('');
                     mediaCol.innerHTML += `
                         <div class="image-card">
                             <img src="${imageUrl(img.src)}" alt="${altText}">

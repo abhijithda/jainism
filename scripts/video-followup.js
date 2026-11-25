@@ -23,6 +23,7 @@ const path = require('path');
 const { createGemini } = require('./lib/gemini');
 const { parseYouTube, parseOffset, momentUrl } = require('./lib/youtube');
 const { findBlock, maxNum, snippet, byId, blockLabel } = require('./lib/book');
+const { TRANSLIT_STYLE } = require('./lib/translit');
 
 const ROOT = path.join(__dirname, '..');
 const DATA_PATH = path.join(ROOT, 'assets', 'data.json');
@@ -142,7 +143,8 @@ Rules:
 - Write each point in your own words, short and plain, in the style of the target; do not copy the speaker's sentences. Never invent a source, a name or a number that is not in the transcript.
 - Every point must list the transcript line numbers that support it, exactly as given in [brackets].
 - Never write out a Sanskrit or Prakrit verse yourself: only give the line numbers in "recitations".
-- At most 8 points.`;
+- At most 8 points.
+${TRANSLIT_STYLE}`;
 
 const joined = (xs) => xs.join(' / ');
 
@@ -267,6 +269,7 @@ async function main() {
     const raw = fs.readFileSync(args.data, 'utf8');
     const ai = createGemini({ model: args.model });
     const r = await followUp(JSON.parse(raw), { ai, ...args });
+    ai.printUsage();
     console.log(r.report);
     if (args.report) fs.writeFileSync(args.report, r.report);
     if (args.transcriptOut) fs.writeFileSync(args.transcriptOut, r.transcriptText + '\n');

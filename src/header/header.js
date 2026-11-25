@@ -6,7 +6,7 @@
 // here so callers (app.js) have one import path for everything
 // header-related.
 
-import { KNOWN_LANGS } from '../core/langs.js';
+import { KNOWN_LANGS, MAX_ACTIVE_LANGS } from '../core/langs.js';
 import { SETTINGS_KEY, loadSettings, saveSettings } from '../core/settings.js';
 import { PAPER_SIZES, applyPaperSize, initPaperSizeControl } from '../core/paper-size.js';
 import {
@@ -56,7 +56,9 @@ export function saveActiveLangs(langs) {
  *   #lang-search   (text input inside the panel)
  *   #lang-list     (checkbox rows render here)
  * Calls onLangChange(activeLangs[]) whenever selection changes.
- * At least one language must remain active.
+ * At least one and at most MAX_ACTIVE_LANGS (two) languages are active: with
+ * two active, the other rows are disabled until one of them is unchecked. What
+ * is selected here is what the views show and what gets printed.
  */
 export function initLangPicker(onLangChange) {
     const trigger = document.getElementById('lang-trigger');
@@ -71,6 +73,12 @@ export function initLangPicker(onLangChange) {
         const active = getActiveLangs();
         const names = KNOWN_LANGS.filter(l => active.includes(l.code)).map(l => l.label);
         summary.textContent = names.length ? names.join(', ') : 'Select a language';
+    }
+
+    /** Disable the unchecked rows while two languages are chosen, on the existing inputs (the focus stays where it is). */
+    function refreshDisabled() {
+        const n = getActiveLangs().length;
+        list.querySelectorAll('input[type="checkbox"]').forEach((c) => { c.disabled = !c.checked && n >= MAX_ACTIVE_LANGS; });
     }
 
     function renderList(filter) {
@@ -96,6 +104,7 @@ export function initLangPicker(onLangChange) {
             chk.type = 'checkbox';
             chk.id   = `lang-chk-${lang.code}`;
             chk.checked = getActiveLangs().includes(lang.code);
+            chk.disabled = !chk.checked && getActiveLangs().length >= MAX_ACTIVE_LANGS;
 
             const labelText = document.createElement('span');
             labelText.className = 'lang-row-label';
@@ -121,8 +130,14 @@ export function initLangPicker(onLangChange) {
                     return;
                 }
 
+                if (newActive.length > MAX_ACTIVE_LANGS) {
+                    chk.checked = false; // never more than two at once
+                    return;
+                }
+
                 saveActiveLangs(newActive);
                 updateSummary();
+                refreshDisabled(); // in place: re-rendering the list would drop the keyboard focus from the box just toggled
                 if (onLangChange) onLangChange(newActive);
             });
         });
@@ -132,6 +147,11 @@ export function initLangPicker(onLangChange) {
             empty.className = 'lang-empty';
             empty.textContent = 'No languages match';
             list.appendChild(empty);
+        } else {
+            const hint = document.createElement('div');
+            hint.className = 'lang-hint';
+            hint.textContent = `Choose up to ${MAX_ACTIVE_LANGS} languages. Uncheck one to pick another.`;
+            list.appendChild(hint);
         }
     }
 
