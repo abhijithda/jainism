@@ -69,6 +69,11 @@ describe('service worker crawl', () => {
         expect(source).toMatch(/fetch\(STUDY_CONFIG_URL[\s\S]{0,250}catch/);     // optional: wrapped, unlike index.html and data.json
     });
 
+    test('the privacy policy page is part of the offline copy', () => {
+        const rels = [...seen.values()].map(f => path.relative(ROOT, f).split(path.sep).join('/'));
+        expect(rels).toContain('privacy.html');
+    });
+
     test('the sign-in config is saved with the offline copy, and its absence cannot stop the install', () => {
         const { SYNC_CONFIG_URL } = loadWorkerHelpers();
         expect(fs.existsSync(fileFor(SYNC_CONFIG_URL))).toBe(true);

@@ -31,6 +31,7 @@ export class AuthError extends Error {
 
 export function createAuth({ clientId, doc = document, win = window, now = Date.now } = {}) {
     let client = null, pending = null, token = null, expiresAt = 0, hint = '';
+    let inflight = null;   // { interactive, promise } — a request already open with Google
 
     async function ensureClient() {
         await loadGis(doc, win);
@@ -44,7 +45,9 @@ export function createAuth({ clientId, doc = document, win = window, now = Date.
                 if (resp.error) return p.reject(new AuthError(resp.error, resp.error_description));
                 if (!win.google.accounts.oauth2.hasGrantedAllScopes(resp, DRIVE_SCOPE)) return p.reject(new AuthError('scope_denied', 'Permission to save to Google Drive was not given'));
                 token = resp.access_token;
-                expiresAt = now() + (Number(resp.expires_in) || 3600) * 1000;
+                // A missing lifetime means the usual hour; a lifetime of 0 really means "already expired".
+                const secs = Number(resp.expires_in);
+                expiresAt = now() + (Number.isFinite(secs) ? Math.max(0, secs) : 3600) * 1000;
                 p.resolve(token);
             },
             error_callback: err => {
@@ -67,12 +70,20 @@ export function createAuth({ clientId, doc = document, win = window, now = Date.
          */
         async getToken({ interactive = false } = {}) {
             if (token && now() < expiresAt - EXPIRY_MARGIN_MS) return token;
-            const c = await ensureClient();
-            if (pending) pending.reject(new AuthError('superseded'));
-            return new Promise((resolve, reject) => {
-                pending = { resolve, reject };
-                c.requestAccessToken({ prompt: interactive ? '' : 'none', hint });
-            });
+            // Never cancel a request that is already open (a background sync must not close the sign-in popup):
+            // share it, or — if only a quiet attempt is running and this one needs the popup — let it finish first.
+            if (inflight && (inflight.interactive || !interactive)) return inflight.promise;
+            if (inflight) { await inflight.promise.catch(() => {}); return this.getToken({ interactive }); }
+            const entry = { interactive };
+            entry.promise = (async () => {
+                const c = await ensureClient();
+                return new Promise((resolve, reject) => {
+                    pending = { resolve, reject };
+                    c.requestAccessToken({ prompt: interactive ? '' : 'none', hint });
+                });
+            })().finally(() => { if (inflight === entry) inflight = null; });
+            inflight = entry;
+            return entry.promise;
         },
 
         /** Forget the token (e.g. Drive said 401). */

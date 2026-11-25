@@ -43,6 +43,8 @@ describe('mergeDocs', () => {
     });
     test('garbage from Drive is dropped, not trusted', () => {
         expect(M.isValidPref('langs', ['kn', 'en', 'hi'])).toBe(false);   // the picker allows at most two
+        expect(M.isValidPref('langs', ['kn', 'kn'])).toBe(false);          // no duplicates
+        expect(M.isValidPref('langs', [])).toBe(false);
         const m = M.mergeDocs(null, { read: { a: [2, 1], b: 'x', c: [1, -3] }, study: { q: { status: 'hax', desc: d, t: 1 } }, prefs: { fontScale: [99, 1], evil: [1, 1], paperSize: ['a9', 1] } });
         expect(m).toEqual({ v: 1, read: {}, study: {}, prefs: {} });
         expect(M.mergeDocs('nope', undefined)).toEqual({ v: 1, read: {}, study: {}, prefs: {} });

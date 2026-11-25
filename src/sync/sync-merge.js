@@ -44,7 +44,7 @@ const isTime = t => typeof t === 'number' && Number.isFinite(t) && t >= 0;
 /** Is `value` something this setting may hold? (Remote data is never trusted.) */
 export function isValidPref(key, value) {
     switch (key) {
-        case 'langs':          return Array.isArray(value) && value.length > 0 && value.length <= MAX_ACTIVE_LANGS && value.every(c => KNOWN_LANGS.some(l => l.code === c));
+        case 'langs':          return Array.isArray(value) && value.length > 0 && value.length <= MAX_ACTIVE_LANGS && new Set(value).size === value.length && value.every(c => KNOWN_LANGS.some(l => l.code === c));
         case 'videos': case 'qrs': case 'readTracking': case 'studyCompanion': return typeof value === 'boolean';
         case 'paperSize':      return PAPER_SIZES.includes(value);
         case 'fontScale':      return typeof value === 'number' && value >= FONT_SCALE_MIN && value <= FONT_SCALE_MAX;

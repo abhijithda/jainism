@@ -26,17 +26,41 @@ describe('describe', () => {
     });
 });
 
+test('the Apply button and its note agree: unknown keys alone offer nothing', () => {
+    const { pendingKeys } = require('./sync-ui');
+    expect(pendingKeys({ pendingPrefs: { mystery: 1 } })).toEqual([]);
+    expect(describeSync({ status: 'synced', pendingPrefs: { mystery: 1 } }).actions).not.toContain('apply');
+    expect(describeSync({ status: 'synced', pendingPrefs: { qrs: true } }).actions).toContain('apply');
+    expect(describeSync({ status: 'error', pendingPrefs: { qrs: true } }).actions).not.toContain('apply');
+});
+
+test('delete cloud copy needs an explicit yes, and does nothing without a working confirm()', async () => {
+    document.body.innerHTML = '<div data-sync><span data-sync-status></span><button data-sync-action="delete"></button></div>';
+    const engine = { snapshot: () => ({ status: 'synced', account: {} }), signOut: jest.fn(async () => true) };
+    const ui = initSyncUi({ engine, auth: { preload() {} }, win: { confirm: () => false } });
+    document.querySelector('[data-sync-action="delete"]').click();
+    expect(engine.signOut).not.toHaveBeenCalled();
+    ui.dispose();
+    const ui2 = initSyncUi({ engine, auth: { preload() {} }, win: {} });
+    document.querySelector('[data-sync-action="delete"]').click();
+    expect(engine.signOut).not.toHaveBeenCalled();
+    ui2.dispose();
+});
+
 test('initSyncUi reveals the section, shows state, and routes clicks to the engine', async () => {
     document.body.innerHTML = `<div data-sync hidden><span data-sync-status></span>
         <button data-sync-action="signin" hidden></button><button data-sync-action="signout" hidden></button></div>
-        <div data-sync hidden><span data-sync-status></span><button data-sync-action="signin" hidden></button></div>`;
+        <div data-sync hidden><span data-sync-status></span><span data-sync-privacy></span><button data-sync-action="signin" hidden></button></div>`;
     const engine = { snapshot: () => ({ status: 'signed-out' }), signIn: jest.fn(async () => true), signOut: jest.fn() };
-    initSyncUi({ engine, auth: { preload: jest.fn() } });
+    const ui = initSyncUi({ engine, auth: { preload: jest.fn() } });
     const secs = document.querySelectorAll('[data-sync]');
     expect([...secs].every(s => !s.hidden)).toBe(true);
     const btn = secs[0].querySelector('[data-sync-action="signin"]');
     expect(btn.hidden).toBe(false);
     expect(btn.textContent).toBe('Sign in with Google');
+    const link = document.querySelector('[data-sync-privacy] a');
+    expect(link.getAttribute('href')).toBe('privacy.html');
+    expect(link.rel).toBe('noopener');
     expect(secs[0].querySelector('[data-sync-action="signout"]').hidden).toBe(true);
     btn.click();
     expect(engine.signIn).toHaveBeenCalled();

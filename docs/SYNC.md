@@ -34,7 +34,9 @@ other devices. Signed out, the site works exactly as before (everything stays in
 1. In <https://console.cloud.google.com/>, create (or pick) a project.
 2. **APIs & Services → Library**: enable **Google Drive API**.
 3. **OAuth consent screen**: user type *External*; add the app name, your support email and the site's privacy
-   details. Add scope `…/auth/drive.appdata` (a non-sensitive scope, so Google needs no review). Click
+   details. Set **Application home page** to `https://abhijithda.github.io/jainism/` and **Application privacy policy link**
+   to `https://abhijithda.github.io/jainism/privacy.html` (the `privacy.html` page in this repo; keep it deployed at that
+   address, and if the site moves, update the page and these two links together). Add scope `…/auth/drive.appdata` (a non-sensitive scope, so Google needs no review). Click
    **Publish app** to move from *Testing* (100 named test users only) to *In production*.
 4. **Credentials → Create credentials → OAuth client ID → Web application.** Under *Authorized JavaScript origins*
    add `https://abhijithda.github.io` (and `http://localhost:8080` for local testing). No redirect URIs are needed.
@@ -58,6 +60,7 @@ other devices. Signed out, the site works exactly as before (everything stays in
 | `src/sync/sync-engine.js` | When to sync; status; sign-out |
 | `src/sync/sync-ui.js`, `sync.css` | The Settings/Home section |
 | `src/sync/index.js` | Wires it together for `app.js` |
+| `privacy.html` | The privacy policy Google's consent screen links to (also linked from Settings and Home) |
 
 Small hooks elsewhere: `read-tick.js` (tick ids, `repaintReadTicks`), `settings.js` (announces saves),
 `study-panel.js` (announces answers, `refreshStudyLog`), `sw.js` (saves the config for offline use).
