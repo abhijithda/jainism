@@ -65,6 +65,7 @@ jobs:
           GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
           GEMINI_MODELS: ${{ vars.GEMINI_MODELS }}
           GEMINI_THINKING_LEVEL: ${{ vars.GEMINI_THINKING_LEVEL }}
+          GEMINI_THINKING_BUDGET: ${{ vars.GEMINI_THINKING_BUDGET }}
           WHOLE_BOOK: ${{ github.event.inputs.whole_book }}
         run: |
           git show "origin/${BASE}:assets/data.json" > "$RUNNER_TEMP/base.json" 2>/dev/null || echo '[]' > "$RUNNER_TEMP/base.json"

@@ -335,3 +335,55 @@ describe('the Gemini client: thinking setting with several models', () => {
     });
 });
 
+describe('the Gemini client: cooldown and the thinking check', () => {
+    const good = () => ({ ok: true, status: 200, json: async () => ({ candidates: [{ content: { parts: [{ text: '{"a":1}' }] } }], usageMetadata: {} }) });
+    const limited = () => ({ ok: false, status: 429, json: async () => ({}) });
+    beforeEach(() => { delete process.env.GEMINI_MODELS; delete process.env.GEMINI_THINKING_LEVEL; });
+
+    test('after a 429 the run stays on the second model for a while, then tries the first again', async () => {
+        let clock = 0;
+        const lines = [];
+        const urls = [];
+        let aLimited = true;
+        const fetchImpl = jest.fn(async (url) => { urls.push(url.includes('model-a') ? 'a' : 'b'); return url.includes('model-a') ? (aLimited ? limited() : good()) : good(); });
+        const ai = createGemini({ apiKey: 'k', models: 'model-a,model-b', fetchImpl, sleep: async () => { throw new Error('a 429 must not wait'); }, now: () => clock, cooldownMs: 120000, log: (l) => lines.push(l) });
+        await ai.json({ prompt: 'x' });
+        expect(urls).toEqual(['a', 'b']);                      // a was limited, b answered
+        clock = 30000; urls.length = 0;
+        await ai.json({ prompt: 'y' });
+        expect(urls).toEqual(['b']);                           // within the cooldown: straight to b
+        aLimited = false; clock = 130000; urls.length = 0;
+        await ai.json({ prompt: 'z' });
+        expect(urls).toEqual(['a']);                           // the per-minute limit is over: back on the preferred model
+        expect(ai.model).toBe('model-a');
+        expect(lines.some((l) => /trying model-a again/.test(l))).toBe(true);
+    });
+
+    test('if the first model is still limited after the cooldown, it moves on at once (one quick request)', async () => {
+        let clock = 0;
+        const urls = [];
+        const fetchImpl = jest.fn(async (url) => { urls.push(url.includes('model-a') ? 'a' : 'b'); return url.includes('model-a') ? limited() : good(); });
+        const ai = createGemini({ apiKey: 'k', models: 'model-a,model-b', fetchImpl, sleep: async () => { throw new Error('no waiting'); }, now: () => clock, cooldownMs: 1000, log: () => {} });
+        await ai.json({ prompt: 'x' });
+        clock = 5000; urls.length = 0;
+        await ai.json({ prompt: 'y' });
+        expect(urls).toEqual(['a', 'b']);
+        expect(ai.model).toBe('model-b');
+    });
+
+    test('a 400 that merely contains the word "think" is not taken for a thinking-setting error', async () => {
+        const fetchImpl = jest.fn(async () => ({ ok: false, status: 400, json: async () => ({ error: { message: 'I think the request is malformed' } }) }));
+        const ai = createGemini({ apiKey: 'k', thinkingLevel: 'low', fetchImpl, log: () => {} });
+        await expect(ai.json({ prompt: 'x' })).rejects.toThrow(/malformed/);
+        expect(fetchImpl).toHaveBeenCalledTimes(1);            // no retry without the setting
+    });
+
+    test('a 400 about thinking still drops the setting for that model', async () => {
+        const answers = [{ ok: false, status: 400, json: async () => ({ error: { message: 'thinking_config.thinking_level is invalid for this model' } }) }, good()];
+        const fetchImpl = jest.fn(async () => answers.shift());
+        const ai = createGemini({ apiKey: 'k', thinkingLevel: 'low', fetchImpl, log: () => {} });
+        expect(await ai.json({ prompt: 'x' })).toEqual({ a: 1 });
+        expect(fetchImpl).toHaveBeenCalledTimes(2);
+    });
+});
+

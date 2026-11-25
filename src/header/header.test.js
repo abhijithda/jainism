@@ -425,3 +425,33 @@ describe('initLangPicker: at most two languages', () => {
         expect(getActiveLangs()).toEqual(['kn', 'en']);
     });
 });
+
+describe('initLangPicker: keyboard focus', () => {
+    test('toggling a language updates the other rows in place: the same checkbox keeps the focus', () => {
+        initLangPicker(() => {});
+        document.getElementById('lang-trigger').click();
+        const en = document.getElementById('lang-chk-en');
+        en.focus();
+        expect(document.activeElement).toBe(en);
+
+        en.checked = false;
+        en.dispatchEvent(new Event('change'));
+
+        expect(document.getElementById('lang-chk-en')).toBe(en);          // the node was not rebuilt
+        expect(document.activeElement).toBe(en);                          // so the focus stayed
+        expect(document.getElementById('lang-chk-hi').disabled).toBe(false);   // and the other rows were updated in place
+    });
+    test('checking the second language disables the third, again without rebuilding', () => {
+        initLangPicker(() => {});
+        document.getElementById('lang-trigger').click();
+        const en = document.getElementById('lang-chk-en');
+        en.checked = false; en.dispatchEvent(new Event('change'));
+        const hi = document.getElementById('lang-chk-hi');
+        hi.focus();
+        hi.checked = true; hi.dispatchEvent(new Event('change'));
+        expect(document.getElementById('lang-chk-hi')).toBe(hi);
+        expect(document.activeElement).toBe(hi);
+        expect(document.getElementById('lang-chk-en').disabled).toBe(true);
+    });
+});
+

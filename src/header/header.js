@@ -75,6 +75,12 @@ export function initLangPicker(onLangChange) {
         summary.textContent = names.length ? names.join(', ') : 'Select a language';
     }
 
+    /** Disable the unchecked rows while two languages are chosen, on the existing inputs (the focus stays where it is). */
+    function refreshDisabled() {
+        const n = getActiveLangs().length;
+        list.querySelectorAll('input[type="checkbox"]').forEach((c) => { c.disabled = !c.checked && n >= MAX_ACTIVE_LANGS; });
+    }
+
     function renderList(filter) {
         const q = (filter || '').trim().toLowerCase();
         list.innerHTML = '';
@@ -131,7 +137,7 @@ export function initLangPicker(onLangChange) {
 
                 saveActiveLangs(newActive);
                 updateSummary();
-                renderList(search ? search.value : ''); // refresh which rows are disabled
+                refreshDisabled(); // in place: re-rendering the list would drop the keyboard focus from the box just toggled
                 if (onLangChange) onLangChange(newActive);
             });
         });

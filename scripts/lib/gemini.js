@@ -25,7 +25,8 @@
 //
 // Models: the repository variable GEMINI_MODELS is a comma-separated list in order of preference, for example
 // `gemini-3.8-flash,gemini-4-hydrogen`. The first is used; if it stays busy (or its quota is used up, HTTP 429), or is not
-// available to the key (404), the next one is tried, and the rest of the run keeps using the one that answered. Each model
+// available to the key (404), the next one is tried and later calls start with the one that answered. After about two minutes
+// (cooldownMs) the first model is tried again, because a per-minute 429 passes; a daily limit just moves on again at once. Each model
 // has its own free-tier quota, so a second model is also a second quota. GEMINI_MODEL (a single name) still works when
 // GEMINI_MODELS is not set. Names are used as given; the code does not know which exist.
 
@@ -78,7 +79,7 @@ function unavailableError(message) {
 }
 
 /**
- * @param {{ apiKey?: string, model?: string, models?: string|string[], fetchImpl?: Function, retries?: number, timeoutMs?: number, sleep?: Function,
+ * @param {{ apiKey?: string, model?: string, models?: string|string[], fetchImpl?: Function, retries?: number, timeoutMs?: number, sleep?: Function, cooldownMs?: number, now?: Function,
  *           thinkingLevel?: string, thinkingBudget?: number|string, log?: Function }} options
  * @returns {{ available: boolean, model: string, models: string[], json: Function, usage: Function, printUsage: Function }}
  */
@@ -86,6 +87,9 @@ function createGemini(options = {}) {
     const apiKey = options.apiKey ?? process.env.GEMINI_API_KEY;
     const models = modelsFrom(options.models, options.model || process.env.GEMINI_MODEL);
     let current = 0;                                  // index of the model that answered last (later calls start there)
+    let movedAt = 0;                                  // when the run last moved to a later model in the list
+    const now = options.now || Date.now;
+    const cooldownMs = options.cooldownMs ?? 120000;  // after this long on a fallback model the preferred one is tried again
     const skipped = new Set();                        // models the key cannot use (404)
     const noThinking = new Set();                     // models that refused the thinking setting
     const perModel = {};                              // calls per model, for the usage line
@@ -125,6 +129,12 @@ function createGemini(options = {}) {
             generationConfig: { temperature, responseMimeType: 'application/json', ...(thinking && !noThinking.has(forModel) ? { thinkingConfig: thinking } : {}) },
         });
         let lastError;
+        if (current > 0 && now() - movedAt >= cooldownMs) {
+            // a per-minute limit (429) or a busy spell is usually over after a couple of minutes: try the preferred model again;
+            // if it is still limited the call moves on at once (a 429 never waits), so the probe costs one quick request
+            log(`[gemini] ${Math.round((now() - movedAt) / 1000)}s on ${models[current]}; trying ${models[0]} again`);
+            current = 0;
+        }
         const order = models.map((name, i) => ({ name, i })).filter((m) => m.i >= current && !skipped.has(m.name));
         for (let k = 0; k < order.length; k++) {
             const { name: useModel, i: modelIndex } = order[k];
@@ -157,7 +167,7 @@ function createGemini(options = {}) {
                     continue;
                 }
                 const payload = await res.json().catch(() => ({}));
-                if (!res.ok && res.status === 400 && thinking && !noThinking.has(useModel) && /think/i.test(payload.error?.message || '')) {
+                if (!res.ok && res.status === 400 && thinking && !noThinking.has(useModel) && /thinking/i.test(payload.error?.message || '')) {
                     // this model does not accept the thinking setting: say so once, drop it for this model for the rest of the run, and repeat the call
                     log(`[gemini] ${useModel} refused the thinking setting (${payload.error.message}); continuing without it for this model`);
                     noThinking.add(useModel);
@@ -165,7 +175,7 @@ function createGemini(options = {}) {
                     continue;
                 }
                 if (!res.ok) throw new Error(`Gemini answered ${res.status}: ${payload.error?.message || 'no details'} (model: ${useModel})`);
-                current = modelIndex;                         // the rest of the run starts with the model that answers
+                if (modelIndex !== current) { current = modelIndex; movedAt = now(); }   // later calls start with the model that answers (for the cooldown)
                 record(payload, Date.now() - startedAt, useModel);
                 const text = (payload.candidates?.[0]?.content?.parts || []).filter((p) => !p.thought).map((p) => p.text || '').join('');
                 if (!text.trim()) {

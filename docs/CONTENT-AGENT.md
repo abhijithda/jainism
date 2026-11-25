@@ -187,7 +187,7 @@ does not start workflows by itself), or by hand: Actions, *Typo Review*, Run wor
 | A spelling in `config/spelling-allowlist.txt` | never flagged, never changed |
 
 The AI only proposes `{ old, new, reason, confidence }`; the code decides. A fix is automatic only if the model said clear,
-`old` occurs **once** in the line, is short, differs from `new` by at most 3 letters (2 in Kannada), and does not overlap
+`old` is found as a whole word in the line (every place where it stands there is fixed together, see below), is short, differs from `new` by at most 3 letters (2 in Kannada), and does not overlap
 the allowlist or a link. Anything else is a suggestion at most. The only fixes that need no AI are a double space and invisible characters. Without the key
 only that runs, and the comment says the AI check was skipped. Re-running updates the PR comment and does not repeat
 a suggestion that is already there.
@@ -251,9 +251,9 @@ that have no Hindi yet.
 1. A free key from Google AI Studio, saved as the repository secret `GEMINI_API_KEY` (Settings, Secrets and variables, Actions).
 2. Optional: repository variable `GEMINI_MODELS`, a comma-separated list in order of preference, for example
    `gemini-3.8-flash,<a second model>`. The first is used. If it stays busy after its retries, its quota is used up (HTTP 429)
-   or the key cannot use it (404), the next one is tried and the rest of the run keeps using the one that answered. Each model
+   or the key cannot use it (404), the next one is tried and later calls start with the one that answered. After about two minutes the first model is tried again (a per-minute 429 passes; a daily limit just moves on again at once). Each model
    has its own free-tier quota, so a second model is also a second quota. Names are used exactly as written (the code does not
-   know which exist), so check them in Google AI Studio. `GEMINI_MODEL` (one name) still works when `GEMINI_MODELS` is empty.
+   know which exist), so check them in Google AI Studio. `GEMINI_MODEL` (one name) still works when `GEMINI_MODELS` is empty. The workflows also pass `GEMINI_THINKING_BUDGET` (Gemini 2.5 models only, see below).
    The default in `scripts/lib/gemini.js` is a model name taken from Google's documentation, which renames and retires models
    often, so if every call fails with a 404 or 400 naming the model, this is the first thing to change.
 3. Optional: repository variable `GEMINI_THINKING_LEVEL` (`minimal`, `low`, `medium` or `high`), sent as
