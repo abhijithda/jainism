@@ -17,7 +17,8 @@ describe('describe: what the row shows in each state', () => {
         const d = describeSync({ status: 'signed-out' });
         expect(d.actions).toEqual(['signin']);
         expect(d.hint).toBe(true);
-        expect(d.icon).toBe('none');
+        expect(d.icon).toBe('out');
+        expect(d.tip).toBe('Sync is off');
     });
     test('a sign-in problem replaces the explanation', () => {
         expect(describeSync({ status: 'signed-out', message: 'Permission to save to Google Drive was not given' }).hintText).toMatch(/Permission/);
@@ -27,7 +28,7 @@ describe('describe: what the row shows in each state', () => {
         expect(d).toMatchObject({ icon: 'ok', tip: 'Synced just now', actions: ['refresh', 'account'], hint: false, email: 'a@x.com' });
     });
     test('syncing: a spinner and just the account button', () => {
-        expect(describeSync({ status: 'syncing', account: acct })).toMatchObject({ icon: 'spin', actions: ['account'] });
+        expect(describeSync({ status: 'syncing', account: acct })).toMatchObject({ icon: 'sync', actions: ['account'] });
     });
     test('paused: a warning with Reconnect (text) and the account button', () => {
         expect(describeSync({ status: 'needs-signin', account: acct })).toMatchObject({ icon: 'warn', actions: ['reconnect', 'account'] });
@@ -64,7 +65,10 @@ describe('the built row', () => {
         expect(menu.querySelector('.sync-name').textContent).toBe('Sync:');   // Settings rows carry a colon
         expect(home.querySelector('.sync-name').textContent).toBe('Sync');
         expect(menu.querySelector('.sync-name').dataset.tip).toBe(NAME_HINT);
-        expect(act(menu, 'signin').textContent).toBe('Sign in with Google');
+        expect(act(menu, 'signin').textContent).toBe('Sign in');
+        expect(act(menu, 'signin').getAttribute('aria-label')).toBe('Sign in with Google');
+        expect(act(menu, 'signin').dataset.tip).toBe('Sign in with Google');
+        expect(act(menu, 'signin').querySelectorAll('path')).toHaveLength(4);       // the four-color G
     });
     test('signed out: Sign in and the explanation show; the other buttons do not', () => {
         const { home } = mount({ status: 'signed-out' });
@@ -154,5 +158,41 @@ describe('the built row', () => {
         document.body.innerHTML = '';
         const ui = initSyncUi({ engine: { snapshot: () => ({}) }, auth: {} });
         expect(() => { ui.render(); ui.dispose(); }).not.toThrow();
+    });
+});
+
+describe('the status cloud', () => {
+    const state = snap => { const { home } = mount(snap); return home.querySelector('.sync-state'); };
+    test('it comes first in the label, is always shown, and each state has its own color class and mark', () => {
+        const { home } = mount({ status: 'signed-out' });
+        const label = home.querySelector('.sync-label');
+        expect(label.firstElementChild.classList.contains('sync-state')).toBe(true);
+        expect(label.lastElementChild.classList.contains('sync-name')).toBe(true);
+        const cases = [
+            [{ status: 'signed-out' }, 'out', 0],
+            [{ status: 'syncing', account: { email: 'a@x.com' } }, 'sync', 2],
+            [{ status: 'synced', account: { email: 'a@x.com' }, lastSyncAt: Date.now() }, 'ok', 1],
+            [{ status: 'needs-signin', account: { email: 'a@x.com' } }, 'warn', 2],
+            [{ status: 'offline', account: { email: 'a@x.com' } }, 'off', 1],
+        ];
+        cases.forEach(([snap, kind, marks]) => {
+            const s = state(snap);
+            expect(s.className).toBe(`sync-state sync-state--${kind}`);
+            expect(s.querySelectorAll('svg > path')).toHaveLength(kind === 'sync' ? 1 : 1 + marks);   // the cloud, plus its mark (the arrows sit in groups)
+        });
+    });
+    test('only the syncing cloud has arrows to turn, inside a group CSS can animate', () => {
+        const syncing = state({ status: 'syncing', account: { email: 'a@x.com' } });
+        expect(syncing.querySelectorAll('.sync-cloud-arrows path')).toHaveLength(2);
+        expect(state({ status: 'synced', account: { email: 'a@x.com' } }).querySelector('.sync-cloud-arrows')).toBeNull();
+        const css = require('fs').readFileSync(require('path').join(__dirname, 'sync.css'), 'utf8');
+        expect(css).toMatch(/\.sync-cloud-arrows\s*\{[^}]*animation:\s*sync-spin/);
+        expect(css).toMatch(/prefers-reduced-motion[^}]*\.sync-cloud-arrows\s*\{\s*animation:\s*none/);
+    });
+    test('the cloud carries the hover hint and an accessible name', () => {
+        const s = state({ status: 'synced', account: { email: 'a@x.com' }, lastSyncAt: Date.now() });
+        expect(s.dataset.tip).toBe('Synced just now');
+        expect(s.getAttribute('aria-label')).toBe('Synced just now');
+        expect(s.getAttribute('role')).toBe('img');
     });
 });
