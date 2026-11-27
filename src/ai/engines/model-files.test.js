@@ -193,6 +193,17 @@ describe('loading from a folder', () => {
         expect(await raw(fresh, 'model', 'https://huggingface.co/mlc-ai/Some-Other-Model/resolve/main/params_shard_0.bin')).toBeNull();
     });
 
+    test('modelIds: only the chosen models are put back, and a folder without them is refused', async () => {
+        const dir = await saved();
+        const fresh = fakeCaches();
+        const r = await loadModelsFromFolder({ source: folderSource(dir), recordFor, caches: fresh, modelIds: [MODEL_ID, 'Other-Model'] });
+        expect(r.restored).toEqual([MODEL_ID]);
+        const none = fakeCaches();
+        await expect(loadModelsFromFolder({ source: folderSource(dir), recordFor, caches: none, modelIds: ['Other-Model'] }))
+            .rejects.toThrow(/no saved copy of the size you chose/);
+        expect(none.stores.size).toBe(0);
+    });
+
     test('loading twice is harmless', async () => {
         const dir = await saved(), fresh = fakeCaches();
         await load(dir, fresh);

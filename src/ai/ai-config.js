@@ -17,6 +17,7 @@ import { listServerModels } from './engines/local-server.js';
 import {
     saveModelsToFolder, loadModelsFromFolder, folderSource, fileListSource, loadRecordLookup, canSaveToFolder, ModelFolderError,
 } from './engines/model-files.js';
+import { rememberFolder, recallFolder, forgetFolder } from './engines/model-folder-memory.js';
 
 const $ = id => document.getElementById(id);
 
@@ -43,6 +44,7 @@ let visible = { local: true, cloud: true };
 let keyStore = null;
 let onSavedCb = null;
 let lastFocus = null;
+let refreshFolderButton = null;   // set when the dialog is built: shows the "Forget remembered folder" button only if one is remembered
 
 function build() {
     if ($('ai-config')) return;
@@ -66,12 +68,13 @@ function build() {
     // The browser keeps the model until its data is cleared; a copy in a folder survives that.
     const saveFolder = el('button', { type: 'button', id: 'ai-config-save-folder', className: 'ai-config-small', text: 'Save downloaded model to a folder\u2026' });
     const loadFolder = el('button', { type: 'button', id: 'ai-config-load-folder', className: 'ai-config-small', text: 'Load a saved model from a folder\u2026' });
+    const forgetFolderBtn = el('button', { type: 'button', id: 'ai-config-forget-folder', className: 'ai-config-small', text: 'Forget remembered folder', hidden: true });
     const folderInput = el('input', { type: 'file', id: 'ai-config-folder-input', hidden: true, multiple: true });
     folderInput.setAttribute('webkitdirectory', '');
     const folderStatus = el('p', { id: 'ai-config-folder-status', className: 'ai-config-status', role: 'status' });
     tierList.append(
-        el('p', { className: 'ai-config-hint', text: 'The browser keeps the model until its data is cleared. To avoid downloading it again after that, save a copy to a folder and load it back later.' }),
-        el('div', { className: 'ai-config-row' }, saveFolder, loadFolder, folderInput),
+        el('p', { className: 'ai-config-hint', text: 'The browser keeps the model until its data is cleared. To avoid downloading it again after that, save a copy to a folder and load it back later. The folder you used is remembered on this device: when Local needs to download a model, it offers to load it from that folder first. Saving and loading cover every size that is downloaded or saved; the size selected above only decides which one Local starts.' }),
+        el('div', { className: 'ai-config-row' }, saveFolder, loadFolder, forgetFolderBtn, folderInput),
         folderStatus);
 
     const serverBase = el('input', { type: 'url', id: 'ai-config-server-base', autocomplete: 'off', spellcheck: false, placeholder: AI_LOCAL_SERVER_DEFAULT_URL });
@@ -180,6 +183,10 @@ function build() {
         folderStatus.textContent = err instanceof ModelFolderError ? err.message : `That didn\u2019t work: ${err?.message || err}`;
     };
     const mb = bytes => `${Math.round(bytes / (1024 * 1024))} MB`;
+    const sizeName = modelId => Object.values(LOCAL_TIERS).find(t => t.model === modelId || t.compat === modelId)?.label || modelId;
+    const sizeList = ids => [...new Set(ids.map(sizeName))].join(', ');
+    const refreshForgetButton = async () => { forgetFolderBtn.hidden = !(await recallFolder()); };
+    refreshFolderButton = refreshForgetButton;
 
     saveFolder.addEventListener('click', async () => {
         if (!canSaveToFolder()) {
@@ -194,29 +201,46 @@ function build() {
             const models = Object.values(LOCAL_TIERS).flatMap(t => [t.model, t.compat])
                 .map(modelId => ({ modelId, record: lookup(modelId) })).filter(m => m.record);
             const result = await saveModelsToFolder({ models, dir, caches: window.caches, onProgress: p => { folderStatus.textContent = p.text; } });
+            const remembered = result.saved.length && await rememberFolder(dir);
+            if (remembered) refreshForgetButton();
             folderStatus.textContent = result.saved.length
-                ? `Saved ${result.saved.length === 1 ? 'one model' : result.saved.length + ' models'} (${mb(result.bytes)}) to that folder. Keep the folder; \u201cLoad a saved model\u201d puts it back without downloading.`
+                ? `Saved ${sizeList(result.saved)} (${mb(result.bytes)}) to that folder. Keep the folder; \u201cLoad a saved model\u201d puts it back without downloading.${remembered ? ' This device will remember the folder.' : ''}`
                 : 'Nothing to save yet: no model is fully downloaded in this browser. Ask a question with Local first (it downloads once), then save it.';
         } catch (err) { showFolderError(err); } finally { setFolderBusy(false); }
     });
 
-    const loadFrom = async source => {
+    const loadFrom = async (source, handle) => {
         folderStatus.textContent = 'Checking the folder\u2026';
         const lookup = await loadRecordLookup();
         const result = await loadModelsFromFolder({ source, recordFor: lookup, caches: window.caches, onProgress: p => { folderStatus.textContent = p.text; } });
-        folderStatus.textContent = `Loaded ${result.restored.length === 1 ? 'one model' : result.restored.length + ' models'} (${mb(result.bytes)}) into this browser. Local will start from it without downloading.`
+        const remembered = handle ? await rememberFolder(handle) : false;
+        if (remembered) refreshForgetButton();
+        const chosen = LOCAL_TIERS[document.querySelector('input[name="ai-local-tier"]:checked')?.value || loadSettings().aiLocalModel];
+        const hasChosen = !chosen || result.restored.some(id => id === chosen.model || id === chosen.compat);
+        folderStatus.textContent = `Loaded ${sizeList(result.restored)} (${mb(result.bytes)}) into this browser.`
+            + (hasChosen ? ' Local will start from it without downloading.' : ` The size selected above (${chosen.label}) wasn\u2019t in that folder, so Local will still download it; choose a size that was loaded to start without downloading.`)
+            + (remembered ? ' This device will remember the folder.' : '')
             + (result.warnings.length ? ' ' + result.warnings.join(' ') : '');
     };
     loadFolder.addEventListener('click', async () => {
         setFolderBusy(true);
         try {
-            if (canSaveToFolder()) await loadFrom(folderSource(await window.showDirectoryPicker({ id: 'pooja-model' })));
+            if (canSaveToFolder()) {
+                const handle = await window.showDirectoryPicker({ id: 'pooja-model' });
+                await loadFrom(folderSource(handle), handle);
+            }
             else folderInput.click();          // other browsers: pick the folder with a file input
         } catch (err) { showFolderError(err); } finally { setFolderBusy(false); }
     });
     folderInput.addEventListener('change', async () => {
         setFolderBusy(true);
         try { await loadFrom(fileListSource(folderInput.files)); } catch (err) { showFolderError(err); } finally { folderInput.value = ''; setFolderBusy(false); }
+    });
+
+    forgetFolderBtn.addEventListener('click', async () => {
+        await forgetFolder();
+        folderStatus.textContent = 'This device no longer remembers a folder. The folder and its files are untouched.';
+        refreshForgetButton();
     });
 
     forget.addEventListener('click', () => {
@@ -294,6 +318,7 @@ function populate() {
     $('ai-config-server-status').textContent = '';
     $('ai-config-folder-status').textContent = '';
     $('ai-config-save-folder').hidden = !canSaveToFolder();
+    if (refreshFolderButton) refreshFolderButton();
     $('ai-source-site').checked = s.aiCloudSource !== 'own';
     $('ai-source-own').checked = s.aiCloudSource === 'own';
     $('ai-source-own').dispatchEvent(new Event('change'));

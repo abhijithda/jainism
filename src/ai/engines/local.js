@@ -11,6 +11,8 @@
 // (bigger, slower, but avoids half-precision shaders).
 
 import { WEBLLM_URL, LOCAL_MODEL_ID, LOCAL_MODEL_ID_COMPAT, WEBLLM_WASM_CACHE, MAX_ANSWER_TOKENS } from '../config.js';
+import { cachedState, recordLookup } from './model-files.js';
+import { requestPersistentStorage } from './model-folder-memory.js';
 
 export const LOCAL_GPU_FAILED = 'LOCAL_GPU_FAILED';
 
@@ -76,6 +78,8 @@ async function defaultClearCache() {
 export function createLocalEngine({
     loadLibrary, modelId = LOCAL_MODEL_ID, compatModelId = LOCAL_MODEL_ID_COMPAT, clearCache = defaultClearCache,
     storage = (typeof localStorage !== 'undefined' ? localStorage : null), now = () => Date.now(),
+    cacheStorage = (typeof caches !== 'undefined' ? caches : null),
+    persist = requestPersistentStorage,
 } = {}) {
     // The URL goes through a variable on purpose: sw.js's crawler follows any
     // dynamic import written with a plain quoted path, and this is a CDN module it
@@ -116,8 +120,13 @@ export function createLocalEngine({
             loading = null;
         },
 
-        /** Downloads/initialises the model. onProgress({ text, progress 0..1 }). Safe to call repeatedly. */
-        prepare(onProgress) {
+        /**
+         * Downloads/initialises the model. onProgress({ text, progress 0..1 }). Safe to call repeatedly.
+         * beforeDownload({ modelIds }) runs only when the model is not in the browser's cache yet, just before the
+         * download would start: the page can use it to offer loading a saved copy from a folder. If it throws,
+         * the download simply goes ahead.
+         */
+        prepare(onProgress, { beforeDownload } = {}) {
             if (engine) return Promise.resolve();
             if (!loading) {
                 let failed = false;
@@ -125,6 +134,9 @@ export function createLocalEngine({
                 const report = p => { if (!failed && onProgress) onProgress({ text: p.text, progress: p.progress }); };
 
                 loading = (async () => {
+                    // Asked here, in the click that starts the first use (never at page load): the browser may show a
+                    // prompt (Firefox) or decide quietly (Chrome). Not waited for, and a refusal changes nothing.
+                    try { Promise.resolve(persist()).catch(() => {}); } catch (_) { /* a convenience only */ }
                     // The WebGPU API can exist while no usable GPU does (blocklisted
                     // driver, remote desktop, VM). Say so before downloading anything.
                     if (typeof navigator !== 'undefined' && navigator.gpu?.requestAdapter) {
@@ -136,6 +148,14 @@ export function createLocalEngine({
                         }
                     }
                     const lib = await load();
+                    if (beforeDownload && cacheStorage) {
+                        try {
+                            const record = recordLookup(lib)(currentModel());
+                            if (record && !(await cachedState(record, cacheStorage)).complete) {
+                                await beforeDownload({ modelIds: [modelId, compatModelId] });
+                            }
+                        } catch (_) { /* the download goes ahead */ }
+                    }
                     const create = () => lib.CreateMLCEngine(currentModel(), { initProgressCallback: report });
                     try {
                         engine = await create();

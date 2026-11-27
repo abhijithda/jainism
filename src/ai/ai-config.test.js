@@ -6,6 +6,7 @@ const { openAiConfig, closeAiConfig, isAiConfigOpen } = require('./ai-config');
 const { saveSettings, loadSettings } = require('../core/settings');
 const { KEY_STORAGE_KEY } = require('./engines/custom');
 const modelFiles = require('./engines/model-files');
+const { LOCAL_TIERS } = require('./config');
 
 const KEY = 'sk-test-SECRET-123';
 const $ = id => document.getElementById(id);
@@ -268,12 +269,23 @@ describe('local: a model in this browser, or one already on this computer', () =
         test('Load reports what it put back into the browser', async () => {
             window.showDirectoryPicker = jest.fn().mockResolvedValue({});
             jest.spyOn(modelFiles, 'loadRecordLookup').mockResolvedValue(() => ({}));
-            jest.spyOn(modelFiles, 'loadModelsFromFolder').mockResolvedValue({ restored: ['m'], warnings: ['Note.'], bytes: 3 * 1024 * 1024 });
+            jest.spyOn(modelFiles, 'loadModelsFromFolder').mockResolvedValue({ restored: [LOCAL_TIERS.small.model], warnings: ['Note.'], bytes: 3 * 1024 * 1024 });
             openAiConfig({ section: 'local' });
             $('ai-config-load-folder').click();
             await flushAll();
-            expect($('ai-config-folder-status').textContent).toMatch(/Loaded one model \(3 MB\).*without downloading.*Note\./);
+            expect($('ai-config-folder-status').textContent).toMatch(/Loaded Small \(3 MB\).*without downloading.*Note\./);
             expect($('ai-config-load-folder').disabled).toBe(false);
+        });
+
+        test('Load says so when the loaded size is not the one selected', async () => {
+            window.showDirectoryPicker = jest.fn().mockResolvedValue({});
+            jest.spyOn(modelFiles, 'loadRecordLookup').mockResolvedValue(() => ({}));
+            jest.spyOn(modelFiles, 'loadModelsFromFolder').mockResolvedValue({ restored: [LOCAL_TIERS.large.model], warnings: [], bytes: 1024 * 1024 });
+            openAiConfig({ section: 'local' });
+            document.getElementById('ai-tier-small').checked = true;
+            $('ai-config-load-folder').click();
+            await flushAll();
+            expect($('ai-config-folder-status').textContent).toMatch(/Loaded Large.*Small.*still download/);
         });
 
         test('Load shows a refused folder\u2019s own explanation', async () => {
@@ -298,11 +310,11 @@ describe('local: a model in this browser, or one already on this computer', () =
             window.showDirectoryPicker = jest.fn().mockResolvedValue({});
             jest.spyOn(modelFiles, 'loadRecordLookup').mockResolvedValue(id => ({ model_id: id }));
             const save = jest.spyOn(modelFiles, 'saveModelsToFolder');
-            save.mockResolvedValueOnce({ saved: ['a'], skipped: [], bytes: 5 * 1024 * 1024 });
+            save.mockResolvedValueOnce({ saved: [LOCAL_TIERS.medium.model], skipped: [], bytes: 5 * 1024 * 1024 });
             openAiConfig({ section: 'local' });
             $('ai-config-save-folder').click();
             await flushAll();
-            expect($('ai-config-folder-status').textContent).toMatch(/Saved one model \(5 MB\)/);
+            expect($('ai-config-folder-status').textContent).toMatch(/Saved Medium \(5 MB\)/);
             // every size's normal and compatibility build is offered to save; only fully downloaded ones are written
             expect(save.mock.calls[0][0].models).toHaveLength(6);
             save.mockResolvedValueOnce({ saved: [], skipped: [], bytes: 0 });

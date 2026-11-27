@@ -185,10 +185,15 @@ async function readManifest(source) {
  * @param {Object} opts
  * @param {Object} opts.source        folderSource(...) or fileListSource(...)
  * @param {(modelId: string) => Object|null} opts.recordFor   WebLLM's record for a model id, or null if not offered
+ * @param {string[]} [opts.modelIds]  only restore these models (the folder may hold other sizes); others are left alone, silently
  * @returns {Promise<{restored: string[], warnings: string[], bytes: number}>}
  */
-export async function loadModelsFromFolder({ source, recordFor, caches, onProgress = () => {}, signal }) {
+export async function loadModelsFromFolder({ source, recordFor, caches, modelIds, onProgress = () => {}, signal }) {
     const manifest = await readManifest(source);
+    if (Array.isArray(modelIds)) {
+        manifest.models = manifest.models.filter(m => modelIds.includes(m?.modelId));
+        if (!manifest.models.length) throw new ModelFolderError('That folder has no saved copy of the size you chose.');
+    }
     const warnings = [];
     if (manifest.webllm && webllmVersion() && manifest.webllm !== webllmVersion()) {
         warnings.push(`It was saved with WebLLM ${manifest.webllm} and this site uses ${webllmVersion()}; anything that doesn\u2019t match is downloaded again.`);
