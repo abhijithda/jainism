@@ -1,14 +1,14 @@
 // sync/sync-ui.js — The "Sync" row, shown in Settings and on Home. index.html holds only an empty mount point
 // (data-sync) in each place; this file builds the row into both, so the two can never differ.
 //
-//   ☁️ Sync ✓                      [↻] [person]       a tick, spinner or warning shows the state; hover for details
+//   [cloud] Sync                   [↻] [person]       the cloud's color and mark show the state (hover for details)
 //        └ person → small menu: your Google account, Sign out, Delete synced data, Privacy policy
 //
 // Text is kept for what must be clear (Sign in, Reconnect, the menu); icons carry the frequent, obvious things.
 // Every icon button has an accessible name; hover hints are a bonus on desktop, never the only explanation.
 
 import { SYNCED_PREFS } from './sync-merge.js';
-import { icon } from './icons.js';
+import { icon, cloudIcon, googleG } from './icons.js';
 
 /** "just now", "5 min ago", "3 h ago", "2 days ago". */
 export function formatAgo(ms, now = Date.now()) {
@@ -30,15 +30,15 @@ export const SIGNED_OUT_HINT = 'Optional. Saves your progress in a hidden folder
 
 /**
  * What the row shows for an engine snapshot. Pure.
- * @returns {{icon: 'none'|'ok'|'spin'|'warn'|'off', tip: string, actions: string[], hint: boolean, hintText: string, email: string, applyNote: boolean}}
+ * @returns {{icon: 'out'|'sync'|'ok'|'warn'|'off', tip: string, actions: string[], hint: boolean, hintText: string, email: string, applyNote: boolean}}
  */
 export function describe(snap, now = Date.now()) {
     const email = (snap.account && snap.account.email) || '';
     const signedIn = !!snap.account;
-    const out = { icon: 'none', tip: '', actions: [], hint: !signedIn, hintText: snap.message || SIGNED_OUT_HINT, email, applyNote: false };
+    const out = { icon: 'out', tip: 'Sync is off', actions: [], hint: !signedIn, hintText: snap.message || SIGNED_OUT_HINT, email, applyNote: false };
     switch (snap.status) {
-        case 'connecting': out.icon = 'spin'; out.tip = 'Signing in…'; break;
-        case 'syncing':    out.icon = 'spin'; out.tip = 'Syncing…'; out.actions = ['account']; break;
+        case 'connecting': out.icon = 'sync'; out.tip = 'Signing in…'; break;
+        case 'syncing':    out.icon = 'sync'; out.tip = 'Syncing…'; out.actions = ['account']; break;
         case 'synced':
             out.icon = 'ok';
             out.tip = `Synced ${snap.lastSyncAt ? formatAgo(snap.lastSyncAt, now) : 'just now'}`;
@@ -85,12 +85,13 @@ function build(doc, mount) {
 
     const row = el(doc, 'div', 'sync-row');
     const label = el(doc, 'span', 'sync-label');
-    label.append('☁️ ', el(doc, 'span', 'sync-name tl', { 'data-tip': NAME_HINT, tabindex: '0' }, `Sync${colon}`));
     const state = el(doc, 'span', 'sync-state', { role: 'img', tabindex: '0' });
-    label.append(state);
+    label.append(state, el(doc, 'span', 'sync-name tl', { 'data-tip': NAME_HINT, tabindex: '0' }, `Sync${colon}`));
 
     const actions = el(doc, 'div', 'sync-actions');
-    const signin = el(doc, 'button', 'sync-btn sync-btn--primary', { type: 'button', 'data-sync-action': 'signin' }, 'Sign in with Google');
+    // Google's own button has a plain "Sign in" variant: with the G logo the word "Google" is redundant (the full name stays as the tooltip and accessible name).
+    const signin = el(doc, 'button', 'sync-btn sync-btn--google', { type: 'button', 'data-sync-action': 'signin', 'data-tip': 'Sign in with Google', 'aria-label': 'Sign in with Google' });
+    signin.append(googleG(doc), 'Sign in');
     const reconnect = el(doc, 'button', 'sync-btn sync-btn--primary', { type: 'button', 'data-sync-action': 'reconnect' }, 'Reconnect');
     const refresh = el(doc, 'button', 'sync-ib', { type: 'button', 'data-sync-action': 'refresh', 'data-tip': 'Sync now', 'aria-label': 'Sync now' });
     refresh.append(icon(doc, 'refresh'));
@@ -141,14 +142,11 @@ export function initSyncUi({ engine, auth, doc = document, win = typeof window !
         parts.forEach(p => {
             p.mount.hidden = false;
 
-            p.state.hidden = d.icon === 'none';
             p.state.textContent = '';
-            if (d.icon !== 'none') {
-                p.state.className = `sync-state sync-state--${d.icon}`;
-                p.state.append(icon(doc, { ok: 'check', spin: 'refresh', warn: 'warn', off: 'off' }[d.icon], 17));
-                p.state.setAttribute('data-tip', d.tip);
-                p.state.setAttribute('aria-label', d.tip);
-            }
+            p.state.className = `sync-state sync-state--${d.icon}`;
+            p.state.append(cloudIcon(doc, d.icon));
+            p.state.setAttribute('data-tip', d.tip);
+            p.state.setAttribute('aria-label', d.tip);
 
             Object.entries(p.buttons).forEach(([name, btn]) => {
                 btn.hidden = !d.actions.includes(name);
