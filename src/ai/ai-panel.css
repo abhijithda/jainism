@@ -12,21 +12,28 @@
 }
 .ai-drawer[hidden] { display: none; }
 
-.ai-head { display: flex; align-items: center; gap: 6px; padding: 10px 12px; border-bottom: 1px solid #ddd; }
-.ai-head strong { flex: 1; }
-.ai-expand { border: 0; background: none; font-size: 18px; cursor: pointer; }
+.ai-head { display: flex; align-items: center; gap: 6px; padding: 10px 12px; border-bottom: 1px solid #e3e6e8; }
+.ai-head strong { flex: 1; display: flex; align-items: center; gap: 8px; font-size: 15px; }
+.ai-head strong .ic { font-size: 18px; color: var(--ui-accent, #2e7d32); }
+.ai-tag { font-size: 11px; font-weight: 400; padding: 2px 8px; border-radius: 10px; background: #f1f3f4; color: #555; }
+.ai-tag:empty { display: none; }
+.ai-expand, .ai-close { display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; padding: 0; border: 0; border-radius: 8px; background: none; color: #555; font-size: 19px; cursor: pointer; }
+.ai-expand:hover, .ai-close:hover { background: #f1f3f4; }
 
 /* Drag handle on the drawer's left edge */
 .ai-resize { position: absolute; left: -5px; top: 0; bottom: 0; width: 10px; cursor: ew-resize; z-index: 1; touch-action: none; }
 .ai-resize:hover, .ai-resize:focus-visible, body.ai-resizing .ai-resize { background: rgba(46, 125, 50, .35); outline: none; }
 body.ai-resizing { user-select: none; cursor: ew-resize; }
 .ai-more { display: block; width: 100%; margin-top: 8px; padding: 6px; cursor: pointer; }
-.ai-close { border: 0; background: none; font-size: 18px; cursor: pointer; }
 
 .ai-messages { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
-.ai-msg { padding: 8px 10px; border-radius: 8px; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.45; max-width: 92%; }
-.ai-msg--user { align-self: flex-end; background: #e8f0fe; }
-.ai-msg--assistant { align-self: flex-start; background: #f3f3f3; }
+.ai-msg { padding: 9px 12px; border-radius: 12px; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.5; max-width: 92%; }
+.ai-msg--user { align-self: flex-end; background: #e8f5e9; border-bottom-right-radius: 4px; }
+.ai-msg--assistant { align-self: flex-start; background: #f3f5f4; border-bottom-left-radius: 4px; }
+
+/* Shown until the first question: what this panel does, in one breath. */
+.ai-empty { margin: auto 0; padding: 12px 8px; text-align: center; color: #666; font-size: .92em; line-height: 1.5; }
+.ai-empty .ic { display: flex; justify-content: center; margin-bottom: 8px; font-size: 26px; color: var(--ui-accent, #2e7d32); }
 .ai-msg--error { background: #fdecea; }
 
 .ai-cite {
@@ -54,23 +61,13 @@ body.ai-resizing { user-select: none; cursor: ew-resize; }
 .ai-moment-note { margin-top: 2px; font-size: .75em; color: #777; }
 
 .ai-status { padding: 0 12px; font-size: .85em; color: #555; min-height: 1.2em; }
-.ai-form { display: flex; gap: 8px; padding: 8px 12px; border-top: 1px solid #ddd; }
-.ai-form textarea { flex: 1; resize: none; font: inherit; padding: 6px; }
-.ai-form button { padding: 0 14px; cursor: pointer; }
-.ai-disclaimer { padding: 6px 12px 10px; font-size: .75em; color: #666; }
-
-/* Settings row: label + picker on one line like the other rows, with the
-   one-line explanation underneath instead of squeezed in beside them. */
-.menu-section--ai { flex-wrap: wrap; row-gap: 4px; }
-.menu-section--ai label { white-space: nowrap; }
-#ai-engine-select {
-    font-size: 12px; padding: 4px 6px; border: 1px solid #ddd;
-    border-radius: 6px; background: #fff; color: #333;
-}
-#ai-engine-note { flex: 1 1 100%; max-width: 260px; font-size: 11px; line-height: 1.35; color: #666; }
-#ai-engine-note:empty, #home-ai-engine-note:empty { display: none; }
-#home-ai-engine-select { font-size: 12px; padding: 4px 6px; border: 1px solid #ddd; border-radius: 6px; background: #fff; color: #333; }
-@media (max-width: 700px) { #ai-engine-select { font-size: 14px; padding: 8px; } #ai-engine-note { max-width: none; } }
+.ai-form { display: flex; align-items: flex-end; gap: 8px; margin: 8px 12px 0; padding: 5px 5px 5px 14px; border: 1px solid #d5dadd; border-radius: 22px; background: #fff; }
+.ai-form:focus-within { border-color: #8fbf92; box-shadow: 0 0 0 3px #e8f5e9; }
+.ai-form textarea { flex: 1; min-width: 0; resize: none; border: 0; outline: none; background: transparent; font: inherit; padding: 7px 0; }
+#ai-send { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 34px; height: 34px; padding: 0; border: 0; border-radius: 50%; background: #2b2f33; color: #fff; font-size: 18px; cursor: pointer; }
+#ai-send:hover { background: #111; }
+#ai-send:disabled { opacity: .5; cursor: default; }
+.ai-disclaimer { padding: 6px 16px 12px; font-size: .75em; line-height: 1.4; color: #777; }
 
 .ai-retry { margin-top: 8px; padding: 6px 10px; cursor: pointer; }
 
@@ -79,17 +76,19 @@ body.ai-resizing { user-select: none; cursor: ew-resize; }
     position: fixed; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); z-index: 1000;
     padding: 10px 16px; border: 0; border-radius: 22px; cursor: pointer;
     background: #2e7d32; color: #fff; font: inherit; box-shadow: 0 2px 10px rgba(0, 0, 0, .3);
+    display: inline-flex; align-items: center; gap: 6px;
 }
 .ai-back[hidden] { display: none; }
 
 @media (max-width: 700px) { .ai-resize, .ai-expand { display: none; } }
 
-@media print { .ai-drawer, .ai-back, #ai-btn { display: none !important; } }
+@media print { .ai-drawer, .ai-back, #ai-btn, #omnibox, .search-toggle { display: none !important; } }
 
 /* ── Configure dialog (ai/ai-config.js) ─────────────────────────────────── */
-.ai-config-btn { font-size: 12px; padding: 4px 8px; border: 1px solid #ddd; border-radius: 6px; background: #fff; color: #333; cursor: pointer; }
+.ai-config-btn { font: inherit; font-size: 13px; padding: 6px 12px; border: 1px solid #d5dadd; border-radius: 8px; background: #fff; color: #222; cursor: pointer; }
+.ai-config-btn:hover { background: #f1f3f4; }
 .ai-config-btn[hidden] { display: none; }
-@media (max-width: 700px) { .ai-config-btn { font-size: 14px; padding: 8px; } }
+@media (max-width: 700px) { .ai-config-btn { font-size: 14px; padding: 10px 14px; } }
 
 .ai-config-overlay { position: fixed; inset: 0; z-index: 2000; background: rgba(0, 0, 0, .45); display: flex; align-items: center; justify-content: center; padding: 12px; }
 .ai-config-overlay[hidden] { display: none; }

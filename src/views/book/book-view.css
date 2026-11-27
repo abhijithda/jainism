@@ -19,7 +19,7 @@
     overflow-x: auto;
 }
 
-/* Focus/zen mode hides the 60px header entirely — reclaim that space
+/* Full screen/zen mode hides the 60px header entirely — reclaim that space
    rather than leaving a dead gap at the top. 100dvh (dynamic viewport
    height) as a progressive enhancement over 100vh: on mobile browsers,
    100vh is measured against the *largest* possible viewport (chrome

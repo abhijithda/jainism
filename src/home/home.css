@@ -6,16 +6,6 @@
    otherwise the header's font-size +/- controls would visibly work in
    both real views but silently do nothing here. */
 
-.home-btn {
-    font-size: 18px;
-    padding: 4px 10px;
-}
-
-.home-btn.active {
-    background: #333;
-    border-radius: 20px;
-}
-
 .home-view {
     max-width: 640px;
     margin: 0 auto;
@@ -81,26 +71,89 @@
     color: #777;
 }
 
-.home-progress {
-    text-align: center;
-    font-weight: bold;
-    color: #2e7d32;
-    margin: 6px 0 24px;
+/* Progress card: the count and bar, then one main button to carry on reading, then the two views. */
+.home-card {
+    margin: 14px 24px 8px;
+    padding: 16px;
+    background: #fff;
+    border: 1px solid var(--ui-line, #e3e6e8);
+    border-radius: 12px;
 }
+.home-progress { margin-bottom: 14px; }
+.home-progress:empty { display: none; }
+.home-progress-top { display: flex; justify-content: space-between; margin-bottom: 7px; font-size: calc(13px * var(--font-scale)); color: var(--ui-ink-2, #555); }
+.home-progress .bar { margin: 0; }
 
-/* Offline copy: a short explanation under its switch, and below that one line
-   showing what is happening. core/offline.js fills the line in and sets
-   data-state. */
-.home-offline-hint {
-    margin: -4px 0 8px;
-    font-size: calc(13px * var(--font-scale));
-    color: #666;
-    line-height: 1.4;
-}
-.home-offline-status {
-    margin: 0 0 12px;
-    padding: 8px 14px;
+.home-primary-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+    min-height: 46px;
+    border: 0;
     border-radius: 10px;
+    background: #2b2f33;
+    color: #fff;
+    font: inherit;
+    font-size: calc(15px * var(--font-scale));
+    font-weight: 600;
+    cursor: pointer;
+}
+.home-primary-btn:hover { background: #111; }
+.home-primary-btn .ic { font-size: 18px; }
+
+.home-view-options { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+.home-view-option-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    min-height: 44px;
+    border: 1px solid #d5dadd;
+    border-radius: 10px;
+    background: #fff;
+    color: var(--ui-ink, #222);
+    font: inherit;
+    font-size: calc(14px * var(--font-scale));
+    cursor: pointer;
+}
+.home-view-option-btn:hover { background: var(--ui-soft, #f1f3f4); }
+.home-view-option-btn .ic { font-size: 18px; }
+.home-view-hint { margin: 10px 0 0; text-align: center; font-size: calc(12px * var(--font-scale)); color: var(--ui-muted, #777); }
+.home-primary-btn:focus-visible, .home-view-option-btn:focus-visible { outline: 2px solid var(--ui-accent, #2e7d32); outline-offset: 2px; }
+
+/* Settings: the same groups and rows as the header's Settings (header.css). Text follows the font-size setting here. */
+.home-settings { padding: 6px 24px 0; }
+.home-settings .set-row { font-size: calc(15px * var(--font-scale)); }
+.home-settings .set-sub { font-size: calc(12px * var(--font-scale)); }
+.home-settings .set-group-label { font-size: calc(11px * var(--font-scale)); }
+.home-settings .set-row--sync { font-size: calc(15px * var(--font-scale)); }
+
+/* Languages as chips: tap to turn one on or off. */
+.set-row--chips { flex-wrap: wrap; }
+.home-lang-list { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+.home-lang-row {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    padding: 5px 11px;
+    border: 1px solid #d5dadd;
+    border-radius: 16px;
+    font-size: calc(13px * var(--font-scale));
+    color: var(--ui-ink-2, #555);
+    cursor: pointer;
+}
+.home-lang-row input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.home-lang-row:has(input:checked) { background: var(--ui-accent-soft, #e8f5e9); border-color: #a5d0a8; color: var(--ui-accent-ink, #1b5e20); font-weight: 600; }
+.home-lang-row:has(input:focus-visible) { outline: 2px solid var(--ui-accent, #2e7d32); outline-offset: 2px; }
+.home-lang-row:has(input:disabled) { opacity: 0.45; cursor: not-allowed; }
+
+/* Offline copy: one line showing what is happening. core/offline.js fills it in and sets data-state. */
+.home-offline-status {
+    margin: 0;
+    padding: 8px 14px;
+    border-top: 1px solid #eef0f1;
     text-align: center;
     font-size: calc(14px * var(--font-scale));
     background: #f1f3f4;
@@ -113,92 +166,9 @@
 .home-offline-status[data-state="offline-ready"],
 .home-offline-status[data-state="offline"] { background: #ede7f6; color: #311b92; }
 .home-offline-status[data-state="unsupported"] { background: #f1f3f4; color: #555; }
-
-.home-view-options {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 12px;
-    padding: 0 24px 24px;
-}
+.home-offline-status:last-child { border-radius: 0 0 9px 9px; }
 
 @media (max-width: 480px) {
-    .home-view-options {
-        grid-template-columns: 1fr;
-    }
-}
-
-.home-view-option {
-    border: 0.5px solid #ddd;
-    border-radius: 12px;
-    padding: 16px;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
-
-.home-view-option-icon {
-    font-size: 22px;
-}
-
-.home-view-option-title {
-    font-size: calc(15px * var(--font-scale));
-    font-weight: bold;
-}
-
-.home-view-option-desc {
-    font-size: calc(13px * var(--font-scale));
-    color: #666;
-    margin: 0;
-    flex: 1;
-}
-
-.home-view-option-btn {
-    margin-top: auto;
-}
-
-.home-settings {
-    border-top: 0.5px solid #ddd;
-    padding: 20px 24px 0;
-}
-
-.home-settings-label {
-    font-weight: bold;
-    font-size: calc(15px * var(--font-scale));
-}
-
-.home-settings-hint {
-    font-size: calc(12px * var(--font-scale));
-    color: #888;
-    margin: 4px 0 14px;
-}
-
-.home-section {
-    margin-bottom: 14px;
-}
-
-.home-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    font-size: calc(15px * var(--font-scale));
-}
-
-.home-section-label {
-    display: block;
-    font-size: calc(15px * var(--font-scale));
-    margin-bottom: 6px;
-}
-
-.home-lang-list {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-}
-
-.home-lang-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: calc(15px * var(--font-scale));
-    cursor: pointer;
+    .home-card, .home-settings { margin-left: 12px; margin-right: 12px; padding-left: 0; padding-right: 0; }
+    .home-card { padding: 14px; }
 }

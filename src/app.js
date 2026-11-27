@@ -8,7 +8,10 @@ import { initHeaderControls, applySettings, updateMediaVisibility, getActiveLang
 import { initHomeControls, refreshHomeView } from './home/home.js';
 import { initOffline } from './core/offline.js';
 import { installVideoModal, openVideoModal } from './core/video-modal.js';
-import { initAi, collapseToPill, revealTargetWhenSettled } from './ai/ai-panel.js';
+import { initAi, askWith, collapseToPill, revealTargetWhenSettled } from './ai/ai-panel.js';
+import { hydrateIcons } from './core/icons.js';
+import { initOmnibox } from './header/omnibox.js';
+import { initProgressButton } from './header/progress-button.js';
 import { initStudy, closeStudy, refreshStudyLog } from './study/study-panel.js';
 import { initSync } from './sync/index.js';
 import { loadStudyConfig } from './study/study-config.js';
@@ -188,6 +191,9 @@ function pruneStaleReadTicks() {
 
 // ── Boot ──────────────────────────────────────────────────────────────────
 async function init() {
+    // Fill in the line icons the markup asks for (<span data-icon="…">) before anything is shown or measured.
+    hydrateIcons();
+
     // Restore saved settings (langs/videos/QR/read-tracking all live under one key)
     applySettings();
 
@@ -234,6 +240,7 @@ async function init() {
 
     // ── Home surface — the landing page, not a third view state ────────────
     initHomeControls(data);
+    initProgressButton();
 
     // ── AI assistant (opt-in; see ai/). A citation chip opens the cited block in
     // the view the reader is already using (Book or Continuous). From Home it
@@ -250,11 +257,22 @@ async function init() {
             else revealTargetWhenSettled(blockId);
         }, 150);
     };
+    // ── The header's one box for search and Ask AI. A topic in its list opens like a cited passage; the
+    // "Ask AI" row hands the typed text to the assistant's panel.
+    const omnibox = initOmnibox({
+        data,
+        getLangs: getActiveLangs,
+        onPick: openCitedBlock,
+        onAsk: (question) => { closeStudy(); askWith(question); },
+    });
     initAi({
         data,
         // The assistant's "Watch" buttons: play a linked video at the moment the answer is about.
         onWatch: ({ videoId, start, label }) => openVideoModal({ videoId, start, label }),
         onCite: openCitedBlock,
+        // The header chip asks whatever is typed in the search box (then the box is tidied away).
+        getDraft: omnibox.draft,
+        clearDraft: omnibox.close,
     });
 
     // ── Study companion (opt-in; see study/): questions after a section is marked read.
@@ -271,6 +289,9 @@ async function init() {
     }).catch(err => console.warn('Sync unavailable:', err));
 
     document.getElementById('home-btn')?.addEventListener('click', showHome);
+    // "Continue reading": the view the reader had open last (each view remembers its own place).
+    document.getElementById('home-continue')?.addEventListener('click', () =>
+        activateView(localStorage.getItem('viewMode') === 'continuous' ? 'continuous' : 'book'));
     document.getElementById('home-open-book')?.addEventListener('click', () => activateView('book'));
     document.getElementById('home-open-continuous')?.addEventListener('click', () => activateView('continuous'));
 

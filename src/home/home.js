@@ -70,7 +70,25 @@ function renderProgress() {
     const el = document.getElementById('home-progress');
     if (!el) return;
     const { read, total, percentage } = computeProgress(getReadBlocks(localStorage), totalBlockCount());
-    el.textContent = total > 0 ? `✓ ${read}/${total} read (${percentage}%)` : '';
+    el.replaceChildren();
+    if (total > 0) {
+        const top = document.createElement('div');
+        top.className = 'home-progress-top';
+        const count = document.createElement('span');
+        count.textContent = `${read} of ${total} read`;
+        const pct = document.createElement('span');
+        pct.textContent = `${percentage}%`;
+        top.append(count, pct);
+        const bar = document.createElement('div');
+        bar.className = 'bar';
+        const fill = document.createElement('i');
+        fill.style.width = `${percentage}%`;
+        bar.appendChild(fill);
+        el.append(top, bar);
+    }
+    // The main button: carry on where the reader was, or start if they have not read anything yet.
+    const label = document.getElementById('home-continue-label');
+    if (label) label.textContent = read > 0 || localStorage.getItem('viewMode') ? 'Continue reading' : 'Start reading';
 }
 
 // Proxy a value onto the real header control and fire the header's own

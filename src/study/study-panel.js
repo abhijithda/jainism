@@ -382,7 +382,7 @@ function buildDrawer() {
     const body = el('div', 'study-body');
     body.id = 'study-body';
     body.setAttribute('aria-live', 'polite');
-    const note = el('div', 'ai-disclaimer', 'Questions come from this book\u2019s own text. Check your answers against the passages, and ask a guru or scholar for guidance.');
+    const note = el('div', 'ai-disclaimer', 'Questions come from this book\u2019s own text. Check your answers against the passages, shlokas and videos in the book.');
     drawer.append(buildResizeHandle('study-resize', 'Resize the study panel (drag, or use the arrow keys)'), head, body, note);
     document.body.appendChild(drawer);
     drawer.style.setProperty('--ai-width', `${loadSettings().aiPanelWidth}px`);
@@ -404,7 +404,7 @@ function buildDrawer() {
 
 const RT_SWITCHES = ['toggle-read-tracking', 'home-toggle-read-tracking'];
 const LOCK_NOTES = ['rt-lock-note', 'home-rt-lock-note'];
-const LOCK_TEXT = '\u{1F393} Read tracking stays on while the study companion is on. Switch Study off to change it.';
+const LOCK_TEXT = 'Read tracking stays on while the study companion is on. Switch Study off to change it.';
 
 /** A refused click on the locked Read tracking switch: highlight the note that explains why. */
 function flashLockNote() {

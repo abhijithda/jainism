@@ -3,7 +3,7 @@
 //   - a new question written from the passages the reader just met, and
 //   - feedback on the reader's own answer.
 //
-// Same rules as the "Ask the book" assistant (ai/rag.js): the model may only use
+// Same rules as the "Ask AI" assistant (ai/rag.js): the model may only use
 // the passages it is given, must cite them by label, and anything that cites no
 // real passage is thrown away rather than shown. Only hosted engines (Cloud, or
 // the reader's own service) are used: small on-device models have been seen to

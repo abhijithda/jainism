@@ -14,6 +14,8 @@ import {
     applyFontScale, changeFontScale, initFontScaleControl,
 } from '../core/font-scale.js';
 
+import { initSegmented } from '../core/segmented.js';
+
 export { SETTINGS_KEY, loadSettings, saveSettings };
 export { PAPER_SIZES, applyPaperSize, initPaperSizeControl };
 export { FONT_SCALE_MIN, FONT_SCALE_MAX, FONT_SCALE_STEP, applyFontScale, changeFontScale, initFontScaleControl };
@@ -217,16 +219,28 @@ export function updateReadTrackingVisibility() {
 export function initHeaderDropdown() {
     const btn  = document.getElementById('settings-btn');
     const menu = document.getElementById('settings-menu');
+    const closeBtn = document.getElementById('settings-close');
     if (!btn || !menu) return;
+
+    // body.settings-open dims the page behind the sheet on a phone (header.css); it does nothing on desktop.
+    const setOpen = (open) => {
+        menu.style.display = open ? 'block' : 'none';
+        document.body.classList.toggle('settings-open', open);
+        btn.setAttribute('aria-expanded', String(open));
+    };
 
     btn.onclick = (e) => {
         e.stopPropagation();
-        menu.style.display = menu.style.display === 'block' ? 'none' : 'block';
+        setOpen(menu.style.display !== 'block');
     };
+    if (closeBtn) closeBtn.addEventListener('click', () => setOpen(false));
     document.addEventListener('click', (e) => {
-        if (menu && !menu.contains(e.target) && e.target !== btn) {
-            menu.style.display = 'none';
+        if (menu && menu.style.display === 'block' && !menu.contains(e.target) && !btn.contains(e.target)) {
+            setOpen(false);
         }
+    });
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && menu.style.display === 'block') setOpen(false);
     });
 }
 
@@ -235,7 +249,7 @@ export function initHeaderDropdown() {
  * @param {Function} onLangChange  - callback(activeLangs[]) on lang change
  * @param {Function} [onReadToggle] - callback when read-tracking toggle changes
  */
-// ── Focus / zen mode ─────────────────────────────────────────────────────
+// ── Full screen / zen mode ─────────────────────────────────────────────────────
 // Hides the header and, best-effort, requests real browser Fullscreen so
 // the browser's own chrome gets out of the way too — see the CSS comment
 // on body.zen-mode in header.css for why Fullscreen is optional rather
@@ -332,6 +346,8 @@ export function initHeaderControls(onLangChange, onReadToggle) {
     initHeaderDropdown();
     initPaperSizeControl();
     initFontScaleControl();
+    // The page-size and AI choices are a row of buttons instead of a drop-down (the <select> stays underneath).
+    initSegmented(['paper-size-select', 'home-paper-size-select', 'ai-engine-select', 'home-ai-engine-select']);
     initZenModeControl();
     updateMediaVisibility();
     updateReadTrackingVisibility();

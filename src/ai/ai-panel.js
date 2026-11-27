@@ -15,6 +15,7 @@ import { destinationHost, isLocalBaseUrl, normalizeBaseUrl } from './engines/cus
 import { openAiConfig } from './ai-config.js';
 import { loadTranscripts, createVideoIndex, findMoments } from './video-nav.js';
 import { formatTime } from '../core/video-time.js';
+import { icon } from '../core/icons.js';
 
 // Short on purpose: it sits under the picker in the Settings menu.
 function privacyNote(choice, settings) {
@@ -246,6 +247,7 @@ export function renderMoments(container, moments, onWatch) {
 
 function addMessage(role, text = '') {
     const list = $('ai-messages');
+    $('ai-empty')?.remove();
     const el = document.createElement('div');
     el.className = `ai-msg ai-msg--${role}`;
     el.textContent = text;
@@ -271,6 +273,8 @@ export function applyAiSetting() {
     // The picker exists twice (header Settings menu and the Home page's mirror);
     // both always show the same value and the same one-line note.
     const selects = [$('ai-engine-select'), $('home-ai-engine-select')];
+    const tag = $('ai-engine-tag');
+    if (tag) tag.textContent = choice === 'cloud' ? 'Cloud' : choice === 'local' ? 'Local' : '';
     const notes = [$('ai-engine-note'), $('home-ai-engine-note')];
     selects.forEach(sel => { if (sel) sel.value = choice; });
 
@@ -373,12 +377,21 @@ export function revealTargetWhenSettled(blockId, { interval = 120, maxWait = 150
     setTimeout(tick, interval);
 }
 
-export function openDrawer({ focus = true } = {}) {
+export function openDrawer({ focus = true, prefill } = {}) {
     const d = $('ai-drawer');
-    if (d) { d.hidden = false; if (focus) $('ai-input')?.focus(); }
+    const input = $('ai-input');
+    // A question typed in the header's search box arrives here. It is only filled in: the reader presses Ask.
+    if (input && typeof prefill === 'string' && prefill) input.value = prefill;
+    if (d) {
+        d.hidden = false;
+        if (focus && input) { input.focus(); input.setSelectionRange?.(input.value.length, input.value.length); }
+    }
     hideBackPill();
     saveSession();
 }
+
+/** Opens the panel with `question` typed in (used by the header's "Ask AI" row). */
+export function askWith(question) { openDrawer({ prefill: question }); }
 export function closeDrawer() { const d = $('ai-drawer'); if (d) d.hidden = true; hideBackPill(); saveSession(); }
 
 // ── Reading a cited passage ──────────────────────────────────────────────
@@ -496,18 +509,24 @@ function buildDrawer() {
     const head = document.createElement('div');
     head.className = 'ai-head';
     const title = document.createElement('strong');
-    title.textContent = 'Ask the book';
+    const tag = document.createElement('span');
+    tag.id = 'ai-engine-tag';
+    tag.className = 'ai-tag';
+    const sparkle = document.createElement('span');
+    sparkle.className = 'ic';
+    sparkle.appendChild(icon(document, 'sparkles'));
+    title.append(sparkle, 'Ask AI', tag);
     const expand = document.createElement('button');
     expand.type = 'button';
     expand.className = 'ai-expand';
-    expand.textContent = '\u2922';
+    expand.appendChild(icon(document, 'arrows-diagonal'));
     expand.title = 'Wider / narrower';
     expand.setAttribute('aria-label', 'Make the panel wider or narrower');
     expand.addEventListener('click', () => setPanelWidth(currentPanelWidth() < 700 ? WIDE_PANEL : AI_PANEL_WIDTH_DEFAULT));
     const close = document.createElement('button');
     close.type = 'button';
     close.className = 'ai-close';
-    close.textContent = '✕';
+    close.appendChild(icon(document, 'x'));
     close.setAttribute('aria-label', 'Close');
     close.addEventListener('click', closeDrawer);
     head.append(title, expand, close);
@@ -516,6 +535,14 @@ function buildDrawer() {
     messages.id = 'ai-messages';
     messages.className = 'ai-messages';
     messages.setAttribute('aria-live', 'polite');
+    const empty = document.createElement('div');
+    empty.id = 'ai-empty';
+    empty.className = 'ai-empty';
+    const emptyIcon = document.createElement('span');
+    emptyIcon.className = 'ic';
+    emptyIcon.appendChild(icon(document, 'sparkles', 26));
+    empty.append(emptyIcon, 'Ask a question about the book. The answer comes only from its own text, with the passages shown so you can check them.');
+    messages.appendChild(empty);
 
     const status = document.createElement('div');
     status.id = 'ai-status';
@@ -530,7 +557,9 @@ function buildDrawer() {
     const send = document.createElement('button');
     send.type = 'button';
     send.id = 'ai-send';
-    send.textContent = 'Ask';
+    send.setAttribute('aria-label', 'Ask');
+    send.title = 'Ask';
+    send.appendChild(icon(document, 'arrow-up', 18));
     const submit = () => {
         const q = input.value.trim();
         if (!q) return;
@@ -545,7 +574,7 @@ function buildDrawer() {
 
     const note = document.createElement('div');
     note.className = 'ai-disclaimer';
-    note.textContent = 'Answers use only this book\u2019s text and can still be wrong. Check the cited passages, and ask a guru or scholar for guidance.';
+    note.textContent = 'Answers use only this book\u2019s text and can still be wrong. Check the cited passages, shlokas and videos in the book.';
 
     drawer.append(buildResizeHandle(), head, messages, status, form, note);
     document.body.appendChild(drawer);
@@ -555,16 +584,16 @@ function buildDrawer() {
     back.id = 'ai-back';
     back.className = 'ai-back';
     back.hidden = true;
-    back.textContent = '\u{1F4AC} Back to answer';
+    back.append(icon(document, 'sparkles', 18), 'Back to answer');
     back.addEventListener('click', openDrawer);
     document.body.appendChild(back);
     setPanelWidth(loadSettings().aiPanelWidth, { save: false });
 }
 
 /**
- * @param {{data: Array, onCite: (blockId: string) => void, onWatch?: (m: {videoId: string, start: number, label: string}) => void}} args
+ * @param {{data: Array, onCite: (blockId: string) => void, onWatch?: (m: {videoId: string, start: number, label: string}) => void, getDraft?: () => string, clearDraft?: () => void}} args
  */
-export function initAi({ data, onCite, onWatch }) {
+export function initAi({ data, onCite, onWatch, getDraft = () => '', clearDraft = () => {} }) {
     state.data = data;
     state.onCite = onCite;
     state.onWatch = onWatch || null;
@@ -587,7 +616,12 @@ export function initAi({ data, onCite, onWatch }) {
     $('ai-config-btn')?.addEventListener('click', configure);
     // Home's button just presses the header's, like the rest of Home's settings.
     $('home-ai-config-btn')?.addEventListener('click', () => $('ai-config-btn')?.click());
-    $('ai-btn')?.addEventListener('click', () => ($('ai-drawer').hidden ? openDrawer() : closeDrawer()));
+    $('ai-btn')?.addEventListener('click', () => {
+        // With something typed in the search box the chip means "ask this"; with nothing typed it opens/closes the panel.
+        const typed = getDraft();
+        if (typed) { clearDraft(); openDrawer({ prefill: typed }); return; }
+        if ($('ai-drawer').hidden) openDrawer(); else closeDrawer();
+    });
     document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDrawer(); });
     applyAiSetting();
     // Bring the panel back if it was open (applyAiSetting has by now closed it if the assistant is off or unusable).

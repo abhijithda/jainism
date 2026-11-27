@@ -83,3 +83,33 @@ test('the Home cover shows each language\'s title, then its subtitle styled as a
     expect(lines.map(l => l.textContent)).toEqual(['ಶೀರ್ಷಿಕೆ', 'ಉಪಶೀರ್ಷಿಕೆ', 'Title', 'Subtitle']);
     expect(lines.map(l => l.classList.contains('is-subtitle'))).toEqual([false, true, false, true]);
 });
+
+describe('Home progress card and main button', () => {
+    const book = [{ id: 'q1', type: 'qa', blocks: [
+        { id: 'q1_b_1', type: 'question', content: { en: ['One?'] } },
+        { id: 'q1_b_2', type: 'answer', content: { en: ['Two.'] } },
+    ] }];
+
+    function page() {
+        localStorage.clear();
+        document.body.innerHTML = '<div id="home-progress"></div><span id="home-continue-label"></span>';
+        initHomeControls(book);
+    }
+
+    test('before reading: 0 read, and the button says Start reading', () => {
+        page();
+        refreshHomeView();
+        expect(document.querySelector('#home-progress .home-progress-top').textContent).toMatch(/^0 of \d+ read0%$/);
+        expect(document.getElementById('home-continue-label').textContent).toBe('Start reading');
+    });
+
+    test('after reading something: the count and bar move and the button says Continue reading', () => {
+        page();
+        const { saveReadBlocks } = require('../core/read-tracking');
+        saveReadBlocks(new Set(['q1_b_1']), localStorage);
+        refreshHomeView();
+        expect(document.querySelector('#home-progress .home-progress-top').textContent).toMatch(/^1 of \d+ read\d+%$/);
+        expect(parseInt(document.querySelector('#home-progress .bar i').style.width, 10)).toBeGreaterThan(0);
+        expect(document.getElementById('home-continue-label').textContent).toBe('Continue reading');
+    });
+});

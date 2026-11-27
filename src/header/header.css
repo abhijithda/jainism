@@ -1,4 +1,17 @@
-/* header.css — App header, search bar, settings dropdown, view toggle. */
+/* header.css — App header, search box, progress button, settings dropdown/sheet, view toggle.
+   Icons are inline SVG (core/icons.js); colours and sizes below use a few --ui-* variables so the
+   header, Home settings and Ask panel look like one family. */
+
+:root {
+    --ui-ink: #222;
+    --ui-ink-2: #555;
+    --ui-muted: #777;
+    --ui-line: #e3e6e8;
+    --ui-soft: #f1f3f4;
+    --ui-accent: #2e7d32;
+    --ui-accent-ink: #1b5e20;
+    --ui-accent-soft: #e8f5e9;
+}
 
 /* 1. GENERAL & WRAPPER */
 body {
@@ -8,12 +21,16 @@ body {
     background-color: #f4f7f6;
 }
 
-/* 2. HEADER & SEARCH */
+/* An icon placed by core/icons.js (or empty until it runs). */
+.ic { display: inline-flex; align-items: center; justify-content: center; line-height: 0; flex-shrink: 0; }
+.ic svg { display: block; }
+
+/* 2. HEADER */
 .app-header {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    padding: 10px 40px;
+    gap: 10px;
+    padding: 10px 24px;
     background: #ffffff;
     border-bottom: 1px solid #e0e0e0;
     position: sticky;
@@ -21,34 +38,220 @@ body {
     z-index: 100;
 }
 
-#search-bar {
-    flex-grow: 1;
-    margin: 0 20px;
-    padding: 10px 20px;
-    border: 1px solid #ddd;
-    border-radius: 20px;
-    outline: none;
-}
-
-.view-menu-container {
-    position: relative;
-    display: inline-block;
-}
-
+/* Round icon button (Home, Search, Full screen, Settings, close/back buttons). */
 .menu-trigger {
-    padding: 8px 20px;
     cursor: pointer;
-    background: white;
-    border: 0.8px solid #ddd;
+    background: #fff;
+    border: 1px solid var(--ui-line);
     border-radius: 20px;
+    font: inherit;
     font-size: 13.33px;
-    font-family: Arial, sans-serif;
-    color: #333;
+    color: var(--ui-ink);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 38px;
+    flex-shrink: 0;
+}
+.menu-trigger:hover { background: var(--ui-soft); }
+.menu-trigger:focus-visible, .view-toggle-btn:focus-visible, .progress-btn:focus-visible, .ask-chip:focus-visible { outline: 2px solid var(--ui-accent); outline-offset: 2px; }
+.icon-btn { width: 38px; padding: 0; font-size: 20px; border-radius: 50%; }
+.home-btn.active { background: #e9edef; border-color: #c9d0d4; }
+
+.view-menu-container { position: relative; display: inline-block; flex-shrink: 0; }
+
+/* View toggle: Book / Scroll */
+.view-toggle {
+    display: flex;
+    border: 1px solid var(--ui-line);
+    border-radius: 20px;
+    overflow: hidden;
+    flex-shrink: 0;
+    background: white;
+}
+.view-toggle-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 36px;
+    padding: 0 14px;
+    border: none;
+    background: white;
+    cursor: pointer;
+    font: inherit;
+    font-size: 13px;
+    color: var(--ui-ink-2);
+    transition: background 0.15s;
+}
+.view-toggle-btn .ic { font-size: 18px; }
+.view-toggle-btn:hover { background: var(--ui-soft); }
+.view-toggle-btn.active { background: #e9edef; color: #111; font-weight: 600; }
+
+/* 3. ONE BOX FOR SEARCH AND ASK AI */
+.omnibox { position: relative; flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; margin: 0 4px; }
+.omni-back, .search-toggle { display: none; }
+.omni-field {
+    flex: 1;
+    min-width: 0;
     display: flex;
     align-items: center;
+    gap: 8px;
     height: 38px;
+    box-sizing: border-box;
+    padding: 0 5px 0 14px;
+    border: 1px solid var(--ui-line);
+    border-radius: 20px;
+    background: #fff;
 }
+.omni-field:focus-within { border-color: #8fbf92; box-shadow: 0 0 0 3px var(--ui-accent-soft); }
+.omni-glass { font-size: 18px; color: var(--ui-muted); }
+#search-bar {
+    flex: 1;
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    outline: none;
+    background: transparent;
+    font: inherit;
+    font-size: 14px;
+    color: var(--ui-ink);
+}
+.ask-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    height: 28px;
+    padding: 0 11px;
+    border: 0;
+    border-radius: 14px;
+    background: var(--ui-accent-soft);
+    color: var(--ui-accent-ink);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+.ask-chip .ic { font-size: 16px; }
+.ask-chip:hover { background: #d6ecd8; }
+.ask-chip[hidden] { display: none; }
 
+.omni-menu {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    right: 0;
+    z-index: 1001;
+    max-height: min(70vh, 460px);
+    overflow-y: auto;
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 12px;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.12);
+}
+.omni-menu[hidden] { display: none; }
+.omni-head { padding: 9px 14px 4px; font-size: 12px; color: var(--ui-muted); }
+.omni-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    box-sizing: border-box;
+    min-height: 42px;
+    padding: 8px 14px;
+    border: 0;
+    border-top: 1px solid #f0f0f0;
+    background: #fff;
+    color: var(--ui-ink);
+    font: inherit;
+    font-size: 14px;
+    text-align: left;
+    cursor: pointer;
+}
+.omni-head + .omni-row { border-top: 0; }
+.omni-row:hover, .omni-row:focus-visible, .omni-row.is-active { background: #f4f7f6; outline: none; }
+.omni-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.omni-text mark { background: #fff0a6; color: inherit; border-radius: 2px; }
+.omni-label { flex-shrink: 0; font-size: 12px; color: var(--ui-muted); }
+.omni-ask { background: var(--ui-accent-soft); color: var(--ui-accent-ink); font-weight: 600; min-height: 46px; }
+.omni-ask:hover, .omni-ask:focus-visible, .omni-ask.is-active { background: #d6ecd8; }
+.omni-ask .ic { font-size: 18px; }
+.omni-empty { padding: 10px 14px 12px; font-size: 13px; color: var(--ui-muted); }
+
+/* 4. PROGRESS BUTTON (ring) + the small card it opens */
+.progress-wrap { display: none; position: relative; flex-shrink: 0; }
+body.show-read-tracking .progress-wrap { display: block; }
+.progress-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 38px;
+    box-sizing: border-box;
+    padding: 0 14px 0 1px;
+    border: 1px solid var(--ui-line);
+    border-radius: 20px;
+    background: #fff;
+    font: inherit;
+    font-size: 13px;
+    color: var(--ui-ink-2);
+    cursor: pointer;
+}
+.progress-btn:hover { background: var(--ui-soft); }
+.progress-ring-box { position: relative; width: 34px; height: 34px; flex-shrink: 0; }
+.progress-ring { display: block; }
+.ring-track { fill: none; stroke: var(--ui-line); stroke-width: 3; }
+.ring-fill { fill: none; stroke: var(--ui-accent); stroke-width: 3; stroke-linecap: round; }
+.progress-pct { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; color: var(--ui-ink); }
+.progress-btn .read-progress { margin: 0; }
+.progress-ring-box .progress-badge { position: absolute; top: -4px; right: -6px; margin: 0; display: none; }
+
+.pop-card {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    z-index: 1001;
+    width: 250px;
+    box-sizing: border-box;
+    padding: 12px 0 0;
+    overflow: hidden;
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 12px;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.12);
+}
+.pop-card[hidden] { display: none; }
+.pop-top { display: flex; justify-content: space-between; padding: 0 14px 6px; font-size: 13px; color: var(--ui-ink-2); }
+.bar { height: 6px; margin: 0 14px 12px; border-radius: 3px; background: #eceff1; overflow: hidden; }
+.bar > i { display: block; height: 100%; width: 0; background: var(--ui-accent); }
+.pop-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    box-sizing: border-box;
+    min-height: 46px;
+    padding: 0 14px;
+    border: 0;
+    border-top: 1px solid #eee;
+    background: #fff;
+    font: inherit;
+    font-size: 15px;
+    color: var(--ui-ink);
+    text-align: left;
+    cursor: pointer;
+}
+.pop-row:hover { background: #f4f7f6; }
+.pop-row[hidden] { display: none; }
+.pop-row .ic { font-size: 20px; color: var(--ui-ink-2); }
+.pop-row-text { flex: 1; }
+.pop-row-go { color: var(--ui-muted) !important; }
+
+.study-pill { gap: 6px; padding: 0 14px; }
+.study-pill .ic { font-size: 19px; }
+.study-pill[hidden] { display: none; }
+
+/* 5. SETTINGS: groups of rows, in the header dropdown and on Home */
 .menu-content {
     display: none;
     position: absolute;
@@ -56,173 +259,89 @@ body {
     top: calc(100% + 10px);
     background-color: white;
     border: 1px solid #eee;
-    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.12);
     z-index: 1000;
-    min-width: 220px;
-    padding: 20px;
+    width: 360px;
+    max-width: calc(100vw - 20px);
+    max-height: calc(100vh - 100px);
+    overflow-y: auto;
+    box-sizing: border-box;
+    padding: 4px 14px 14px;
     border-radius: 12px;
 }
+.sheet-head { display: none; }
 
-.menu-section {
-    margin-bottom: 15px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 10px;
-}
+.set-group-label { margin: 14px 2px 6px; font-size: 11px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--ui-muted); }
+.set-card { background: #fff; border: 1px solid var(--ui-line); border-radius: 10px; }
+.set-row { display: flex; align-items: center; gap: 10px; padding: 9px 12px; min-height: 40px; box-sizing: border-box; border-top: 1px solid #eef0f1; font-size: 14px; color: var(--ui-ink); }
+.set-card > :first-child { border-top: 0; }
+.set-row > .ic { font-size: 19px; color: var(--ui-ink-2); width: 22px; }
+.set-text { flex: 1; min-width: 0; cursor: default; }
+label.set-text { cursor: pointer; }
+.set-sub { display: block; margin-top: 1px; font-size: 11.5px; line-height: 1.35; color: var(--ui-muted); font-weight: 400; }
+.set-row--nested { padding-left: 34px; }
+.set-row--nested > .ic { font-size: 15px; width: 15px; }
+.set-row--config { padding-top: 0; min-height: 0; border-top: 0; flex-wrap: wrap; }
+.set-row--config:not(:has(#ai-config-btn:not([hidden]), #home-ai-config-btn:not([hidden]), .set-note:not(:empty))) { display: none; }
+.set-row--config .ai-config-btn { margin-left: 32px; }
+.set-note { flex: 1 1 100%; margin-left: 32px; font-size: 11.5px; line-height: 1.35; color: var(--ui-muted); }
+.set-note:empty { display: none; }
+.set-row--sync { display: block; }
+.set-row--sync[hidden] { display: none; }
+.rt-lock-note { margin: 0 12px 8px 34px; }
 
-/* ── Lang picker inside Settings — searchable, collapsible multi-select ──── */
-.menu-section--lang {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 6px;
-}
-.menu-label {
-    font-size: 12px;
-    color: #555;
-}
-.lang-picker {
-    width: 100%;
-    position: relative;
-}
+/* Switch */
+.switch { position: relative; display: inline-block; width: 40px; height: 24px; flex-shrink: 0; }
+.switch input { position: absolute; inset: 0; margin: 0; opacity: 0.01; width: 100%; height: 100%; cursor: pointer; z-index: 2; }
+.slider { position: absolute; cursor: pointer; inset: 0; background-color: #cfd4d8; transition: 0.2s; border-radius: 12px; }
+.slider::before { position: absolute; content: ""; height: 18px; width: 18px; left: 3px; top: 3px; background-color: white; transition: 0.2s; border-radius: 50%; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25); }
+input:checked + .slider { background-color: var(--ui-accent); }
+input:checked + .slider::before { transform: translateX(16px); }
+.switch input:focus-visible + .slider { outline: 2px solid var(--ui-accent); outline-offset: 2px; }
+
+/* Segmented choice (made from a <select> by core/segmented.js: the select stays in the page, visually hidden) */
+select.seg-source { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; pointer-events: none; }
+.seg { display: inline-flex; flex-shrink: 0; border: 1px solid var(--ui-line); border-radius: 8px; overflow: hidden; background: #fff; }
+.seg button { border: 0; background: #fff; padding: 6px 11px; font: inherit; font-size: 12.5px; color: var(--ui-ink-2); cursor: pointer; }
+.seg button + button { border-left: 1px solid var(--ui-line); }
+.seg button[aria-checked="true"] { background: #e9edef; color: #111; font-weight: 600; }
+.seg button:focus-visible { outline: 2px solid var(--ui-accent); outline-offset: -2px; }
+/* An unstyled select (before the script runs, or if it fails) still looks reasonable. */
+#paper-size-select, #ai-engine-select, #home-paper-size-select, #home-ai-engine-select { font-size: 13px; padding: 5px 8px; border: 1px solid var(--ui-line); border-radius: 8px; background: #fff; color: var(--ui-ink); }
+
+.ai-config-btn { display: inline-flex; align-items: center; gap: 6px; }
+
+/* Text size */
+.font-scale-control { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+.font-scale-control button { width: 32px; height: 30px; border: 1px solid var(--ui-line); border-radius: 8px; background: #fff; color: var(--ui-ink); cursor: pointer; font-size: 12px; line-height: 1; }
+.font-scale-control button:hover { background: var(--ui-soft); }
+#font-scale-display, #home-font-scale-display { font-size: 12px; color: var(--ui-ink-2); min-width: 40px; text-align: center; }
+
+/* ── Language picker — searchable, collapsible multi-select ──────────────── */
+.lang-picker { position: relative; flex-shrink: 0; }
 .lang-trigger {
-    width: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    padding: 6px 8px;
-    font-size: 12px;
-    color: #333;
-    background: #fff;
-    border: 1px solid #ddd;
-    border-radius: 6px;
-    cursor: pointer;
-    text-align: left;
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    min-width: 138px; max-width: 180px; padding: 6px 8px 6px 10px; font: inherit; font-size: 12.5px; color: var(--ui-ink);
+    background: #fff; border: 1px solid var(--ui-line); border-radius: 8px; cursor: pointer; text-align: left;
 }
-.lang-trigger:hover { border-color: #bbb; }
-.lang-summary {
-    flex: 1;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-.lang-chevron { color: #888; font-size: 10px; }
-.lang-panel {
-    position: absolute;
-    top: calc(100% + 4px);
-    left: 0;
-    right: 0;
-    background: #fff;
-    border: 1px solid #ddd;
-    border-radius: 6px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-    z-index: 1;
-}
-.lang-search {
-    width: 100%;
-    box-sizing: border-box;
-    padding: 8px;
-    font-size: 12px;
-    border: none;
-    border-bottom: 1px solid #eee;
-    outline: none;
-    border-radius: 6px 6px 0 0;
-}
-.lang-list {
-    max-height: 160px;
-    overflow-y: auto;
-    padding: 4px 0;
-}
-.lang-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 5px 8px;
-    cursor: pointer;
-    font-size: 12px;
-    color: #333;
-}
+.lang-trigger:hover { background: var(--ui-soft); }
+.lang-summary { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lang-chevron { color: var(--ui-muted); font-size: 14px; }
+.lang-panel { position: absolute; top: calc(100% + 4px); right: 0; width: 240px; background: #fff; border: 1px solid #ddd; border-radius: 8px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1); z-index: 2; }
+.lang-panel[hidden] { display: none; }
+.lang-search { width: 100%; box-sizing: border-box; padding: 9px 10px; font-size: 13px; border: none; border-bottom: 1px solid #eee; outline: none; border-radius: 8px 8px 0 0; }
+.lang-list { max-height: 160px; overflow-y: auto; padding: 4px 0; }
+.lang-row { display: flex; align-items: center; gap: 8px; padding: 6px 10px; cursor: pointer; font-size: 13px; color: var(--ui-ink); }
 .lang-row:hover { background: #f5f5f5; }
-.lang-row input[type="checkbox"] {
-    width: 14px;
-    height: 14px;
-    cursor: pointer;
-    accent-color: #27ae60;
-    flex-shrink: 0;
-}
+.lang-row input[type="checkbox"] { width: 15px; height: 15px; cursor: pointer; accent-color: var(--ui-accent); flex-shrink: 0; }
 .lang-row-label { flex: 1; cursor: pointer; }
 .lang-row-name  { font-size: 10px; color: #aaa; }
 .lang-divider   { height: 0.5px; background: #eee; margin: 4px 0; }
 .lang-empty     { padding: 10px 8px; font-size: 12px; color: #999; text-align: center; }
-.lang-hint      { padding: 6px 8px 2px; font-size: 11px; color: #999; }
+.lang-hint      { padding: 6px 10px 4px; font-size: 11px; color: #999; }
 .lang-row:has(input:disabled) { opacity: 0.45; cursor: not-allowed; }
 
-/* ── Paper size & font-scale controls in Settings ──────────────────────── */
-#paper-size-select {
-    font-size: 12px;
-    padding: 4px 6px;
-    border: 1px solid #ddd;
-    border-radius: 6px;
-    background: #fff;
-    color: #333;
-}
-
-.font-scale-control {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-}
-
-.font-scale-control button {
-    width: 24px;
-    height: 24px;
-    border: 1px solid #ddd;
-    border-radius: 6px;
-    background: #fff;
-    color: #333;
-    cursor: pointer;
-    font-size: 11px;
-    line-height: 1;
-}
-
-.font-scale-control button:hover { border-color: #bbb; }
-
-#font-scale-display {
-    font-size: 11px;
-    color: #555;
-    min-width: 34px;
-    text-align: center;
-}
-
-/* View toggle — Book / Continuous switcher */
-.view-toggle {
-    display: flex;
-    border: 1px solid #ddd;
-    border-radius: 20px;
-    overflow: hidden;
-    flex-shrink: 0;
-    background: white;
-}
-
-.view-toggle-btn {
-    padding: 6px 14px;
-    border: none;
-    background: white;
-    cursor: pointer;
-    font-size: 13px;
-    color: #555;
-    transition: all 0.15s;
-}
-
-.view-toggle-btn:hover { background: #f5f5f5; }
-
-.view-toggle-btn.active {
-    background: #333;
-    color: white;
-}
-
-/* ── Focus / zen mode ─────────────────────────────────────────────────────
+/* ── Full screen / zen mode ─────────────────────────────────────────────────────
    Hides the app header entirely (search, view toggle, settings — the
    things you don't need once you're actually reading) and, where the
    browser allows it, also requests real Fullscreen so the browser's own
@@ -257,7 +376,9 @@ body.zen-mode .app-header {
 }
 
 body.zen-mode .zen-exit-btn {
-    display: block;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
 }
 
 /* Avoid overlapping the revealed header's own controls when peeked open —
@@ -310,18 +431,14 @@ body.zen-mode.zen-header-visible .zen-peek-btn {
 }
 
 /* ── Phones / narrow screens ──────────────────────────────────────────────
-   The header is one desktop-sized row (home, view toggle, search, progress,
-   Focus, Settings) that needs ~700px. On a phone that forced the browser to
-   zoom the whole page out. Below 700px it wraps instead: the controls on the
-   first row (Focus and Settings shrink to icons), the search box full width on
-   a second row. Touch targets are 44px tall, the usual minimum for a
-   fingertip. 700px is the same breakpoint core/media.css and the book view's
-   single-page mode use. */
+   One row of 40px+ buttons. Search is an icon: tapping it turns the whole row into the search box
+   (back arrow + box), so the box costs no space while you read. The progress button shrinks to its
+   ring (the count is in its card) and the Study button moves into that card. Settings open as a
+   sheet from the bottom of the screen. 700px is the same breakpoint core/media.css and the book
+   view's single-page mode use. */
 @media (max-width: 700px) {
     .app-header {
-        flex-wrap: wrap;
-        justify-content: flex-start;
-        gap: 8px;
+        gap: 6px;
         padding: 8px 10px;
         padding-left: max(10px, env(safe-area-inset-left));
         padding-right: max(10px, env(safe-area-inset-right));
@@ -329,64 +446,68 @@ body.zen-mode.zen-header-visible .zen-peek-btn {
     }
 
     .btn-label { display: none; }
+    .menu-trigger { height: 40px; }
+    .icon-btn { width: 40px; }
+    .view-toggle { margin-right: auto; }
+    .view-toggle-btn { height: 38px; width: 42px; padding: 0; justify-content: center; }
+    .view-toggle-btn .ic { font-size: 19px; }
 
-    .menu-trigger {
-        height: 44px;
-        min-width: 44px;
-        padding: 6px 12px;
-        justify-content: center;
-        font-size: 16px;
-    }
+    .search-toggle { display: inline-flex; }
+    .omnibox { display: none; margin: 0; }
+    .omni-back { display: inline-flex; }
+    .omni-field { height: 40px; }
+    /* 16px text stops iOS Safari zooming the page in when the box is focused. */
+    #search-bar { font-size: 16px; }
+    .ask-chip { height: 30px; }
 
-    .view-toggle-btn {
-        min-height: 42px;
-        padding: 6px 12px;
-    }
+    .app-header.search-open > :not(.omnibox) { display: none; }
+    .app-header.search-open .omnibox { display: flex; }
+    /* Results hang directly under the header, edge to edge. */
+    .omnibox { position: static; }
+    .omni-menu { top: 100%; left: 0; right: 0; border-radius: 0 0 12px 12px; border-left: 0; border-right: 0; max-height: 60vh; }
+    .omni-row { min-height: 46px; }
 
-    /* Second row, full width. 16px text stops iOS Safari zooming the page in
-       when the box is focused (it does that for anything under 16px). */
-    #search-bar {
-        order: 10;
-        flex: 1 1 100%;
-        margin: 0;
-        padding: 10px 16px;
-        font-size: 16px;
-        box-sizing: border-box;
-        min-height: 44px;
-    }
+    .progress-btn { padding: 0 1px; border: 0; border-radius: 50%; width: 40px; height: 40px; justify-content: center; background: transparent; }
+    body.show-read-tracking .progress-btn .read-progress { display: none; }
+    .progress-ring-box .progress-badge:not(:empty) { display: inline-block; }
+    .progress-wrap { position: static; }
+    .pop-card { position: fixed; right: 10px; top: calc(56px + env(safe-area-inset-top, 0px)); }
+    #study-btn { display: none !important; }
 
-    .read-progress {
-        order: 5;
-        margin: 0 4px 0 auto;
-    }
-
-    /* Push Focus + Settings to the end of the first row. When the progress
-       counter is showing it already takes the free space (margin-left: auto
-       above), so only the first of the pair needs the push. */
-    #zen-mode-btn { margin-left: auto; }
-    .read-progress ~ #zen-mode-btn { margin-left: 0; }
-
-    /* The Settings dropdown must never be wider or taller than the screen. */
+    /* Settings: a sheet from the bottom, with a dimmed page behind it. */
+    .view-menu-container { position: static; }
     .menu-content {
         position: fixed;
-        left: 10px;
-        right: 10px;
+        left: 0;
+        right: 0;
+        bottom: 0;
         top: auto;
-        min-width: 0;
-        max-height: calc(100vh - 150px);
-        max-height: calc(100dvh - 150px);
-        overflow-y: auto;
-        box-sizing: border-box;
+        width: auto;
+        max-width: none;
+        max-height: 85vh;
+        max-height: 85dvh;
+        padding: 0 14px calc(18px + env(safe-area-inset-bottom, 0px));
+        border: 0;
+        border-radius: 20px 20px 0 0;
+        box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.2);
     }
-    .view-menu-container { position: static; }
+    .sheet-head { display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 3; padding: 14px 2px 8px; background: #fff; }
+    .sheet-head::before { content: ""; position: absolute; top: 6px; left: 50%; width: 36px; height: 4px; margin-left: -18px; border-radius: 2px; background: #d0d5d8; }
+    .sheet-title { font-size: 17px; font-weight: 600; }
+    .sheet-head .menu-trigger { border: 0; }
+    /* Under the header (z-index 100), over the page. */
+    body.settings-open::after { content: ""; position: fixed; inset: 0; z-index: 99; background: rgba(0, 0, 0, 0.35); }
 
-    .lang-row { padding: 10px 8px; font-size: 14px; }
-    .lang-row input[type="checkbox"],
-    .menu-section input[type="checkbox"] { width: 22px; height: 22px; }
-    .lang-trigger, .lang-search { font-size: 14px; padding: 10px 8px; }
-    #paper-size-select { font-size: 14px; padding: 8px; }
+    .set-row { min-height: 46px; padding: 10px 12px; font-size: 15px; }
+    .set-sub { font-size: 12px; }
+    .seg button { padding: 9px 12px; font-size: 14px; }
     .font-scale-control button { width: 40px; height: 40px; font-size: 14px; }
+    .lang-trigger { font-size: 14px; padding: 9px 10px; }
+    .lang-row { padding: 11px 10px; font-size: 14px; }
+    .lang-row input[type="checkbox"] { width: 22px; height: 22px; }
+    .lang-search { font-size: 16px; }
+    .set-row--config .ai-config-btn { margin-left: 32px; }
 
-    /* The peek tab sits just under the (now taller) revealed header. */
-    body.zen-mode.zen-header-visible .zen-peek-btn { top: 112px; }
+    /* The peek tab sits just under the (revealed) header. */
+    body.zen-mode.zen-header-visible .zen-peek-btn { top: 60px; }
 }

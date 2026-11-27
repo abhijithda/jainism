@@ -51,105 +51,155 @@
 
 <body>
     <header class="app-header">
-        <button id="home-btn" class="menu-trigger home-btn" title="Home — cover, progress and settings at a glance" aria-label="Home">🏠</button>
+        <button id="home-btn" class="menu-trigger icon-btn home-btn" title="Home: cover, progress and settings" aria-label="Home"><span class="ic" data-icon="home"></span></button>
 
-        <div class="view-toggle">
-            <button class="view-toggle-btn" data-view="book" title="Book spread view">📖 Book</button>
-            <button class="view-toggle-btn" data-view="continuous" title="Continuous scrolling view">☰ Continuous</button>
+        <div class="view-toggle" role="group" aria-label="Reading view">
+            <button class="view-toggle-btn" data-view="book" title="Book: page by page, like the printed book" aria-label="Book view"><span class="ic" data-icon="book-2"></span><span class="btn-label">Book</span></button>
+            <button class="view-toggle-btn" data-view="continuous" title="Scroll: one long page, easier for skimming" aria-label="Scroll view"><span class="ic" data-icon="layout-list"></span><span class="btn-label">Scroll</span></button>
         </div>
 
-        <input type="text" id="search-bar" placeholder="Search topics - ಅಭಿಷೇಕ, Daana...">
+        <!-- One box for finding things. Typing searches the book (and lists matches below);
+             the Ask AI chip appears only when the AI assistant is on. -->
+        <div id="omnibox" class="omnibox">
+            <button type="button" id="omni-back" class="menu-trigger icon-btn omni-back" aria-label="Close search"><span class="ic" data-icon="arrow-left"></span></button>
+            <div class="omni-field">
+                <span class="ic omni-glass" data-icon="search"></span>
+                <input type="text" id="search-bar" placeholder="Search topics - ಅಭಿಷೇಕ, Daana..." autocomplete="off" enterkeyhint="search" aria-controls="omni-menu">
+                <button type="button" id="ai-btn" class="ask-chip" title="Ask AI a question about this book" aria-label="Ask AI" hidden><span class="ic" data-icon="sparkles"></span><span class="ask-chip-label">Ask AI</span></button>
+            </div>
+            <div id="omni-menu" class="omni-menu" role="listbox" aria-label="Search results" hidden></div>
+        </div>
+        <button type="button" id="search-toggle" class="menu-trigger icon-btn search-toggle" title="Search" aria-label="Search" aria-expanded="false"><span class="ic" data-icon="search"></span></button>
 
-        <span id="read-progress" class="read-progress" title="Items you've marked as read"></span>
+        <!-- Reading progress (shown while Read tracking is on). On a phone it is just the ring; tapping it opens
+             a small card with the count and, when Study is on, the Study questions row. -->
+        <div class="progress-wrap">
+            <button type="button" id="progress-btn" class="progress-btn" aria-haspopup="true" aria-expanded="false" aria-controls="progress-pop" title="Your reading progress">
+                <span class="progress-ring-box">
+                    <svg class="progress-ring" viewBox="0 0 38 38" width="34" height="34" aria-hidden="true" focusable="false">
+                        <circle class="ring-track" cx="19" cy="19" r="15"/>
+                        <circle id="progress-ring-fill" class="ring-fill" cx="19" cy="19" r="15" pathLength="100" stroke-dasharray="0 100" transform="rotate(-90 19 19)"/>
+                    </svg>
+                    <span id="progress-pct" class="progress-pct">0</span>
+                    <span id="progress-badge" class="study-badge progress-badge"></span>
+                </span>
+                <span id="read-progress" class="read-progress" title="Items you've marked as read"></span>
+            </button>
+            <div id="progress-pop" class="pop-card" role="dialog" aria-label="Reading progress" hidden>
+                <div class="pop-top"><span id="progress-pop-text"></span><span id="progress-pop-pct"></span></div>
+                <div class="bar"><i id="progress-pop-bar"></i></div>
+                <button type="button" id="study-btn-pop" class="pop-row" hidden><span class="ic" data-icon="school"></span><span class="pop-row-text">Study questions</span><span id="study-badge-pop" class="study-badge"></span><span class="ic pop-row-go" data-icon="chevron-right"></span></button>
+            </div>
+        </div>
 
-        <button id="study-btn" class="menu-trigger" title="Study questions about what you have read" aria-label="Study companion" hidden>🎓<span class="btn-label">&nbsp;Study</span><span id="study-badge" class="study-badge"></span></button>
+        <button id="study-btn" class="menu-trigger study-pill" title="Study questions about what you have read" aria-label="Study companion" hidden><span class="ic" data-icon="school"></span><span class="btn-label">Study</span><span id="study-badge" class="study-badge"></span></button>
 
-        <button id="ai-btn" class="menu-trigger" title="Ask a question about this book" aria-label="Ask the book" hidden>💬<span class="btn-label">&nbsp;Ask</span></button>
-
-        <button id="zen-mode-btn" class="menu-trigger" title="Focus mode — hide header and browser chrome (Esc to exit)" aria-label="Focus mode">⛶<span class="btn-label">&nbsp;Focus</span></button>
+        <button id="zen-mode-btn" class="menu-trigger icon-btn" title="Full screen (Esc to exit)" aria-label="Full screen"><span class="ic" data-icon="arrows-maximize"></span></button>
 
         <div class="view-menu-container">
-            <button id="settings-btn" class="menu-trigger" aria-label="Settings"><span class="btn-label">Settings&nbsp;</span>⚙️</button>
-            <div id="settings-menu" class="menu-content">
-                <!-- Language: searchable multi-select, collapsed by default.
-                     Was a single <select id="lang-select"> (All/kn/en); this scales
-                     to a long language list without a wall of checkboxes. -->
-                <div class="menu-section menu-section--lang">
-                    <span class="menu-label">🌐 Language:</span>
-                    <div class="lang-picker">
-                        <button type="button" id="lang-trigger" class="lang-trigger" aria-expanded="false">
-                            <span id="lang-summary" class="lang-summary"></span>
-                            <span class="lang-chevron" aria-hidden="true">▾</span>
-                        </button>
-                        <div id="lang-panel" class="lang-panel" hidden>
-                            <input type="text" id="lang-search" class="lang-search" placeholder="Search languages">
-                            <div id="lang-list" class="lang-list">
-                                <!-- built by header.js from KNOWN_LANGS -->
+            <button id="settings-btn" class="menu-trigger icon-btn" title="Settings" aria-label="Settings" aria-haspopup="true"><span class="ic" data-icon="settings"></span></button>
+            <div id="settings-menu" class="menu-content" role="dialog" aria-label="Settings">
+                <div class="sheet-head">
+                    <span class="sheet-title">Settings</span>
+                    <button type="button" id="settings-close" class="menu-trigger icon-btn" aria-label="Close settings"><span class="ic" data-icon="x"></span></button>
+                </div>
+
+                <div class="set-group">
+                    <div class="set-group-label">Reading</div>
+                    <div class="set-card">
+                        <!-- Language: searchable multi-select, collapsed by default. -->
+                        <div class="set-row set-row--lang">
+                            <span class="ic" data-icon="language"></span>
+                            <span class="set-text">Language</span>
+                            <div class="lang-picker">
+                                <button type="button" id="lang-trigger" class="lang-trigger" aria-expanded="false">
+                                    <span id="lang-summary" class="lang-summary"></span>
+                                    <span class="ic lang-chevron" data-icon="chevron-down"></span>
+                                </button>
+                                <div id="lang-panel" class="lang-panel" hidden>
+                                    <input type="text" id="lang-search" class="lang-search" placeholder="Search languages">
+                                    <div id="lang-list" class="lang-list">
+                                        <!-- built by header.js from KNOWN_LANGS -->
+                                    </div>
+                                </div>
                             </div>
+                        </div>
+                        <div class="set-row">
+                            <span class="ic" data-icon="typography"></span>
+                            <span class="set-text">Text size</span>
+                            <div class="font-scale-control">
+                                <button type="button" id="font-scale-decrease" title="Decrease font size" aria-label="Decrease font size">A−</button>
+                                <span id="font-scale-display">100%</span>
+                                <button type="button" id="font-scale-increase" title="Increase font size" aria-label="Increase font size">A+</button>
+                            </div>
+                        </div>
+                        <div class="set-row">
+                            <span class="ic" data-icon="ruler-2"></span>
+                            <label class="set-text" for="paper-size-select">Page size<span class="set-sub">Changes the screen and print</span></label>
+                            <select id="paper-size-select">
+                                <option value="dynamic">Dynamic</option>
+                                <option value="a4">A4</option>
+                                <option value="a3">A3</option>
+                            </select>
                         </div>
                     </div>
                 </div>
-                <div class="menu-section">
-                    <label>🎬 Videos:</label>
-                    <label class="switch">
-                        <input type="checkbox" id="toggle-videos" checked>
-                        <span class="slider"></span>
-                    </label>
+
+                <div class="set-group">
+                    <div class="set-group-label">Show in the book</div>
+                    <div class="set-card">
+                        <div class="set-row">
+                            <span class="ic" data-icon="video"></span>
+                            <label class="set-text" for="toggle-videos">Videos</label>
+                            <label class="switch"><input type="checkbox" id="toggle-videos" checked><span class="slider"></span></label>
+                        </div>
+                        <div class="set-row">
+                            <span class="ic" data-icon="qrcode"></span>
+                            <label class="set-text" for="toggle-qrs">QR codes</label>
+                            <label class="switch"><input type="checkbox" id="toggle-qrs"><span class="slider"></span></label>
+                        </div>
+                    </div>
                 </div>
-                <div class="menu-section">
-                    <label>📱 QR Codes:</label>
-                    <label class="switch">
-                        <input type="checkbox" id="toggle-qrs">
-                        <span class="slider"></span>
-                    </label>
+
+                <div class="set-group">
+                    <div class="set-group-label">Progress and learning</div>
+                    <div class="set-card">
+                        <div class="set-row">
+                            <span class="ic" data-icon="circle-check"></span>
+                            <label class="set-text" for="toggle-read-tracking">Read tracking<span class="set-sub">Mark sections as read</span></label>
+                            <label class="switch"><input type="checkbox" id="toggle-read-tracking"><span class="slider"></span></label>
+                        </div>
+                        <div id="rt-lock-note" class="rt-lock-note" role="status" hidden></div>
+                        <div class="set-row set-row--nested">
+                            <span class="ic" data-icon="corner-down-right"></span>
+                            <label class="set-text" for="toggle-study" title="After you mark a section as read, get questions about it. Uses the book's own text; no AI needed.">Study questions<span class="set-sub">After each section you mark read</span></label>
+                            <label class="switch"><input type="checkbox" id="toggle-study"><span class="slider"></span></label>
+                        </div>
+                        <div class="set-row set-row--ai">
+                            <span class="ic" data-icon="sparkles"></span>
+                            <label class="set-text" for="ai-engine-select" title="Ask questions about the book. Off by default.">AI assistant<span class="set-sub">Answers from the book's own text</span></label>
+                            <select id="ai-engine-select">
+                                <option value="off">Off</option>
+                                <option value="cloud">Cloud</option>
+                                <option value="local">Local</option>
+                            </select>
+                        </div>
+                        <div class="set-row set-row--config">
+                            <button type="button" id="ai-config-btn" class="ai-config-btn" title="Cloud: use this site's assistant or your own service. Local: choose the model size." hidden><span class="ic" data-icon="adjustments"></span>Configure…</button>
+                            <span id="ai-engine-note" class="set-note"></span>
+                        </div>
+                    </div>
                 </div>
-                <div class="menu-section">
-                    <label>✓ Read tracking:</label>
-                    <label class="switch">
-                        <input type="checkbox" id="toggle-read-tracking">
-                        <span class="slider"></span>
-                    </label>
-                </div>
-                <div id="rt-lock-note" class="rt-lock-note" role="status" hidden></div>
-                <div class="menu-section">
-                    <label for="toggle-study" title="After you mark a section as read, get questions about it. Uses the book's own text; no AI needed.">🎓 Study companion:</label>
-                    <label class="switch">
-                        <input type="checkbox" id="toggle-study">
-                        <span class="slider"></span>
-                    </label>
-                </div>
-                <div class="menu-section">
-                    <label for="toggle-offline" title="Save the book on this device so it opens without internet">📴 Offline copy:</label>
-                    <label class="switch">
-                        <input type="checkbox" id="toggle-offline">
-                        <span class="slider"></span>
-                    </label>
-                </div>
-                <div class="menu-section menu-section--sync" data-sync hidden></div>
-                <div class="menu-section menu-section--ai">
-                    <label for="ai-engine-select" title="Ask questions about the book. Off by default.">💬 AI assistant:</label>
-                    <select id="ai-engine-select">
-                        <option value="off">Off</option>
-                        <option value="cloud">Cloud</option>
-                        <option value="local">Local</option>
-                    </select>
-                    <button type="button" id="ai-config-btn" class="ai-config-btn" title="Cloud: use this site's assistant or your own service. Local: choose the model size." hidden>Configure…</button>
-                    <span id="ai-engine-note"></span>
-                </div>
-                <div class="menu-section">
-                    <label for="paper-size-select">🖨️ Paper size:</label>
-                    <select id="paper-size-select">
-                        <option value="dynamic">Dynamic</option>
-                        <option value="a4">A4</option>
-                        <option value="a3">A3</option>
-                    </select>
-                </div>
-                <div class="menu-section">
-                    <label>🔤 Font size:</label>
-                    <div class="font-scale-control">
-                        <button type="button" id="font-scale-decrease" title="Decrease font size" aria-label="Decrease font size">A−</button>
-                        <span id="font-scale-display">100%</span>
-                        <button type="button" id="font-scale-increase" title="Increase font size" aria-label="Increase font size">A+</button>
+
+                <div class="set-group">
+                    <div class="set-group-label">This device</div>
+                    <div class="set-card">
+                        <div class="set-row">
+                            <span class="ic" data-icon="cloud-download"></span>
+                            <label class="set-text" for="toggle-offline" title="Save the book on this device so it opens without internet">Offline copy<span class="set-sub">Saves the book here, a few MB</span></label>
+                            <label class="switch"><input type="checkbox" id="toggle-offline"><span class="slider"></span></label>
+                        </div>
+                        <div class="set-row set-row--sync" data-sync hidden></div>
                     </div>
                 </div>
             </div>
@@ -164,104 +214,109 @@
             <div class="home-cover-title-rule"></div>
         </div>
 
-        <div id="home-progress" class="home-progress"></div>
-
-
-        <div class="home-view-options">
-            <div class="home-view-option">
-                <span class="home-view-option-icon">📖</span>
-                <span class="home-view-option-title">Book</span>
-                <p class="home-view-option-desc">Page-by-page, closest to reading the printed book. Good if you like turning pages or reading start to finish.</p>
-                <button type="button" id="home-open-book" class="home-view-option-btn">Open book view</button>
+        <div class="home-card">
+            <div id="home-progress" class="home-progress"></div>
+            <button type="button" id="home-continue" class="home-primary-btn"><span class="ic" data-icon="player-play"></span><span id="home-continue-label">Start reading</span></button>
+            <div class="home-view-options">
+                <button type="button" id="home-open-book" class="home-view-option-btn"><span class="ic" data-icon="book-2"></span>Book</button>
+                <button type="button" id="home-open-continuous" class="home-view-option-btn"><span class="ic" data-icon="layout-list"></span>Scroll</button>
             </div>
-            <div class="home-view-option">
-                <span class="home-view-option-icon">☰</span>
-                <span class="home-view-option-title">Continuous</span>
-                <p class="home-view-option-desc">One long scroll, everything stacked in order. Easier for searching a topic or skimming quickly.</p>
-                <button type="button" id="home-open-continuous" class="home-view-option-btn">Open continuous view</button>
-            </div>
+            <p class="home-view-hint">Book turns pages like print. Scroll is one long page, easier for skimming.</p>
         </div>
 
         <div class="home-settings">
-            <span class="home-settings-label">⚙️ Settings</span>
-            <p class="home-settings-hint">Same settings as the header — change them here or there, they stay in sync.</p>
-
-            <div class="home-section">
-                <span class="home-section-label">🌐 Language</span>
-                <div id="home-lang-list" class="home-lang-list"></div>
+            <div class="set-group">
+                <div class="set-group-label">Reading</div>
+                <div class="set-card">
+                    <div class="set-row set-row--chips">
+                        <span class="ic" data-icon="language"></span>
+                        <span class="set-text">Language</span>
+                        <div id="home-lang-list" class="home-lang-list"></div>
+                    </div>
+                    <div class="set-row">
+                        <span class="ic" data-icon="typography"></span>
+                        <span class="set-text">Text size</span>
+                        <div class="font-scale-control">
+                            <button type="button" id="home-font-scale-decrease" aria-label="Decrease font size">A−</button>
+                            <span id="home-font-scale-display">100%</span>
+                            <button type="button" id="home-font-scale-increase" aria-label="Increase font size">A+</button>
+                        </div>
+                    </div>
+                    <div class="set-row">
+                        <span class="ic" data-icon="ruler-2"></span>
+                        <label class="set-text" for="home-paper-size-select">Page size<span class="set-sub">Changes the screen and print. A3 fits more on each page.</span></label>
+                        <select id="home-paper-size-select">
+                            <option value="dynamic">Dynamic</option>
+                            <option value="a4">A4</option>
+                            <option value="a3">A3</option>
+                        </select>
+                    </div>
+                </div>
             </div>
 
-            <div class="home-section home-row">
-                <label>🎬 Videos</label>
-                <label class="switch">
-                    <input type="checkbox" id="home-toggle-videos">
-                    <span class="slider"></span>
-                </label>
+            <div class="set-group">
+                <div class="set-group-label">Show in the book</div>
+                <div class="set-card">
+                    <div class="set-row">
+                        <span class="ic" data-icon="video"></span>
+                        <label class="set-text" for="home-toggle-videos">Videos</label>
+                        <label class="switch"><input type="checkbox" id="home-toggle-videos"><span class="slider"></span></label>
+                    </div>
+                    <div class="set-row">
+                        <span class="ic" data-icon="qrcode"></span>
+                        <label class="set-text" for="home-toggle-qrs">QR codes</label>
+                        <label class="switch"><input type="checkbox" id="home-toggle-qrs"><span class="slider"></span></label>
+                    </div>
+                </div>
             </div>
-            <div class="home-section home-row">
-                <label>📱 QR Codes</label>
-                <label class="switch">
-                    <input type="checkbox" id="home-toggle-qrs">
-                    <span class="slider"></span>
-                </label>
+
+            <div class="set-group">
+                <div class="set-group-label">Progress and learning</div>
+                <div class="set-card">
+                    <div class="set-row">
+                        <span class="ic" data-icon="circle-check"></span>
+                        <label class="set-text" for="home-toggle-read-tracking">Read tracking<span class="set-sub">Mark sections as read</span></label>
+                        <label class="switch"><input type="checkbox" id="home-toggle-read-tracking"><span class="slider"></span></label>
+                    </div>
+                    <div id="home-rt-lock-note" class="rt-lock-note" role="status" hidden></div>
+                    <div class="set-row set-row--nested">
+                        <span class="ic" data-icon="corner-down-right"></span>
+                        <label class="set-text" for="home-toggle-study">Study questions<span class="set-sub">After each section you mark read, made from the book's own text. With an AI assistant on, it can also write extra questions and check your answers.</span></label>
+                        <label class="switch"><input type="checkbox" id="home-toggle-study"><span class="slider"></span></label>
+                    </div>
+                    <div class="set-row set-row--ai">
+                        <span class="ic" data-icon="sparkles"></span>
+                        <label class="set-text" for="home-ai-engine-select">AI assistant<span class="set-sub">Answers from the book's own text</span></label>
+                        <select id="home-ai-engine-select">
+                            <option value="off">Off</option>
+                            <option value="cloud">Cloud</option>
+                            <option value="local">Local</option>
+                        </select>
+                    </div>
+                    <div class="set-row set-row--config">
+                        <button type="button" id="home-ai-config-btn" class="ai-config-btn" hidden><span class="ic" data-icon="adjustments"></span>Configure…</button>
+                        <span id="home-ai-engine-note" class="set-note"></span>
+                    </div>
+                </div>
             </div>
-            <div class="home-section home-row">
-                <label>✓ Read tracking</label>
-                <label class="switch">
-                    <input type="checkbox" id="home-toggle-read-tracking">
-                    <span class="slider"></span>
-                </label>
-            </div>
-            <p id="home-rt-lock-note" class="rt-lock-note" role="status" hidden></p>
-            <div class="home-section home-row">
-                <label for="home-toggle-study">🎓 Study companion</label>
-                <label class="switch">
-                    <input type="checkbox" id="home-toggle-study">
-                    <span class="slider"></span>
-                </label>
-            </div>
-            <p class="home-offline-hint">After you mark a section as read, you get questions about it, made from the book's own text. Read tracking is switched on with it and stays on while Study is on. With an AI assistant on, it can also write extra questions and check your answers.</p>
-            <div class="home-section home-row">
-                <label for="home-toggle-offline">📴 Offline copy</label>
-                <label class="switch">
-                    <input type="checkbox" id="home-toggle-offline">
-                    <span class="slider"></span>
-                </label>
-            </div>
-            <p class="home-offline-hint">Saves the whole book, pictures included, on this device so it opens without internet. It downloads a few MB once, so Wi‑Fi is best. Turning it off removes the saved copy.</p>
-            <p id="home-offline-status" class="home-offline-status" role="status" aria-live="polite" hidden></p>
-            <div class="home-section home-row">
-                <label for="home-ai-engine-select">💬 AI assistant</label>
-                <select id="home-ai-engine-select">
-                    <option value="off">Off</option>
-                    <option value="cloud">Cloud</option>
-                    <option value="local">Local</option>
-                </select>
-                <button type="button" id="home-ai-config-btn" class="ai-config-btn" hidden>Configure…</button>
-            </div>
-            <p id="home-ai-engine-note" class="home-offline-hint"></p>
-            <div class="home-section" data-sync hidden></div>
-            <div class="home-section home-row">
-                <label for="home-paper-size-select">🖨️ Paper size</label>
-                <select id="home-paper-size-select">
-                    <option value="dynamic">Dynamic</option>
-                    <option value="a4">A4</option>
-                    <option value="a3">A3</option>
-                </select>
-            </div>
-            <div class="home-section home-row">
-                <label>🔤 Font size</label>
-                <div class="font-scale-control">
-                    <button type="button" id="home-font-scale-decrease" aria-label="Decrease font size">A−</button>
-                    <span id="home-font-scale-display">100%</span>
-                    <button type="button" id="home-font-scale-increase" aria-label="Increase font size">A+</button>
+
+            <div class="set-group">
+                <div class="set-group-label">This device</div>
+                <div class="set-card">
+                    <div class="set-row">
+                        <span class="ic" data-icon="cloud-download"></span>
+                        <label class="set-text" for="home-toggle-offline">Offline copy<span class="set-sub">Saves the whole book, pictures included, so it opens without internet. Downloads a few MB once, so Wi‑Fi is best. Turning it off removes the saved copy.</span></label>
+                        <label class="switch"><input type="checkbox" id="home-toggle-offline"><span class="slider"></span></label>
+                    </div>
+                    <p id="home-offline-status" class="home-offline-status" role="status" aria-live="polite" hidden></p>
+                    <div class="set-row set-row--sync" data-sync hidden></div>
                 </div>
             </div>
         </div>
     </div>
 
-    <button id="zen-exit-btn" class="zen-exit-btn" title="Exit focus mode (Esc)" hidden>✕ Exit focus</button>
-    <button id="zen-peek-btn" class="zen-peek-btn" title="Show/hide header without leaving focus mode" hidden>⌄</button>
+    <button id="zen-exit-btn" class="zen-exit-btn" title="Exit full screen (Esc)" hidden><span class="ic" data-icon="arrows-minimize"></span>Exit full screen</button>
+    <button id="zen-peek-btn" class="zen-peek-btn" title="Show/hide header without leaving full screen" hidden>⌄</button>
 
     <!-- Shown only on the page a share link opens (see app.js renderSharedView): plain text, no link. -->
     <div id="shared-bar" class="shared-bar" hidden></div>

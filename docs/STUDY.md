@@ -1,10 +1,10 @@
 # Study companion
 
-Turn it on in **Settings → 🎓 Study companion** (also on Home). It is off by default.
+Turn it on in **Settings → Study questions** (under Read tracking) (also on Home). It is off by default.
 Turning it on also turns on **Read tracking** and locks that switch (greyed out, in the menu and on Home) while Study is on, because the questions follow the ✓ ticks. Turning Study off unlocks it; it stays on. Tapping the locked switch does nothing except highlight a note
 that says why (a locked switch is used instead of a disabled one, which would ignore the tap silently).
 
-> Not to be confused with the **⛶ Focus** button in the header: that one is zen mode
+> Not to be confused with the **Full screen** button in the header: that one is zen mode
 > (hides the header). The study companion is called *Study* everywhere to keep the two apart.
 
 ## What the reader sees
@@ -13,7 +13,7 @@ that says why (a locked switch is used instead of a disabled one, which would ig
 2. A small green chip appears bottom-left: "🎓 Test yourself: Deva Moodhata vs Loka Moodhata".
    It only offers. It never opens the panel by itself, so reading (and book pagination) is not
    interrupted. It disappears after 15 seconds or when dismissed.
-3. The **🎓 Study** button (header) opens a slide-over panel with the questions, e.g.
+3. The **Study** button (header; on a phone it is the "Study questions" row in the progress card) opens a slide-over panel with the questions, e.g.
    *"You just read about Deva Moodhata. Can you explain how it differs from Loka Moodhata?"*
 4. The reader types an answer (optional), taps **Show what the book says** and sees the
    book's own passages, word for word, each with a chip that opens it in the book.
