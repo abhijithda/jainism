@@ -45,6 +45,8 @@ const INDEX_URL = new URL('index.html', SCOPE).href;
 const DATA_URL = new URL('assets/data.json', SCOPE).href;
 // The study companion's per-book names. Optional: saved when it is there, and its absence never stops the install.
 const STUDY_CONFIG_URL = new URL('assets/study-config.json', SCOPE).href;
+// Sign-in's client ID (optional too). Saved so Settings looks the same offline.
+const SYNC_CONFIG_URL = new URL('assets/sync-config.json', SCOPE).href;
 
 let precacheRunning = false;
 let slowUntil = 0;
@@ -124,6 +126,10 @@ async function crawlShell() {
     try {
         const res = await fetch(STUDY_CONFIG_URL, { cache: 'reload', credentials: 'same-origin' });
         if (res.ok) saved.set(keyFor(STUDY_CONFIG_URL), res);
+    } catch (_) { /* optional */ }
+    try {
+        const res = await fetch(SYNC_CONFIG_URL, { cache: 'reload', credentials: 'same-origin' });
+        if (res.ok) saved.set(keyFor(SYNC_CONFIG_URL), res);
     } catch (_) { /* optional */ }
     return saved;
 }
