@@ -327,6 +327,120 @@ describe('telling errors apart', () => {
     });
 });
 
+/** What the shared client throws when Gemini stayed busy after its retries: later calls of the same client fail at once. */
+const unavailableErr = message => Object.assign(new Error(message), { unavailable: true });
+
+describe('the shared client gives up for the rest of its run, so a wait needs a fresh client', () => {
+    const answer503 = () => { throw unavailableErr('Gemini answered 503 (busy or rate-limited)'); };
+    const answer429 = () => { throw unavailableErr('Gemini answered 429 (busy or rate-limited)'); };
+
+    test('without a way to make a fresh client, an unavailable Gemini stops the run at once (no pointless waiting)', async () => {
+        const sleep = jest.fn(async () => {});
+        const ai = fakeAi(answer429);
+        const ctx = ctxOf({ ai, sleep });
+        await T.translateCues(ctx, itemsOf(5));
+        expect(ctx.stopped).toBe('rate-limit');
+        expect(ai.calls).toHaveLength(1);
+        expect(sleep).not.toHaveBeenCalled();
+        const busy = fakeAi(answer503);
+        const ctx2 = ctxOf({ ai: busy, sleep });
+        await T.translateCues(ctx2, itemsOf(5));
+        expect(ctx2.stopped).toBe('overloaded');
+        expect(busy.calls).toHaveLength(1);
+    });
+
+    test('with a factory, the wait is spent and the same batch is asked again with a fresh client', async () => {
+        const sleep = jest.fn(async () => {});
+        const first = fakeAi(answer503);
+        const second = fakeAi();
+        const makeAi = jest.fn(() => second);
+        const ctx = ctxOf({ ai: first, makeAi, sleep, retryWait: 4321 });
+        const { got } = await T.translateCues(ctx, itemsOf(5));
+        expect(got.size).toBe(5);
+        expect(ctx.stopped).toBe('');
+        expect(makeAi).toHaveBeenCalledTimes(1);
+        expect(sleep).toHaveBeenCalledWith(4321);
+        expect(first.calls).toHaveLength(1);
+        expect(second.calls).toHaveLength(1);
+        expect(second.calls[0].prompt).toBe(first.calls[0].prompt);                 // the same batch, not split
+    });
+
+    test('a 429 waits for the cooldown and then asks with a fresh client; repeated ones still stop the run', async () => {
+        const sleep = jest.fn(async () => {});
+        const clients = [];
+        const makeAi = () => { const c = fakeAi(clients.length < 1 ? answer429 : undefined); clients.push(c); return c; };
+        const ctx = ctxOf({ ai: fakeAi(answer429), makeAi, sleep, cooldown: 777, max429: 3 });
+        const { got } = await T.translateCues(ctx, itemsOf(5));
+        expect(got.size).toBe(5);                                                   // the first client and the first fresh one are refused, the next answers
+        expect(sleep.mock.calls.filter(c => c[0] === 777)).toHaveLength(2);
+        const always = fakeAi(answer429);
+        const ctx2 = ctxOf({ ai: always, makeAi: () => fakeAi(answer429), sleep, cooldown: 1, max429: 3 });
+        await T.translateCues(ctx2, itemsOf(5));
+        expect(ctx2.stopped).toBe('rate-limit');
+    });
+
+    /** Behaves like the real client: after it gave up (unavailable), every call fails at once until reset() is called. */
+    const realisticAi = (failOnCalls, message = 'Gemini answered 503 (busy or rate-limited)') => {
+        const state = { calls: 0, asked: 0, dead: false, resets: 0 };
+        const ai = fakeAi(undefined);
+        ai.json = async req => {
+            state.calls++;
+            if (state.dead) throw unavailableErr(`Gemini not asked again in this run: it stayed unavailable earlier (${message})`);
+            state.asked++;
+            if (failOnCalls(state.asked)) { state.dead = true; throw unavailableErr(message); }
+            return good(req);
+        };
+        ai.reset = jest.fn(() => { state.dead = false; state.resets++; });
+        ai.state = state;
+        return ai;
+    };
+
+    test('with reset() on the client, the wait is spent, the client is reset and the SAME client asks the same batch again', async () => {
+        const sleep = jest.fn(async () => {});
+        const ai = realisticAi(n => n === 1);
+        const ctx = ctxOf({ ai, sleep, retryWait: 4321 });
+        const { got } = await T.translateCues(ctx, itemsOf(5));
+        expect(got.size).toBe(5);
+        expect(ctx.stopped).toBe('');
+        expect(ai.reset).toHaveBeenCalledTimes(1);
+        expect(sleep).toHaveBeenCalledWith(4321);
+        expect(ai.state.asked).toBe(2);
+    });
+
+    test('a 429 that made the client give up: cooldown, reset, ask again; three in a row still stop the run (and cost only 3 real requests)', async () => {
+        const sleep = jest.fn(async () => {});
+        const ok = realisticAi(n => n === 1, 'Gemini answered 429 (busy or rate-limited)');
+        const c1 = ctxOf({ ai: ok, sleep, cooldown: 777 });
+        expect((await T.translateCues(c1, itemsOf(4))).got.size).toBe(4);
+        expect(sleep).toHaveBeenCalledWith(777);
+
+        const down = realisticAi(() => true, 'Gemini answered 429 (busy or rate-limited)');
+        const c2 = ctxOf({ ai: down, sleep, max429: 3 });
+        await T.translateCues(c2, itemsOf(4));
+        expect(c2.stopped).toBe('rate-limit');
+        expect(down.state.asked).toBe(3);                                        // real requests: no more than --max-429
+        expect(down.reset).toHaveBeenCalledTimes(2);
+    });
+
+    test('a client that stays down costs at most --max-transient real requests, however long the wait is', async () => {
+        const down = realisticAi(() => true);
+        const ctx = ctxOf({ ai: down, maxTransient: 4 });
+        await T.translateCues(ctx, itemsOf(4));
+        expect(ctx.stopped).toBe('overloaded');
+        expect(down.state.asked).toBe(4);
+    });
+
+    test('a JSON error shows the text around the place where it broke (the client attaches the whole answer as error.raw)', async () => {
+        const raw = '{"cues":[{"i":1,"kn":"ಒಂದು","en":"he said "hello" to them"}]}';
+        const at = raw.indexOf('hello');
+        const lines = [];
+        const ai = fakeAi((n, req) => (n === 1 ? (() => { throw Object.assign(new Error(`Expected ',' or '}' after property value in JSON at position ${at + 6}`), { raw }); })() : undefined));
+        await T.translateCues(ctxOf({ ai, log: m => lines.push(m) }), itemsOf(4));          // the first answer is the broken one; it is logged when the batch is split
+        expect(lines.join('\n')).toMatch(/near: ".*hello.*"/);
+        expect(lines.join('\n')).toContain('he said');
+    });
+});
+
 describe('translateCues', () => {
     test('batches of the wanted size, and every cue comes back once', async () => {
         const ctx = ctxOf({ batch: 50 });
@@ -724,6 +838,52 @@ describe('main, on a temporary copy of the project', () => {
         expect(ai.calls).toHaveLength(4);
         expect(out.join('\n')).toMatch(/on Google's side/);
         expect(read(A).alt).toBeUndefined();
+    });
+
+    test('a busy Gemini mid-run: the run waits, makes a fresh client and carries on (the real client refuses later calls after it gave up)', async () => {
+        const made = [];
+        const createGemini = () => {
+            const n = made.length;
+            const c = fakeAi(n === 0 ? (k => (k === 2 ? (() => { throw unavailableErr('Gemini answered 503 (busy or rate-limited)'); })() : undefined)) : undefined);
+            made.push(c);
+            return c;
+        };
+        expect(await T.main(['--pause', '0', '--retry-wait', '5', '--ids', A, '--batch', '3'], root, { createGemini, sleep: async () => {}, log: m => out.push(String(m)), error: () => {} })).toBe(0);
+        expect(made).toHaveLength(2);
+        expect(read(A).alt[0].segments).toHaveLength(8);
+        expect(out.join('\n')).toMatch(/waiting 0 s, then asking the same batch again/);
+    });
+
+    test('the token totals of the client are printed at the end of a run and of a dry run', async () => {
+        const ai = fakeAi();
+        ai.printUsage = jest.fn();
+        await run(['--ids', B], ai);
+        expect(ai.printUsage).toHaveBeenCalledTimes(1);
+        const dry = fakeAi();
+        dry.printUsage = jest.fn();
+        await run(['--dry-run', '--ids', B], dry);
+        expect(dry.printUsage).toHaveBeenCalledTimes(1);
+    });
+
+    test('the model recorded is the one that answered, even when the client moved to the next model of GEMINI_MODELS', async () => {
+        let k = 0;
+        const ai = fakeAi(() => { k++; return undefined; }, {});
+        Object.defineProperty(ai, 'model', { get: () => (k < 2 ? 'model-one' : 'model-two') });
+        ai.models = ['model-one', 'model-two'];
+        await run(['--ids', A, '--batch', '3'], ai);
+        expect(read(A).alt[0].model).toBe('model-one, model-two');
+        expect(out.join('\n')).toMatch(/Models \(in order of preference\): model-one, model-two/);
+    });
+
+    test('withTracks keeps the whole list of models that made a track, in order, without repeats', () => {
+        const main = [[0, 'a'], [5, 'b']];
+        const maps = lang => new Map([[lang, new Map([[0, 'x']])]]);
+        let t = { videoId: 'v', lang: 'hi-orig', segments: main };
+        t = T.withTracks(t, main, maps('kn'), 'one');
+        t = T.withTracks(t, main, maps('kn'), 'two');
+        t = T.withTracks(t, main, maps('kn'), 'two');
+        t = T.withTracks(t, main, maps('kn'), 'one');
+        expect(t.alt[0].model).toBe('one, two');
     });
 
     test('the client is made with no retries of its own (this script counts every call) and the --timeout asked for', async () => {

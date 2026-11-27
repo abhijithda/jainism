@@ -309,7 +309,7 @@ function tidyPairs(sourceLine, out, to) {
         const k = m[1].trim();
         const esc = k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         // the same words again, or one more Kannada word (a second spelling, "ಉಪ ಲೇಪನ / ಉಪಲೇಪನ"); never more than that
-        result = result.replace(new RegExp(`(${esc})\\s*\\/\\s*(?:${esc}|[\\u0C80-\\u0CFF]+)`), '$1');
+        result = result.replace(new RegExp(`(${esc})\\s*\\/\\s*(?:${esc}|[\\u0C80-\\u0CFF]+)`, 'g'), '$1');
     }
     return result;
 }

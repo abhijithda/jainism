@@ -1443,6 +1443,20 @@ Errors that asking again cannot fix (bad key, retired model: HTTP 4xx other than
 made with `retries: 0`, so this script is the only retry layer and every counted request is one real call to Google; `--timeout`
 defaults to 90 s (the shared client's own default is 240 s, which makes one hung request take four minutes).
 
+**Together with the shared client (`scripts/lib/gemini.js`).** After a busy server (429, 5xx, timeout) the client marks itself
+`unavailable` and then refuses every later call (that is its way of not wasting requests during an outage). So when a call
+fails with `unavailable`, this script waits (`--cooldown` for a 429, `--retry-wait` otherwise), calls the client's `reset()`
+(which lifts only that flag: the model that answered last, the models to skip and the token totals are kept) and asks the same
+batch again; the stop rules (`--max-429`, `--max-transient`) still apply, so an outage costs at most that many real requests.
+Without `reset()` the script falls back to a fresh client from a factory, and without either it stops at once. (Without all
+this, the first busy moment would have ended the whole run.) The client's token totals are printed at the end of a run.
+`GEMINI_MODELS` (comma-separated, in order of preference) lets the client move to the next model on a 429 or a busy server;
+each model has its own free-tier quota, so a second model is a second quota for this job. The track records every model that
+helped make it, for example `"model": "gemini-3.6-flash, gemini-3.8-flash"`. A busy model is not asked again for every call:
+later calls start with the model that answered last, and the preferred one is tried again after a pause. The same quota is shared with the other
+pipelines that use the same key, so run them at other times. When an answer is not valid JSON the client attaches the whole
+answer as `error.raw` and the log line shows the text around the place where it broke.
+
 **Doing it in several sessions (the normal case on a free key).** The run is built to be repeated:
 1. `node scripts/translate-transcripts.js --max-requests 60` (stops by itself when Google refuses; see above).
 2. `node scripts/translate-transcripts.js --check` shows `done`/`todo` per video and how many cues are translated.
@@ -1456,10 +1470,10 @@ the next one 690 cues across eight videos (11.5 per request), against the 50 pla
 that failed the checks. In the 60-request session with the best data, 22 of them did: 11 malformed JSON (`Expected ',' or '}'`,
 `Expected ':'`), 6 "not in Kannada" (3 different cues), 4 "has no en/kn" and 1 absurd length. The JSON failures also hit
 small batches (one at 12 cues, broken at character 670), so length is not the whole story; the likely cause is a straight
-double quote inside a translation, which is why the prompt now forbids those (**unverified**: if malformed JSON keeps
-happening, the raw failing answer is needed to see why). Isolating the bad cue, keeping it unchanged and the adaptive batch
-size were added after these logs, to waste fewer requests; their effect on real requests is not measured yet. Expect
-roughly 150 to 300 more requests for the rest of the job.
+double quote inside a translation, which is why the prompt now forbids those (**unverified**; the log line of a JSON failure
+now shows the text around the place where it broke, `near: "…"`, which will show the real cause). Isolating the bad cue,
+keeping it unchanged and the adaptive batch size were added after these logs, to waste fewer requests; their effect on real
+requests is not measured yet. Expect roughly 150 to 300 more requests for the rest of the job.
 
 **Limits and to be verified by hand.**
 - **What is verified and what is not.** The script's logic is tested with a fake client (no network). On the real

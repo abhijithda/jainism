@@ -207,6 +207,16 @@ const is429 = e => /Gemini answered 429\b/.test(String((e && e.message) || e));
 const isTransient = e => /Gemini request failed|Gemini answered 5\d\d/.test(String((e && e.message) || e));
 const isFatal = e => /Gemini answered 4\d\d/.test(String((e && e.message) || e)) && !is429(e);   // bad key, retired model ...: asking again will not help
 
+/** For a JSON error, the text of the model's answer around the position the parser names (the shared client attaches the
+ *  whole answer as `error.raw`), so the log shows WHY an answer was not valid JSON. Empty when that is not known. */
+function excerptAround(e) {
+    const raw = e && typeof e.raw === 'string' ? e.raw : '';
+    const at = /position (\d+)/.exec(String((e && e.message) || ''));
+    if (!raw || !at) return '';
+    const p = Number(at[1]);
+    return `; near: ${JSON.stringify(raw.slice(Math.max(0, p - 60), p + 40))}`;
+}
+
 /**
  * Translate cues, splitting a batch whose answer is wrong. Stops (ctx.stopped) on repeated 429s, a fatal error, a run of
  * bad answers or the request limit; whatever was answered right before that is kept.
@@ -223,6 +233,10 @@ async function translateCues(ctx, items, onCue, onBatch) {
     const failed = [];
     const unchanged = [];
 
+    /** After a wait, make the client willing to be asked again: reset() keeps what it has learned (the model that answered,
+     *  the usage totals); a client without it is replaced by a fresh one from the factory. */
+    const revive = () => { if (typeof ctx.ai.reset === 'function') ctx.ai.reset(); else ctx.ai = ctx.makeAi(); };
+
     async function ask(group) {
         for (;;) {
             if (ctx.stopped) return null;
@@ -237,11 +251,22 @@ async function translateCues(ctx, items, onCue, onBatch) {
                     prompt: buildPrompt({ source: ctx.source, targets: ctx.targets, items: group, before: ctx.before(group[0].i), terms }),
                 });
             } catch (e) {
+                // The shared client (scripts/lib/gemini.js) marks a busy server with `unavailable` and then refuses every later
+                // call of the same client object. Waiting and asking again therefore needs a fresh client (ctx.makeAi); without
+                // one there is nothing to wait for.
+                const dead = Boolean(e && e.unavailable);
+                const canRevive = typeof ctx.ai.reset === 'function' || Boolean(ctx.makeAi);
+                if (dead && !canRevive && (is429(e) || isTransient(e))) {
+                    ctx.stopped = is429(e) ? 'rate-limit' : 'overloaded';
+                    ctx.lastError = e.message;
+                    return null;
+                }
                 if (is429(e)) {
                     ctx.in429++;
                     if (ctx.in429 >= ctx.max429) { ctx.stopped = 'rate-limit'; return null; }
                     ctx.log(`      Google refused the request (HTTP 429, ${ctx.in429} of ${ctx.max429} in a row); waiting ${Math.round(ctx.cooldown / 1000)} s`);
                     await ctx.sleep(ctx.cooldown);
+                    if (dead) revive();
                     continue;                                     // the same group again
                 }
                 if (isFatal(e)) { ctx.stopped = 'fatal'; ctx.fatal = e.message; return null; }
@@ -250,11 +275,12 @@ async function translateCues(ctx, items, onCue, onBatch) {
                     if (ctx.inTransient >= ctx.maxTransient) { ctx.stopped = 'overloaded'; ctx.lastError = e.message; return null; }
                     ctx.log(`      Gemini did not answer (${e.message.replace(/^Gemini /, '')}; ${ctx.inTransient} of ${ctx.maxTransient} in a row); waiting ${Math.round(ctx.retryWait / 1000)} s, then asking the same batch again`);
                     await ctx.sleep(ctx.retryWait);
+                    if (dead) revive();
                     continue;                                     // the same group again, not split
                 }
                 ctx.bad++;
                 if (ctx.bad >= MAX_BAD_IN_A_ROW) { ctx.stopped = 'unreliable'; return null; }
-                return { ok: false, kind: 'parse', why: e.message };
+                return { ok: false, kind: 'parse', why: `${e.message}${excerptAround(e)}` };
             }
             ctx.in429 = 0;
             ctx.inTransient = 0;
@@ -371,8 +397,9 @@ function withTracks(transcript, main, maps, model) {
     for (const [lang, map] of maps) {
         if (!map.size) continue;
         const at = alt.findIndex(a => a && a.lang === lang);
-        const was = at >= 0 && alt[at].via === 'gemini' ? alt[at].model : '';
-        const entry = { lang, source: 'translated', via: 'gemini', model: was && was !== model && !was.split(', ').includes(model) ? `${was}, ${model}` : model, segments: segmentsOf(main, map) };
+        const used = at >= 0 && alt[at].via === 'gemini' && alt[at].model ? String(alt[at].model).split(', ') : [];     // the models that made this track so far
+        if (!used.includes(model)) used.push(model);
+        const entry = { lang, source: 'translated', via: 'gemini', model: used.join(', '), segments: segmentsOf(main, map) };
         if (at >= 0) alt[at] = entry; else alt.push(entry);
     }
     return { ...transcript, alt };
@@ -460,7 +487,8 @@ async function main(argv = process.argv.slice(2), root = DEFAULT_ROOT, deps = {}
     }
 
     // retries: 0, because this script is the only retry layer: every request it counts is one real call to Google
-    const ai = deps.ai || (deps.createGemini || createGemini)({ model: args.model, retries: 0, timeoutMs: nums.timeout });
+    const makeAi = () => (deps.createGemini || createGemini)({ model: args.model, retries: 0, timeoutMs: nums.timeout });
+    const ai = deps.ai || makeAi();
     if (!ai.available) {
         error('GEMINI_API_KEY is not set. It is free: create a key in Google AI Studio (https://aistudio.google.com/apikey) and set it, e.g. in PowerShell: $env:GEMINI_API_KEY = "...".');
         return 1;
@@ -469,7 +497,7 @@ async function main(argv = process.argv.slice(2), root = DEFAULT_ROOT, deps = {}
     const dry = !!args['dry-run'];
 
     const makeContext = (source, main, to) => ({
-        ai, source, targets: to, glossary, log, sleep, requests: 0,
+        ai, makeAi: deps.ai ? null : makeAi, source, targets: to, glossary, log, sleep, requests: 0,
         pause: nums.pause, cooldown: nums.cooldown, max429: nums.max429, retryWait: nums.retryWait, maxTransient: nums.maxTransient, maxRequests: dry ? 0 : nums.maxRequests, batch: nums.batch,
         before: i => main.slice(Math.max(0, i - CONTEXT_CUES), i).map(c => c[1]),
         in429: 0, inTransient: 0, bad: 0, stopped: '', fatal: '', lastError: '', pauseFirst: false,
@@ -497,6 +525,7 @@ async function main(argv = process.argv.slice(2), root = DEFAULT_ROOT, deps = {}
             else log('        (not translated)');
         }
         log(`\n${got.size} of ${items.length} cues translated in ${ctx.requests} request(s); ${failed.length} left out.`);
+        if (typeof ai.printUsage === 'function') ai.printUsage();
         if (ctx.stopped === 'fatal') { error(`Gemini refused: ${ctx.fatal}. If the model name is the problem, set GEMINI_MODEL or use --model.`); return 1; }
         if (ctx.stopped) log(HINTS[ctx.stopped]);
         return 0;
@@ -504,7 +533,8 @@ async function main(argv = process.argv.slice(2), root = DEFAULT_ROOT, deps = {}
 
     // ── The run
     const model = ai.model || 'unknown';
-    log(`Model: ${model}. Targets: ${targets.join(', ')}. ${glossary.length} glossary term(s).`);
+    const models = ai.models && ai.models.length ? ai.models : [model];
+    log(`${models.length > 1 ? 'Models (in order of preference)' : 'Model'}: ${models.join(', ')}. Targets: ${targets.join(', ')}. ${glossary.length} glossary term(s).`);
     let videosDone = 0;
     let cuesDone = 0;
     let requests = 0;
@@ -535,7 +565,7 @@ async function main(argv = process.argv.slice(2), root = DEFAULT_ROOT, deps = {}
         ctx.pauseFirst = requests > 0;                        // a pause between videos too, not only inside one
         let sinceSave = 0;
         const save = () => {
-            transcript = withTracks(transcript, main, maps, model);
+            transcript = withTracks(transcript, main, maps, ctx.ai.model || model);       // the model that answered last (the shared client may have moved to the next one)
             writeTranscript(dir, transcript);
             writeIndex(dir);
             sinceSave = 0;
@@ -554,6 +584,7 @@ async function main(argv = process.argv.slice(2), root = DEFAULT_ROOT, deps = {}
     }
 
     const { count } = writeIndex(dir);
+    if (typeof ai.printUsage === 'function') ai.printUsage();                // what the run cost in tokens
     log(`Done: ${videosDone} video(s) complete, ${openVideos} with cues still missing, ${cuesDone} cue(s) translated, ${requests} request(s); ${count} transcript(s) in the index.`);
     if (stopped === 'fatal') { error(`Gemini refused: ${fatal}. If the model name is the problem, set GEMINI_MODEL or use --model.`); return 1; }
     if (stopped) log(HINTS[stopped]);

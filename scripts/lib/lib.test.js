@@ -109,6 +109,42 @@ describe('the Gemini client', () => {
         await expect(ai.json({ prompt: 'x' })).rejects.toThrow(/GEMINI_API_KEY/);
         if (saved !== undefined) process.env.GEMINI_API_KEY = saved;
     });
+    test('an answer that is not valid JSON carries the whole answer as error.raw, so a caller can show where it broke', async () => {
+        const broken = '{"cues":[{"i":1,"en":"he said "hello" to them"}]}';
+        const ai = createGemini({ apiKey: 'k', retries: 0, log: () => {}, fetchImpl: async () => ok(broken) });
+        const err = await ai.json({ prompt: 'x' }).catch((e) => e);
+        expect(err).toBeInstanceOf(Error);
+        expect(err.raw).toBe(broken);
+        expect(err.unavailable).toBeUndefined();
+    });
+    test('reset() lifts the "unavailable" flag but keeps what the client has learned (the model that answered, the usage totals)', async () => {
+        const asked = [];
+        let m1Busy = true;
+        const fetchImpl = async (url) => {
+            const model = decodeURIComponent(url.split('/models/')[1].split(':')[0]);
+            asked.push(model);
+            if (model === 'm1' && m1Busy) return { ok: false, status: 503, json: async () => ({}) };
+            return ok('{"a":1}');
+        };
+        const ai = createGemini({ apiKey: 'k', models: ['m1', 'm2'], retries: 0, fetchImpl, sleep: async () => {}, log: () => {} });
+        await ai.json({ prompt: 'x' });                         // m1 busy, m2 answers: later calls start with m2
+        expect(asked).toEqual(['m1', 'm2']);
+        asked.length = 0;
+        m1Busy = false;
+        await ai.json({ prompt: 'x' });
+        expect(asked).toEqual(['m1', 'm2'].slice(1));            // straight to m2, no wasted call on m1
+        expect(ai.usage().calls).toBe(2);
+
+        const down = createGemini({ apiKey: 'k', retries: 0, fetchImpl: async () => ({ ok: false, status: 503, json: async () => ({}) }), sleep: async () => {}, log: () => {} });
+        const e1 = await down.json({ prompt: 'x' }).catch((e) => e);
+        expect(e1.unavailable).toBe(true);
+        const e2 = await down.json({ prompt: 'x' }).catch((e) => e);
+        expect(e2.message).toMatch(/not asked again/);
+        down.reset();
+        const e3 = await down.json({ prompt: 'x' }).catch((e) => e);
+        expect(e3.message).not.toMatch(/not asked again/);        // a real request was made again (and failed again)
+        expect(e3.unavailable).toBe(true);
+    });
     test('an empty answer says why', async () => {
         const ai = createGemini({ apiKey: 'k', retries: 0, fetchImpl: async () => ({ ok: true, status: 200, json: async () => ({ promptFeedback: { blockReason: 'SAFETY' } }) }) });
         await expect(ai.json({ prompt: 'x' })).rejects.toThrow(/SAFETY/);
@@ -300,6 +336,90 @@ describe('the Gemini client: a busy server', () => {
         process.env.GEMINI_MODELS = 'm1,m2';
         expect(createGemini({ apiKey: 'k', log: () => {} }).models).toEqual(['m1', 'm2']);
         delete process.env.GEMINI_MODELS;
+    });
+});
+
+describe('the Gemini client: thinking setting with several models', () => {
+    const good = () => ({ ok: true, status: 200, json: async () => ({ candidates: [{ content: { parts: [{ text: '{"a":1}' }] } }], usageMetadata: {} }) });
+    const refuse = () => ({ ok: false, status: 400, json: async () => ({ error: { message: 'Thinking level is not supported for this model' } }) });
+    const busy = () => ({ ok: false, status: 503, json: async () => ({}) });
+    const cfg = (call) => JSON.parse(call[1].body).generationConfig.thinkingConfig;
+    beforeEach(() => { delete process.env.GEMINI_MODELS; delete process.env.GEMINI_THINKING_LEVEL; });
+
+    test('a model that refuses the setting loses it; the next model in the list still gets it', async () => {
+        const lines = [];
+        const calls = [];
+        const answers = { 'model-a': [refuse(), busy(), busy()], 'model-b': [good()] };
+        const fetchImpl = jest.fn(async (url, init) => { calls.push([url, init]); const m = url.includes('model-a') ? 'model-a' : 'model-b'; return answers[m].shift(); });
+        const ai = createGemini({ apiKey: 'k', models: 'model-a,model-b', thinkingLevel: 'low', fetchImpl, retries: 1, sleep: async () => {}, log: (l) => lines.push(l) });
+        expect(await ai.json({ prompt: 'x' })).toEqual({ a: 1 });
+        const a = calls.filter((c) => c[0].includes('model-a'));
+        const b = calls.filter((c) => c[0].includes('model-b'));
+        expect(cfg(a[0])).toEqual({ thinkingLevel: 'low' });     // asked with it, refused
+        expect(cfg(a[1])).toBeUndefined();                       // repeated without it
+        expect(cfg(b[0])).toEqual({ thinkingLevel: 'low' });     // the other model still gets the cap
+        expect(lines.some((l) => /model-a refused the thinking setting.*for this model/.test(l))).toBe(true);
+    });
+
+    test('the usage line names the models that did not accept the setting', async () => {
+        const lines = [];
+        const answers = [refuse(), good()];
+        const ai = createGemini({ apiKey: 'k', models: 'model-a', thinkingLevel: 'low', fetchImpl: async () => answers.shift(), sleep: async () => {}, log: (l) => lines.push(l) });
+        await ai.json({ prompt: 'x' });
+        ai.printUsage();
+        expect(lines[lines.length - 1]).toMatch(/thinking setting: \{"thinkingLevel":"low"\}, not accepted by model-a/);
+    });
+});
+
+describe('the Gemini client: cooldown and the thinking check', () => {
+    const good = () => ({ ok: true, status: 200, json: async () => ({ candidates: [{ content: { parts: [{ text: '{"a":1}' }] } }], usageMetadata: {} }) });
+    const limited = () => ({ ok: false, status: 429, json: async () => ({}) });
+    beforeEach(() => { delete process.env.GEMINI_MODELS; delete process.env.GEMINI_THINKING_LEVEL; });
+
+    test('after a 429 the run stays on the second model for a while, then tries the first again', async () => {
+        let clock = 0;
+        const lines = [];
+        const urls = [];
+        let aLimited = true;
+        const fetchImpl = jest.fn(async (url) => { urls.push(url.includes('model-a') ? 'a' : 'b'); return url.includes('model-a') ? (aLimited ? limited() : good()) : good(); });
+        const ai = createGemini({ apiKey: 'k', models: 'model-a,model-b', fetchImpl, sleep: async () => { throw new Error('a 429 must not wait'); }, now: () => clock, cooldownMs: 120000, log: (l) => lines.push(l) });
+        await ai.json({ prompt: 'x' });
+        expect(urls).toEqual(['a', 'b']);                      // a was limited, b answered
+        clock = 30000; urls.length = 0;
+        await ai.json({ prompt: 'y' });
+        expect(urls).toEqual(['b']);                           // within the cooldown: straight to b
+        aLimited = false; clock = 130000; urls.length = 0;
+        await ai.json({ prompt: 'z' });
+        expect(urls).toEqual(['a']);                           // the per-minute limit is over: back on the preferred model
+        expect(ai.model).toBe('model-a');
+        expect(lines.some((l) => /trying model-a again/.test(l))).toBe(true);
+    });
+
+    test('if the first model is still limited after the cooldown, it moves on at once (one quick request)', async () => {
+        let clock = 0;
+        const urls = [];
+        const fetchImpl = jest.fn(async (url) => { urls.push(url.includes('model-a') ? 'a' : 'b'); return url.includes('model-a') ? limited() : good(); });
+        const ai = createGemini({ apiKey: 'k', models: 'model-a,model-b', fetchImpl, sleep: async () => { throw new Error('no waiting'); }, now: () => clock, cooldownMs: 1000, log: () => {} });
+        await ai.json({ prompt: 'x' });
+        clock = 5000; urls.length = 0;
+        await ai.json({ prompt: 'y' });
+        expect(urls).toEqual(['a', 'b']);
+        expect(ai.model).toBe('model-b');
+    });
+
+    test('a 400 that merely contains the word "think" is not taken for a thinking-setting error', async () => {
+        const fetchImpl = jest.fn(async () => ({ ok: false, status: 400, json: async () => ({ error: { message: 'I think the request is malformed' } }) }));
+        const ai = createGemini({ apiKey: 'k', thinkingLevel: 'low', fetchImpl, log: () => {} });
+        await expect(ai.json({ prompt: 'x' })).rejects.toThrow(/malformed/);
+        expect(fetchImpl).toHaveBeenCalledTimes(1);            // no retry without the setting
+    });
+
+    test('a 400 about thinking still drops the setting for that model', async () => {
+        const answers = [{ ok: false, status: 400, json: async () => ({ error: { message: 'thinking_config.thinking_level is invalid for this model' } }) }, good()];
+        const fetchImpl = jest.fn(async () => answers.shift());
+        const ai = createGemini({ apiKey: 'k', thinkingLevel: 'low', fetchImpl, log: () => {} });
+        expect(await ai.json({ prompt: 'x' })).toEqual({ a: 1 });
+        expect(fetchImpl).toHaveBeenCalledTimes(2);
     });
 });
 
