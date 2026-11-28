@@ -236,6 +236,47 @@ describe('the Gemini client: usage and thinking', () => {
         expect(sent(fetchImpl, 2).thinkingConfig).toBeUndefined();
     });
 
+    test('a model with no "minimal" level gets "low" instead (not the model\u2019s own default thinking), and only that model', async () => {
+        const lines = [];
+        const refuse = { ok: false, status: 400, json: async () => ({ error: { message: 'Thinking level MINIMAL is not supported for this model. Please retry with other thinking level.' } }) };
+        const answers = [refuse, withUsage('{"a":1}', { totalTokenCount: 10 }), withUsage('{"b":2}', { totalTokenCount: 10 })];
+        const fetchImpl = jest.fn(async () => answers.shift());
+        const ai = createGemini({ apiKey: 'k', fetchImpl, thinkingLevel: 'minimal', sleep: async () => {}, log: (l) => lines.push(l) });
+        expect(await ai.json({ prompt: 'x' })).toEqual({ a: 1 });
+        expect(sent(fetchImpl, 0).thinkingConfig).toEqual({ thinkingLevel: 'minimal' });
+        expect(sent(fetchImpl, 1).thinkingConfig).toEqual({ thinkingLevel: 'low' });
+        expect(lines.some((l) => /refused thinking level minimal .*using low for this model/.test(l))).toBe(true);
+        expect(await ai.json({ prompt: 'y' })).toEqual({ b: 2 });
+        expect(sent(fetchImpl, 2).thinkingConfig).toEqual({ thinkingLevel: 'low' });     // remembered: no second refused call
+        expect(fetchImpl).toHaveBeenCalledTimes(3);
+    });
+
+    test('if "low" is refused too, the model gets no thinking setting at all; a different model still gets "minimal"', async () => {
+        const lines = [];
+        const refuse = { ok: false, status: 400, json: async () => ({ error: { message: 'Thinking level is not supported for this model' } }) };
+        const calls = [];
+        const fetchImpl = jest.fn(async (url, init) => {
+            const model = decodeURIComponent(url.split('/models/')[1].split(':')[0]);
+            const cfg = JSON.parse(init.body).generationConfig.thinkingConfig;
+            calls.push([model, cfg && cfg.thinkingLevel]);
+            if (model === 'm1' && cfg) return refuse;
+            if (model === 'm1') return { ok: false, status: 503, json: async () => ({}) };
+            return withUsage('{"a":1}', { totalTokenCount: 10 });
+        });
+        const ai = createGemini({ apiKey: 'k', models: ['m1', 'm2'], retries: 0, fetchImpl, thinkingLevel: 'minimal', sleep: async () => {}, log: (l) => lines.push(l) });
+        await ai.json({ prompt: 'x' });
+        expect(calls).toEqual([['m1', 'minimal'], ['m1', 'low'], ['m1', undefined], ['m2', 'minimal']]);
+        expect(lines.some((l) => /continuing without it for this model/.test(l))).toBe(true);
+    });
+
+    test('a level other than "minimal" that is refused is dropped at once (no step up)', async () => {
+        const refuse = { ok: false, status: 400, json: async () => ({ error: { message: 'thinking level not supported' } }) };
+        const answers = [refuse, withUsage('{"a":1}', { totalTokenCount: 1 })];
+        const fetchImpl = jest.fn(async () => answers.shift());
+        await createGemini({ apiKey: 'k', fetchImpl, thinkingLevel: 'medium', sleep: async () => {}, log: () => {} }).json({ prompt: 'x' });
+        expect(sent(fetchImpl, 1).thinkingConfig).toBeUndefined();
+    });
+
     test('a 400 that is not about thinking still fails at once', async () => {
         const fetchImpl = jest.fn(async () => ({ ok: false, status: 400, json: async () => ({ error: { message: 'model not found' } }) }));
         const ai = createGemini({ apiKey: 'k', model: 'x', fetchImpl, thinkingLevel: 'low', log: () => {} });

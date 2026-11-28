@@ -1457,6 +1457,14 @@ later calls start with the model that answered last, and the preferred one is tr
 pipelines that use the same key, so run them at other times. When an answer is not valid JSON the client attaches the whole
 answer as `error.raw` and the log line shows the text around the place where it broke.
 
+**Thinking tokens.** Gemini 3 models think before they answer, and those tokens count against the quota and the time even
+though translation needs no reasoning. Seen: `gemini-4-hydrogen` at `GEMINI_THINKING_LEVEL=low` spent about 4,200 thinking
+tokens on top of 3,000 output tokens per 50-cue request and took 26 to 29 s, while `gemini-3.6-flash` with no thinking took
+about 10 s. For this job set `GEMINI_THINKING_LEVEL=minimal`. Some models have no such level (`gemini-3.8-flash` answered
+"Thinking level MINIMAL is not supported"); the client then uses `low` for that model, still far below the model's own
+default, and only gives up the setting altogether if `low` is refused too. The usage line of every call shows the thinking
+tokens, so the effect of the setting can be read from the log.
+
 **Doing it in several sessions (the normal case on a free key).** The run is built to be repeated:
 1. `node scripts/translate-transcripts.js --max-requests 60` (stops by itself when Google refuses; see above).
 2. `node scripts/translate-transcripts.js --check` shows `done`/`todo` per video and how many cues are translated.
