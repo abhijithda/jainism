@@ -134,6 +134,11 @@ describe('buildPrompt', () => {
         expect(p).toMatch(/Translate from xx into yy \(code "yy"\) and Kannada/);
     });
 
+    test('the instructions ask for valid JSON: no straight double quotes inside a translation', () => {
+        expect(T.SYSTEM).toMatch(/straight double quote/);
+        expect(T.SYSTEM).toMatch(/nothing outside the JSON/);
+    });
+
     test('the instructions say to translate faithfully and to leave garbled shlokas alone', () => {
         expect(T.SYSTEM).toMatch(/Do NOT correct/);
         expect(T.SYSTEM).toMatch(/EXACTLY as given/);
@@ -185,6 +190,113 @@ describe('validateAnswer', () => {
 
 // ── asking: batches, splitting, stopping ─────────────────────────────────
 
+/** An answer that is right except that the Kannada of the given cues is not Kannada. */
+const wrongKn = (req, ids) => ({ cues: good(req).cues.map(c => (ids.includes(c.i) ? { ...c, kn: 'plain latin text here' } : c)) });
+const has = (req, id) => payloadOf(req).cues.some(c => c.i === id);
+const sizes = ai => ai.calls.map(c => payloadOf(c).cues.length);
+
+describe('a bad cue is isolated, a structural failure is halved', () => {
+    test('one cue that is wrong costs 3 requests plus its retry, not a halving chain; it is kept unchanged', async () => {
+        const ai = fakeAi((n, req) => (has(req, 4) ? wrongKn(req, [4]) : undefined));
+        const ctx = ctxOf({ ai, batch: 10 });
+        const { got, failed, unchanged } = await T.translateCues(ctx, itemsOf(10));
+        expect(sizes(ai)).toEqual([10, 4, 1, 1, 5]);                     // all 10, the cues before 4, 4 alone twice, the cues after 4
+        expect(got.size).toBe(10);
+        expect(failed).toEqual([]);
+        expect(unchanged).toEqual([4]);
+        expect(got.get(4)).toEqual({ kn: itemsOf(10)[4].t, en: itemsOf(10)[4].t });
+        expect(got.get(3).kn).toMatch(/ಕನ್ನಡ/);
+    });
+
+    test('a cue at the start or the end of a batch leaves no empty request behind', async () => {
+        const first = fakeAi((n, req) => (has(req, 0) ? wrongKn(req, [0]) : undefined));
+        await T.translateCues(ctxOf({ ai: first, batch: 10 }), itemsOf(10));
+        expect(sizes(first)).toEqual([10, 1, 1, 9]);
+        const last = fakeAi((n, req) => (has(req, 9) ? wrongKn(req, [9]) : undefined));
+        await T.translateCues(ctxOf({ ai: last, batch: 10 }), itemsOf(10));
+        expect(sizes(last)).toEqual([10, 9, 1, 1]);
+    });
+
+    test.each([
+        ['Kannada that is not Kannada', (c) => ({ ...c, kn: 'plain latin text here' })],
+        ['an empty English text', (c) => ({ ...c, en: '' })],
+        ['an absurdly long Kannada text', (c) => ({ ...c, kn: 'ಕ'.repeat(900) })],
+    ])('%s for one cue is a problem with that cue: it is isolated and kept unchanged', async (_, damage) => {
+        const ai = fakeAi((n, req) => (has(req, 2) ? { cues: good(req).cues.map(c => (c.i === 2 ? damage(c) : c)) } : undefined));
+        const { got, unchanged } = await T.translateCues(ctxOf({ ai, batch: 6 }), itemsOf(6));
+        expect(unchanged).toEqual([2]);
+        expect(got.size).toBe(6);
+    });
+
+    test('a cue whose answers are broken as a whole (bad JSON) is halved down to it and then left out, not kept unchanged', async () => {
+        const ai = fakeAi((n, req) => { if (has(req, 3)) throw new Error('Expected \',\' or \'}\' after property value in JSON at position 2882'); return undefined; });
+        const { got, failed, unchanged } = await T.translateCues(ctxOf({ ai, batch: 8 }), itemsOf(8));
+        expect(failed).toEqual([3]);
+        expect(unchanged).toEqual([]);
+        expect(got.size).toBe(7);
+        expect(got.has(3)).toBe(false);
+    });
+
+    test('a model that gets every cue wrong does not turn the whole video into unchanged copies: the run stops after a few', async () => {
+        const ai = fakeAi((n, req) => wrongKn(req, payloadOf(req).cues.map(c => c.i)));
+        const ctx = ctxOf({ ai, batch: 50 });
+        const { got, unchanged } = await T.translateCues(ctx, itemsOf(50));
+        expect(ctx.stopped).toBe('unreliable');
+        expect(unchanged.length).toBeLessThanOrEqual(3);
+        expect(got.size).toBeLessThanOrEqual(3);
+        expect(ai.calls.length).toBeLessThan(15);
+    });
+
+    test('a cluster of stubborn cues is fine as long as batches in between are accepted', async () => {
+        const stubborn = [3, 9, 15, 21];
+        const ai = fakeAi((n, req) => { const ids = stubborn.filter(i => has(req, i)); return ids.length ? wrongKn(req, ids) : undefined; });
+        const ctx = ctxOf({ ai, batch: 30 });
+        const { got, unchanged } = await T.translateCues(ctx, itemsOf(30));
+        expect(ctx.stopped).toBe('');
+        expect(unchanged.sort((a, b) => a - b)).toEqual(stubborn);
+        expect(got.size).toBe(30);
+    });
+});
+
+describe('the batch size follows the failures', () => {
+    test('after a failure of the answer as a whole the next batches are half as big', async () => {
+        const ai = fakeAi(n => (n === 1 ? { cues: [] } : undefined));
+        const { got } = await T.translateCues(ctxOf({ ai, batch: 40 }), itemsOf(100));
+        expect(sizes(ai)).toEqual([40, 20, 20, 20, 20, 20]);
+        expect(got.size).toBe(100);
+    });
+
+    test('a failure because of one cue does not change the size', async () => {
+        const ai = fakeAi((n, req) => (has(req, 5) ? wrongKn(req, [5]) : undefined));
+        await T.translateCues(ctxOf({ ai, batch: 40 }), itemsOf(100));
+        expect(sizes(ai)).toEqual([40, 5, 1, 1, 34, 40, 20]);
+    });
+
+    test('three good batches in a row make them grow again, never beyond --batch, never below 8', async () => {
+        const lines = [];
+        const ai = fakeAi(n => (n === 1 ? { cues: [] } : undefined));
+        await T.translateCues(ctxOf({ ai, batch: 40, log: m => lines.push(m) }), itemsOf(300));
+        expect(sizes(ai).slice(0, 8)).toEqual([40, 20, 20, 20, 20, 20, 30, 30]);
+        expect(Math.max(...sizes(ai))).toBe(40);
+        expect(lines.join('\n')).toMatch(/batches of 20 cues from now on/);
+        expect(lines.join('\n')).toMatch(/batches of 30 cues again/);
+        const small = fakeAi((n, req) => ({ cues: [] }));
+        await T.translateCues(ctxOf({ ai: small, batch: 40 }), itemsOf(40));
+        expect(Math.min(...sizes(small))).toBeGreaterThanOrEqual(1);     // halving inside a batch still goes down to one cue
+        const floor = fakeAi((n, req) => (n <= 3 ? { cues: [] } : undefined));
+        const ctx = ctxOf({ ai: floor, batch: 40 });
+        await T.translateCues(ctx, itemsOf(400));
+        const topLevel = sizes(floor).filter((s, i) => i > 6);
+        expect(Math.min(...topLevel.slice(0, 4))).toBeGreaterThanOrEqual(8);
+    });
+
+    test('--batch smaller than 8 is respected', async () => {
+        const ai = fakeAi(n => (n === 1 ? { cues: [] } : undefined));
+        await T.translateCues(ctxOf({ ai, batch: 3 }), itemsOf(9));
+        expect(Math.max(...sizes(ai))).toBeLessThanOrEqual(3);
+    });
+});
+
 describe('telling errors apart', () => {
     const err = m => new Error(m);
 
@@ -212,6 +324,120 @@ describe('telling errors apart', () => {
         await T.translateCues(ctx, itemsOf(3));
         expect(ctx.stopped).toBe('fatal');
         expect(ai.calls).toHaveLength(1);
+    });
+});
+
+/** What the shared client throws when Gemini stayed busy after its retries: later calls of the same client fail at once. */
+const unavailableErr = message => Object.assign(new Error(message), { unavailable: true });
+
+describe('the shared client gives up for the rest of its run, so a wait needs a fresh client', () => {
+    const answer503 = () => { throw unavailableErr('Gemini answered 503 (busy or rate-limited)'); };
+    const answer429 = () => { throw unavailableErr('Gemini answered 429 (busy or rate-limited)'); };
+
+    test('without a way to make a fresh client, an unavailable Gemini stops the run at once (no pointless waiting)', async () => {
+        const sleep = jest.fn(async () => {});
+        const ai = fakeAi(answer429);
+        const ctx = ctxOf({ ai, sleep });
+        await T.translateCues(ctx, itemsOf(5));
+        expect(ctx.stopped).toBe('rate-limit');
+        expect(ai.calls).toHaveLength(1);
+        expect(sleep).not.toHaveBeenCalled();
+        const busy = fakeAi(answer503);
+        const ctx2 = ctxOf({ ai: busy, sleep });
+        await T.translateCues(ctx2, itemsOf(5));
+        expect(ctx2.stopped).toBe('overloaded');
+        expect(busy.calls).toHaveLength(1);
+    });
+
+    test('with a factory, the wait is spent and the same batch is asked again with a fresh client', async () => {
+        const sleep = jest.fn(async () => {});
+        const first = fakeAi(answer503);
+        const second = fakeAi();
+        const makeAi = jest.fn(() => second);
+        const ctx = ctxOf({ ai: first, makeAi, sleep, retryWait: 4321 });
+        const { got } = await T.translateCues(ctx, itemsOf(5));
+        expect(got.size).toBe(5);
+        expect(ctx.stopped).toBe('');
+        expect(makeAi).toHaveBeenCalledTimes(1);
+        expect(sleep).toHaveBeenCalledWith(4321);
+        expect(first.calls).toHaveLength(1);
+        expect(second.calls).toHaveLength(1);
+        expect(second.calls[0].prompt).toBe(first.calls[0].prompt);                 // the same batch, not split
+    });
+
+    test('a 429 waits for the cooldown and then asks with a fresh client; repeated ones still stop the run', async () => {
+        const sleep = jest.fn(async () => {});
+        const clients = [];
+        const makeAi = () => { const c = fakeAi(clients.length < 1 ? answer429 : undefined); clients.push(c); return c; };
+        const ctx = ctxOf({ ai: fakeAi(answer429), makeAi, sleep, cooldown: 777, max429: 3 });
+        const { got } = await T.translateCues(ctx, itemsOf(5));
+        expect(got.size).toBe(5);                                                   // the first client and the first fresh one are refused, the next answers
+        expect(sleep.mock.calls.filter(c => c[0] === 777)).toHaveLength(2);
+        const always = fakeAi(answer429);
+        const ctx2 = ctxOf({ ai: always, makeAi: () => fakeAi(answer429), sleep, cooldown: 1, max429: 3 });
+        await T.translateCues(ctx2, itemsOf(5));
+        expect(ctx2.stopped).toBe('rate-limit');
+    });
+
+    /** Behaves like the real client: after it gave up (unavailable), every call fails at once until reset() is called. */
+    const realisticAi = (failOnCalls, message = 'Gemini answered 503 (busy or rate-limited)') => {
+        const state = { calls: 0, asked: 0, dead: false, resets: 0 };
+        const ai = fakeAi(undefined);
+        ai.json = async req => {
+            state.calls++;
+            if (state.dead) throw unavailableErr(`Gemini not asked again in this run: it stayed unavailable earlier (${message})`);
+            state.asked++;
+            if (failOnCalls(state.asked)) { state.dead = true; throw unavailableErr(message); }
+            return good(req);
+        };
+        ai.reset = jest.fn(() => { state.dead = false; state.resets++; });
+        ai.state = state;
+        return ai;
+    };
+
+    test('with reset() on the client, the wait is spent, the client is reset and the SAME client asks the same batch again', async () => {
+        const sleep = jest.fn(async () => {});
+        const ai = realisticAi(n => n === 1);
+        const ctx = ctxOf({ ai, sleep, retryWait: 4321 });
+        const { got } = await T.translateCues(ctx, itemsOf(5));
+        expect(got.size).toBe(5);
+        expect(ctx.stopped).toBe('');
+        expect(ai.reset).toHaveBeenCalledTimes(1);
+        expect(sleep).toHaveBeenCalledWith(4321);
+        expect(ai.state.asked).toBe(2);
+    });
+
+    test('a 429 that made the client give up: cooldown, reset, ask again; three in a row still stop the run (and cost only 3 real requests)', async () => {
+        const sleep = jest.fn(async () => {});
+        const ok = realisticAi(n => n === 1, 'Gemini answered 429 (busy or rate-limited)');
+        const c1 = ctxOf({ ai: ok, sleep, cooldown: 777 });
+        expect((await T.translateCues(c1, itemsOf(4))).got.size).toBe(4);
+        expect(sleep).toHaveBeenCalledWith(777);
+
+        const down = realisticAi(() => true, 'Gemini answered 429 (busy or rate-limited)');
+        const c2 = ctxOf({ ai: down, sleep, max429: 3 });
+        await T.translateCues(c2, itemsOf(4));
+        expect(c2.stopped).toBe('rate-limit');
+        expect(down.state.asked).toBe(3);                                        // real requests: no more than --max-429
+        expect(down.reset).toHaveBeenCalledTimes(2);
+    });
+
+    test('a client that stays down costs at most --max-transient real requests, however long the wait is', async () => {
+        const down = realisticAi(() => true);
+        const ctx = ctxOf({ ai: down, maxTransient: 4 });
+        await T.translateCues(ctx, itemsOf(4));
+        expect(ctx.stopped).toBe('overloaded');
+        expect(down.state.asked).toBe(4);
+    });
+
+    test('a JSON error shows the text around the place where it broke (the client attaches the whole answer as error.raw)', async () => {
+        const raw = '{"cues":[{"i":1,"kn":"ಒಂದು","en":"he said "hello" to them"}]}';
+        const at = raw.indexOf('hello');
+        const lines = [];
+        const ai = fakeAi((n, req) => (n === 1 ? (() => { throw Object.assign(new Error(`Expected ',' or '}' after property value in JSON at position ${at + 6}`), { raw }); })() : undefined));
+        await T.translateCues(ctxOf({ ai, log: m => lines.push(m) }), itemsOf(4));          // the first answer is the broken one; it is logged when the batch is split
+        expect(lines.join('\n')).toMatch(/near: ".*hello.*"/);
+        expect(lines.join('\n')).toContain('he said');
     });
 });
 
@@ -545,6 +771,24 @@ describe('main, on a temporary copy of the project', () => {
         expect(read(C).alt.map(x => x.lang)).toEqual(['en']);
     });
 
+    test('a cue the model keeps getting wrong is kept unchanged in the file, the video is complete, and a rerun asks for nothing', async () => {
+        const ai = fakeAi((n, req) => (has(req, 2) ? wrongKn(req, [2]) : undefined));
+        await run(['--ids', A, '--batch', '8'], ai);
+        expect(sizes(ai)).toEqual([8, 2, 1, 1, 5]);
+        const a = read(A);
+        expect(a.alt[0].segments).toHaveLength(8);
+        expect(a.alt[0].segments[2]).toEqual([20, HI_A[2]]);          // kept as it is, on its own start second
+        expect(a.alt[0].segments[1][1]).toBe(`ಕನ್ನಡ ${HI_A[1]}`);
+        expect(a.alt[1].segments[2]).toEqual([20, HI_A[2]]);
+        expect(out.join('\n')).toMatch(/cue 2 would not come back right .*kept unchanged/);
+        expect(out.join('\n')).toMatch(/\(1 of them kept unchanged\)/);
+        const again = fakeAi();
+        await run(['--ids', A], again);
+        expect(again.calls).toHaveLength(0);
+        out = [];
+        expect(await T.main(['--check', '--ids', A], root, deps(again))).toBe(0);
+    });
+
     test('the glossary file is used, and only for the terms that occur', async () => {
         fs.writeFileSync(path.join(root, 'scripts', 'glossary.json'), JSON.stringify({ terms: [
             { hi: ['शासन देवता'], kn: 'ಶಾಸನ ದೇವತೆ', en: 'Shasana Devata' }, { hi: ['तप'], kn: 'ತಪ', en: 'Tapa' } ] }));
@@ -594,6 +838,52 @@ describe('main, on a temporary copy of the project', () => {
         expect(ai.calls).toHaveLength(4);
         expect(out.join('\n')).toMatch(/on Google's side/);
         expect(read(A).alt).toBeUndefined();
+    });
+
+    test('a busy Gemini mid-run: the run waits, makes a fresh client and carries on (the real client refuses later calls after it gave up)', async () => {
+        const made = [];
+        const createGemini = () => {
+            const n = made.length;
+            const c = fakeAi(n === 0 ? (k => (k === 2 ? (() => { throw unavailableErr('Gemini answered 503 (busy or rate-limited)'); })() : undefined)) : undefined);
+            made.push(c);
+            return c;
+        };
+        expect(await T.main(['--pause', '0', '--retry-wait', '5', '--ids', A, '--batch', '3'], root, { createGemini, sleep: async () => {}, log: m => out.push(String(m)), error: () => {} })).toBe(0);
+        expect(made).toHaveLength(2);
+        expect(read(A).alt[0].segments).toHaveLength(8);
+        expect(out.join('\n')).toMatch(/waiting 0 s, then asking the same batch again/);
+    });
+
+    test('the token totals of the client are printed at the end of a run and of a dry run', async () => {
+        const ai = fakeAi();
+        ai.printUsage = jest.fn();
+        await run(['--ids', B], ai);
+        expect(ai.printUsage).toHaveBeenCalledTimes(1);
+        const dry = fakeAi();
+        dry.printUsage = jest.fn();
+        await run(['--dry-run', '--ids', B], dry);
+        expect(dry.printUsage).toHaveBeenCalledTimes(1);
+    });
+
+    test('the model recorded is the one that answered, even when the client moved to the next model of GEMINI_MODELS', async () => {
+        let k = 0;
+        const ai = fakeAi(() => { k++; return undefined; }, {});
+        Object.defineProperty(ai, 'model', { get: () => (k < 2 ? 'model-one' : 'model-two') });
+        ai.models = ['model-one', 'model-two'];
+        await run(['--ids', A, '--batch', '3'], ai);
+        expect(read(A).alt[0].model).toBe('model-one, model-two');
+        expect(out.join('\n')).toMatch(/Models \(in order of preference\): model-one, model-two/);
+    });
+
+    test('withTracks keeps the whole list of models that made a track, in order, without repeats', () => {
+        const main = [[0, 'a'], [5, 'b']];
+        const maps = lang => new Map([[lang, new Map([[0, 'x']])]]);
+        let t = { videoId: 'v', lang: 'hi-orig', segments: main };
+        t = T.withTracks(t, main, maps('kn'), 'one');
+        t = T.withTracks(t, main, maps('kn'), 'two');
+        t = T.withTracks(t, main, maps('kn'), 'two');
+        t = T.withTracks(t, main, maps('kn'), 'one');
+        expect(t.alt[0].model).toBe('one, two');
     });
 
     test('the client is made with no retries of its own (this script counts every call) and the --timeout asked for', async () => {

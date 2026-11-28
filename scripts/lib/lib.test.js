@@ -109,6 +109,42 @@ describe('the Gemini client', () => {
         await expect(ai.json({ prompt: 'x' })).rejects.toThrow(/GEMINI_API_KEY/);
         if (saved !== undefined) process.env.GEMINI_API_KEY = saved;
     });
+    test('an answer that is not valid JSON carries the whole answer as error.raw, so a caller can show where it broke', async () => {
+        const broken = '{"cues":[{"i":1,"en":"he said "hello" to them"}]}';
+        const ai = createGemini({ apiKey: 'k', retries: 0, log: () => {}, fetchImpl: async () => ok(broken) });
+        const err = await ai.json({ prompt: 'x' }).catch((e) => e);
+        expect(err).toBeInstanceOf(Error);
+        expect(err.raw).toBe(broken);
+        expect(err.unavailable).toBeUndefined();
+    });
+    test('reset() lifts the "unavailable" flag but keeps what the client has learned (the model that answered, the usage totals)', async () => {
+        const asked = [];
+        let m1Busy = true;
+        const fetchImpl = async (url) => {
+            const model = decodeURIComponent(url.split('/models/')[1].split(':')[0]);
+            asked.push(model);
+            if (model === 'm1' && m1Busy) return { ok: false, status: 503, json: async () => ({}) };
+            return ok('{"a":1}');
+        };
+        const ai = createGemini({ apiKey: 'k', models: ['m1', 'm2'], retries: 0, fetchImpl, sleep: async () => {}, log: () => {} });
+        await ai.json({ prompt: 'x' });                         // m1 busy, m2 answers: later calls start with m2
+        expect(asked).toEqual(['m1', 'm2']);
+        asked.length = 0;
+        m1Busy = false;
+        await ai.json({ prompt: 'x' });
+        expect(asked).toEqual(['m1', 'm2'].slice(1));            // straight to m2, no wasted call on m1
+        expect(ai.usage().calls).toBe(2);
+
+        const down = createGemini({ apiKey: 'k', retries: 0, fetchImpl: async () => ({ ok: false, status: 503, json: async () => ({}) }), sleep: async () => {}, log: () => {} });
+        const e1 = await down.json({ prompt: 'x' }).catch((e) => e);
+        expect(e1.unavailable).toBe(true);
+        const e2 = await down.json({ prompt: 'x' }).catch((e) => e);
+        expect(e2.message).toMatch(/not asked again/);
+        down.reset();
+        const e3 = await down.json({ prompt: 'x' }).catch((e) => e);
+        expect(e3.message).not.toMatch(/not asked again/);        // a real request was made again (and failed again)
+        expect(e3.unavailable).toBe(true);
+    });
     test('an empty answer says why', async () => {
         const ai = createGemini({ apiKey: 'k', retries: 0, fetchImpl: async () => ({ ok: true, status: 200, json: async () => ({ promptFeedback: { blockReason: 'SAFETY' } }) }) });
         await expect(ai.json({ prompt: 'x' })).rejects.toThrow(/SAFETY/);
@@ -198,6 +234,47 @@ describe('the Gemini client: usage and thinking', () => {
         expect(lines.some((l) => /refused the thinking setting/.test(l))).toBe(true);
         expect(await ai.json({ prompt: 'y' })).toEqual({ b: 2 });
         expect(sent(fetchImpl, 2).thinkingConfig).toBeUndefined();
+    });
+
+    test('a model with no "minimal" level gets "low" instead (not the model\u2019s own default thinking), and only that model', async () => {
+        const lines = [];
+        const refuse = { ok: false, status: 400, json: async () => ({ error: { message: 'Thinking level MINIMAL is not supported for this model. Please retry with other thinking level.' } }) };
+        const answers = [refuse, withUsage('{"a":1}', { totalTokenCount: 10 }), withUsage('{"b":2}', { totalTokenCount: 10 })];
+        const fetchImpl = jest.fn(async () => answers.shift());
+        const ai = createGemini({ apiKey: 'k', fetchImpl, thinkingLevel: 'minimal', sleep: async () => {}, log: (l) => lines.push(l) });
+        expect(await ai.json({ prompt: 'x' })).toEqual({ a: 1 });
+        expect(sent(fetchImpl, 0).thinkingConfig).toEqual({ thinkingLevel: 'minimal' });
+        expect(sent(fetchImpl, 1).thinkingConfig).toEqual({ thinkingLevel: 'low' });
+        expect(lines.some((l) => /refused thinking level minimal .*using low for this model/.test(l))).toBe(true);
+        expect(await ai.json({ prompt: 'y' })).toEqual({ b: 2 });
+        expect(sent(fetchImpl, 2).thinkingConfig).toEqual({ thinkingLevel: 'low' });     // remembered: no second refused call
+        expect(fetchImpl).toHaveBeenCalledTimes(3);
+    });
+
+    test('if "low" is refused too, the model gets no thinking setting at all; a different model still gets "minimal"', async () => {
+        const lines = [];
+        const refuse = { ok: false, status: 400, json: async () => ({ error: { message: 'Thinking level is not supported for this model' } }) };
+        const calls = [];
+        const fetchImpl = jest.fn(async (url, init) => {
+            const model = decodeURIComponent(url.split('/models/')[1].split(':')[0]);
+            const cfg = JSON.parse(init.body).generationConfig.thinkingConfig;
+            calls.push([model, cfg && cfg.thinkingLevel]);
+            if (model === 'm1' && cfg) return refuse;
+            if (model === 'm1') return { ok: false, status: 503, json: async () => ({}) };
+            return withUsage('{"a":1}', { totalTokenCount: 10 });
+        });
+        const ai = createGemini({ apiKey: 'k', models: ['m1', 'm2'], retries: 0, fetchImpl, thinkingLevel: 'minimal', sleep: async () => {}, log: (l) => lines.push(l) });
+        await ai.json({ prompt: 'x' });
+        expect(calls).toEqual([['m1', 'minimal'], ['m1', 'low'], ['m1', undefined], ['m2', 'minimal']]);
+        expect(lines.some((l) => /continuing without it for this model/.test(l))).toBe(true);
+    });
+
+    test('a level other than "minimal" that is refused is dropped at once (no step up)', async () => {
+        const refuse = { ok: false, status: 400, json: async () => ({ error: { message: 'thinking level not supported' } }) };
+        const answers = [refuse, withUsage('{"a":1}', { totalTokenCount: 1 })];
+        const fetchImpl = jest.fn(async () => answers.shift());
+        await createGemini({ apiKey: 'k', fetchImpl, thinkingLevel: 'medium', sleep: async () => {}, log: () => {} }).json({ prompt: 'x' });
+        expect(sent(fetchImpl, 1).thinkingConfig).toBeUndefined();
     });
 
     test('a 400 that is not about thinking still fails at once', async () => {

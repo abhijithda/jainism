@@ -1401,8 +1401,17 @@ the same language; other tracks stay. A video spoken in Kannada gets only Englis
 **One request = a batch of cues, both languages.** Cues go out as `{i, t}` with the three cues before the batch as
 context; the answer must contain every `i` exactly once, a non-empty text for each language, nothing unknown, the right
 script (Kannada letters for `kn`, Latin for `en`) and a plausible length. Anything else throws away the *whole* answer,
-and the batch is asked again in two halves, down to a single cue; a cue that never comes back right is **left out** (a gap,
-never a shifted timestamp) and a rerun tries just those. Alignment is checked; **meaning is not**.
+and what happens next depends on what was wrong:
+- **One named cue is unusable** (not in the language, empty, absurd length): that cue is taken out and asked alone, and the
+  cues before and after it are asked as two batches (3 requests instead of a halving chain). A cue that is wrong again alone,
+  twice, is **kept unchanged** in the alt track, which is what the prompt asks for with a garbled shloka anyway (the log says
+  "kept unchanged"). Three such cues in a row with no good batch between stop the run ("the model is not working"), so a
+  broken model cannot turn a whole video into copies of the Hindi.
+- **The answer is broken as a whole** (bad JSON, unknown or repeated ids, cues missing): the batch is asked again in two
+  halves, down to a single cue; a cue that still fails is **left out** (a gap, never a shifted timestamp) and a rerun tries
+  just that one. After such a failure the next batches are half as big (down to 8, or to `--batch` if smaller), and after
+  three good ones they grow back, because long answers break more often.
+Alignment is checked; **meaning is not**.
 
 **Faithful, not corrected: what really happens.** The prompt says to translate what the captions say (mistakes included)
 and to give back unchanged any cue that is not intelligible speech, such as a Sanskrit/Prakrit shloka the recogniser
@@ -1434,6 +1443,28 @@ Errors that asking again cannot fix (bad key, retired model: HTTP 4xx other than
 made with `retries: 0`, so this script is the only retry layer and every counted request is one real call to Google; `--timeout`
 defaults to 90 s (the shared client's own default is 240 s, which makes one hung request take four minutes).
 
+**Together with the shared client (`scripts/lib/gemini.js`).** After a busy server (429, 5xx, timeout) the client marks itself
+`unavailable` and then refuses every later call (that is its way of not wasting requests during an outage). So when a call
+fails with `unavailable`, this script waits (`--cooldown` for a 429, `--retry-wait` otherwise), calls the client's `reset()`
+(which lifts only that flag: the model that answered last, the models to skip and the token totals are kept) and asks the same
+batch again; the stop rules (`--max-429`, `--max-transient`) still apply, so an outage costs at most that many real requests.
+Without `reset()` the script falls back to a fresh client from a factory, and without either it stops at once. (Without all
+this, the first busy moment would have ended the whole run.) The client's token totals are printed at the end of a run.
+`GEMINI_MODELS` (comma-separated, in order of preference) lets the client move to the next model on a 429 or a busy server;
+each model has its own free-tier quota, so a second model is a second quota for this job. The track records every model that
+helped make it, for example `"model": "gemini-3.6-flash, gemini-3.8-flash"`. A busy model is not asked again for every call:
+later calls start with the model that answered last, and the preferred one is tried again after a pause. The same quota is shared with the other
+pipelines that use the same key, so run them at other times. When an answer is not valid JSON the client attaches the whole
+answer as `error.raw` and the log line shows the text around the place where it broke.
+
+**Thinking tokens.** Gemini 3 models think before they answer, and those tokens count against the quota and the time even
+though translation needs no reasoning. Seen: `gemini-4-hydrogen` at `GEMINI_THINKING_LEVEL=low` spent about 4,200 thinking
+tokens on top of 3,000 output tokens per 50-cue request and took 26 to 29 s, while `gemini-3.6-flash` with no thinking took
+about 10 s. For this job set `GEMINI_THINKING_LEVEL=minimal`. Some models have no such level (`gemini-3.8-flash` answered
+"Thinking level MINIMAL is not supported"); the client then uses `low` for that model, still far below the model's own
+default, and only gives up the setting altogether if `low` is refused too. The usage line of every call shows the thinking
+tokens, so the effect of the setting can be read from the log.
+
 **Doing it in several sessions (the normal case on a free key).** The run is built to be repeated:
 1. `node scripts/translate-transcripts.js --max-requests 60` (stops by itself when Google refuses; see above).
 2. `node scripts/translate-transcripts.js --check` shows `done`/`todo` per video and how many cues are translated.
@@ -1441,10 +1472,16 @@ defaults to 90 s (the shared client's own default is 240 s, which makes one hung
 4. Commit `assets/transcripts`. Partly translated videos are fine to publish: a track may have fewer cues than the main
    one (a Kannada question then finds hits only in the translated part; Hindi questions still find everything), and the
    next run asks only for the missing cues, even in a video that was stopped halfway.
-Observed in the first real session: 28 requests translated 445 cues (about 16 cues per request instead of the 50 planned),
-because of 3 batches rejected by the checks on the long, shloka-heavy video (garbled short cues that did not come back as
-Kannada or an exact copy, one malformed JSON answer, one length mismatch) and 429s; the third 429 in a row ended the run
-well before `--max-requests`. Expect roughly 100 to 300 requests for the whole job.
+Observed so far (gemini-3.6-flash): the first session translated 445 cues in 28 requests, stopped by 429s well before
+`--max-requests`. A later session of 60 requests translated 463 cues of the long shloka-heavy video (7.7 cues per request) and
+the next one 690 cues across eight videos (11.5 per request), against the 50 planned. About 40 % of the requests were answers
+that failed the checks. In the 60-request session with the best data, 22 of them did: 11 malformed JSON (`Expected ',' or '}'`,
+`Expected ':'`), 6 "not in Kannada" (3 different cues), 4 "has no en/kn" and 1 absurd length. The JSON failures also hit
+small batches (one at 12 cues, broken at character 670), so length is not the whole story; the likely cause is a straight
+double quote inside a translation, which is why the prompt now forbids those (**unverified**; the log line of a JSON failure
+now shows the text around the place where it broke, `near: "…"`, which will show the real cause). Isolating the bad cue,
+keeping it unchanged and the adaptive batch size were added after these logs, to waste fewer requests; their effect on real
+requests is not measured yet. Expect roughly 150 to 300 more requests for the rest of the job.
 
 **Limits and to be verified by hand.**
 - **What is verified and what is not.** The script's logic is tested with a fake client (no network). On the real

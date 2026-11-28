@@ -39,10 +39,17 @@
 //   * Saved after every accepted batch (not only after every video), so Ctrl+C loses at most the request in flight.
 //   * One request carries a batch of cues and asks for all target languages at once (half the requests of two passes).
 //     Cues are sent as {i, t}; the answer must contain every i exactly once, a non-empty text for every language,
-//     nothing unknown, and plausible lengths and scripts. Otherwise the WHOLE answer is thrown away and the batch is
-//     split in half and asked again, down to a single cue. (A timeout or a 503 says nothing about the answer, so it is
-//     NOT split: the same batch is asked again after a wait, and the run stops if Gemini keeps failing.) A cue that never comes back right is left out of the alt track
-//     (so a gap, never a shifted timestamp) and is tried again on the next run.
+//     nothing unknown, and plausible lengths and scripts. Otherwise the WHOLE answer is thrown away, and what happens
+//     next depends on what was wrong:
+//       - a problem with one named cue (not in the language, empty, absurd length): that cue is taken out and asked
+//         alone, and the cues before and after it are asked as two batches (3 requests, not a halving chain). A cue that
+//         is wrong again alone, twice, is KEPT UNCHANGED in the alt track, the way a garbled shloka is meant to be.
+//       - a broken answer as a whole (bad JSON, unknown or repeated ids, cues missing): the batch is split in half and
+//         asked again, down to a single cue; one that still fails is left out (a gap, never a shifted timestamp) and is
+//         tried again on the next run. The batches also get smaller after such a failure (down to 8), and larger again
+//         after three good ones, because long answers are the ones that break.
+//     (A timeout or a 503 says nothing about the answer, so it is NOT split: the same batch is asked again after a wait,
+//     and the run stops if Gemini keeps failing.)
 //   * Faithful, not corrected: the prompt says to translate what the captions say, mistakes included, and to give back
 //     unchanged any cue that is not intelligible speech (a Sanskrit/Prakrit shloka or mantra the recogniser garbled).
 //   * Jain terms: scripts/glossary.json lists the Hindi spellings the captions may use and the Kannada/English spelling
@@ -70,6 +77,8 @@ const DEFAULT_MAX_429 = 3;
 const DEFAULT_TIMEOUT_MS = 90000;
 const DEFAULT_RETRY_WAIT_MS = 30000;
 const DEFAULT_MAX_TRANSIENT = 4;
+const ADAPT_FLOOR = 8;            // the batch size never shrinks below this (or below --batch if that is smaller)
+const MAX_STUCK_IN_A_ROW = 3;      // cues kept unchanged one after the other, with no good batch between: the model is not working
 const MAX_BAD_IN_A_ROW = 8;        // errors / wrong answers in a row before the run gives up (the model or network is not working)
 const CONTEXT_CUES = 3;            // cues before a batch, sent as context only
 const DRY_RUN_CUES = 30;
@@ -86,7 +95,8 @@ Rules:
 3. Translate faithfully. Do NOT correct, improve, summarise, explain or guess what the speaker "must have meant"; if the recogniser wrote something odd, translate what is written. Add no comments, notes or text that is not in the cue.
 4. If a cue is not intelligible speech in the source language, because it is a Sanskrit or Prakrit shloka or mantra, or the recogniser garbled it, return that cue EXACTLY as given, character for character, in every requested field. If you are unsure but can make sense of it, translate it.
 5. Kannada means Kannada script. English means plain English. Keep numbers as digits and English words that are already in the cue.
-6. Names and Jain technical terms are not translated into their meaning. Use the glossary spelling when one is given. Otherwise write the Sanskrit-derived spelling in the target script (Kannada: for example ಅಭಿಷೇಕ; English: simple Latin letters without diacritics, for example Abhisheka).`;
+6. Names and Jain technical terms are not translated into their meaning. Use the glossary spelling when one is given. Otherwise write the Sanskrit-derived spelling in the target script (Kannada: for example ಅಭಿಷೇಕ; English: simple Latin letters without diacritics, for example Abhisheka).
+7. The answer is JSON. Never write a straight double quote character inside a translation (use “ ” or ‘ ’ instead), and write nothing outside the JSON.`;
 
 /** Turns the glossary file's content into entries { hi: string[], kn?, en? } (NFC, bad entries dropped). */
 function normalizeGlossary(raw) {
@@ -161,30 +171,31 @@ function ratioOk(source, text) {
 }
 
 /**
- * The model's answer for a batch -> { ok: true, out: Map(i -> { kn, en }) } or { ok: false, why }.
+ * The model's answer for a batch -> { ok: true, out: Map(i -> { kn, en }) } or { ok: false, why, kind, cue? } where kind is
+ * 'cue' (one named cue is unusable: `cue` is its id) or 'ids' / 'shape' (the answer as a whole is broken).
  * Strict on purpose: any unknown id, repeated id, missing cue, missing or empty language, wrong script or absurd length
  * rejects the whole answer, because one slip can mean the rest is shifted.
  */
 function validateAnswer(answer, items, targets) {
     const list = Array.isArray(answer && answer.cues) ? answer.cues : (Array.isArray(answer) ? answer : null);
-    if (!list) return { ok: false, why: 'the answer has no "cues" list' };
+    if (!list) return { ok: false, kind: 'shape', why: 'the answer has no "cues" list' };
     const want = new Map(items.map(it => [it.i, it]));
     const out = new Map();
     for (const c of list) {
-        if (!c || typeof c !== 'object' || !Number.isInteger(c.i) || !want.has(c.i)) return { ok: false, why: `unknown cue id ${c && c.i}` };
-        if (out.has(c.i)) return { ok: false, why: `cue ${c.i} came back twice` };
+        if (!c || typeof c !== 'object' || !Number.isInteger(c.i) || !want.has(c.i)) return { ok: false, kind: 'ids', why: `unknown cue id ${c && c.i}` };
+        if (out.has(c.i)) return { ok: false, kind: 'ids', why: `cue ${c.i} came back twice` };
         const rec = {};
         for (const lang of targets) {
             const text = typeof c[lang] === 'string' ? collapse(c[lang]) : '';
             const source = want.get(c.i).t;
-            if (!text) return { ok: false, why: `cue ${c.i} has no ${lang}` };
-            if (!scriptOk(lang, text, source)) return { ok: false, why: `cue ${c.i}: the ${lang} text is not in ${LANG_NAME[lang]}` };
-            if (!ratioOk(source, text)) return { ok: false, why: `cue ${c.i}: the ${lang} length looks wrong` };
+            if (!text) return { ok: false, kind: 'cue', cue: c.i, why: `cue ${c.i} has no ${lang}` };
+            if (!scriptOk(lang, text, source)) return { ok: false, kind: 'cue', cue: c.i, why: `cue ${c.i}: the ${lang} text is not in ${LANG_NAME[lang]}` };
+            if (!ratioOk(source, text)) return { ok: false, kind: 'cue', cue: c.i, why: `cue ${c.i}: the ${lang} length looks wrong` };
             rec[lang] = text;
         }
         out.set(c.i, rec);
     }
-    if (out.size !== items.length) return { ok: false, why: `${items.length - out.size} of ${items.length} cue(s) missing` };
+    if (out.size !== items.length) return { ok: false, kind: 'ids', why: `${items.length - out.size} of ${items.length} cue(s) missing` };
     return { ok: true, out };
 }
 
@@ -196,6 +207,16 @@ const is429 = e => /Gemini answered 429\b/.test(String((e && e.message) || e));
 const isTransient = e => /Gemini request failed|Gemini answered 5\d\d/.test(String((e && e.message) || e));
 const isFatal = e => /Gemini answered 4\d\d/.test(String((e && e.message) || e)) && !is429(e);   // bad key, retired model ...: asking again will not help
 
+/** For a JSON error, the text of the model's answer around the position the parser names (the shared client attaches the
+ *  whole answer as `error.raw`), so the log shows WHY an answer was not valid JSON. Empty when that is not known. */
+function excerptAround(e) {
+    const raw = e && typeof e.raw === 'string' ? e.raw : '';
+    const at = /position (\d+)/.exec(String((e && e.message) || ''));
+    if (!raw || !at) return '';
+    const p = Number(at[1]);
+    return `; near: ${JSON.stringify(raw.slice(Math.max(0, p - 60), p + 40))}`;
+}
+
 /**
  * Translate cues, splitting a batch whose answer is wrong. Stops (ctx.stopped) on repeated 429s, a fatal error, a run of
  * bad answers or the request limit; whatever was answered right before that is kept.
@@ -204,11 +225,17 @@ const isFatal = e => /Gemini answered 4\d\d/.test(String((e && e.message) || e))
  * @param {{i: number, t: string}[]} items
  * @param {(i: number, rec: Object) => void} [onCue]  called for every cue as soon as its batch is accepted
  * @param {() => void} [onBatch]  called once after each accepted batch (the caller saves there)
- * @returns {Promise<{ got: Map<number, Object>, failed: number[] }>}  failed: cues that never came back right
+ * @returns {Promise<{ got: Map<number, Object>, failed: number[], unchanged: number[] }>}  failed: cues that never came back
+ *          right (left out); unchanged: cues the model would not translate, kept as they are (they are also in `got`)
  */
 async function translateCues(ctx, items, onCue, onBatch) {
     const got = new Map();
     const failed = [];
+    const unchanged = [];
+
+    /** After a wait, make the client willing to be asked again: reset() keeps what it has learned (the model that answered,
+     *  the usage totals); a client without it is replaced by a fresh one from the factory. */
+    const revive = () => { if (typeof ctx.ai.reset === 'function') ctx.ai.reset(); else ctx.ai = ctx.makeAi(); };
 
     async function ask(group) {
         for (;;) {
@@ -224,11 +251,22 @@ async function translateCues(ctx, items, onCue, onBatch) {
                     prompt: buildPrompt({ source: ctx.source, targets: ctx.targets, items: group, before: ctx.before(group[0].i), terms }),
                 });
             } catch (e) {
+                // The shared client (scripts/lib/gemini.js) marks a busy server with `unavailable` and then refuses every later
+                // call of the same client object. Waiting and asking again therefore needs a fresh client (ctx.makeAi); without
+                // one there is nothing to wait for.
+                const dead = Boolean(e && e.unavailable);
+                const canRevive = typeof ctx.ai.reset === 'function' || Boolean(ctx.makeAi);
+                if (dead && !canRevive && (is429(e) || isTransient(e))) {
+                    ctx.stopped = is429(e) ? 'rate-limit' : 'overloaded';
+                    ctx.lastError = e.message;
+                    return null;
+                }
                 if (is429(e)) {
                     ctx.in429++;
                     if (ctx.in429 >= ctx.max429) { ctx.stopped = 'rate-limit'; return null; }
                     ctx.log(`      Google refused the request (HTTP 429, ${ctx.in429} of ${ctx.max429} in a row); waiting ${Math.round(ctx.cooldown / 1000)} s`);
                     await ctx.sleep(ctx.cooldown);
+                    if (dead) revive();
                     continue;                                     // the same group again
                 }
                 if (isFatal(e)) { ctx.stopped = 'fatal'; ctx.fatal = e.message; return null; }
@@ -237,11 +275,12 @@ async function translateCues(ctx, items, onCue, onBatch) {
                     if (ctx.inTransient >= ctx.maxTransient) { ctx.stopped = 'overloaded'; ctx.lastError = e.message; return null; }
                     ctx.log(`      Gemini did not answer (${e.message.replace(/^Gemini /, '')}; ${ctx.inTransient} of ${ctx.maxTransient} in a row); waiting ${Math.round(ctx.retryWait / 1000)} s, then asking the same batch again`);
                     await ctx.sleep(ctx.retryWait);
+                    if (dead) revive();
                     continue;                                     // the same group again, not split
                 }
                 ctx.bad++;
                 if (ctx.bad >= MAX_BAD_IN_A_ROW) { ctx.stopped = 'unreliable'; return null; }
-                return { ok: false, why: e.message };
+                return { ok: false, kind: 'parse', why: `${e.message}${excerptAround(e)}` };
             }
             ctx.in429 = 0;
             ctx.inTransient = 0;
@@ -252,29 +291,68 @@ async function translateCues(ctx, items, onCue, onBatch) {
         }
     }
 
+    /** Asks for a group; returns 'ok' (accepted as a whole), 'cue' (failed because of one named cue), 'structure' (failed as
+     *  a whole) or 'stopped'. */
     async function run(group) {
+        if (!group.length) return 'ok';
         let v = await ask(group);
         if (v && !v.ok && group.length === 1) v = await ask(group);        // a single cue gets one more try
-        if (!v) return;                                                    // stopped
+        if (!v) return 'stopped';
         if (v.ok) {
             for (const [i, rec] of v.out) { got.set(i, rec); if (onCue) onCue(i, rec); }
             if (onBatch) onBatch();
-            return;
+            if (group.length > 1) ctx.stuck = 0;
+            return 'ok';
         }
         if (group.length === 1) {
-            failed.push(group[0].i);
-            ctx.log(`      cue ${group[0].i} did not come back right (${v.why}); left out, a rerun will try it again`);
-            return;
+            const cue = group[0];
+            if (v.kind === 'cue') {                                        // the model keeps getting this one wrong: keep it as it is
+                const rec = Object.fromEntries(ctx.targets.map(l => [l, cue.t]));
+                got.set(cue.i, rec); unchanged.push(cue.i);
+                if (onCue) onCue(cue.i, rec);
+                if (onBatch) onBatch();
+                ctx.log(`      cue ${cue.i} would not come back right (${v.why}); kept unchanged, like a garbled shloka`);
+                ctx.stuck = (ctx.stuck || 0) + 1;
+                if (ctx.stuck >= MAX_STUCK_IN_A_ROW) ctx.stopped = 'unreliable';
+                return 'cue';
+            }
+            failed.push(cue.i);
+            ctx.log(`      cue ${cue.i} did not come back right (${v.why}); left out, a rerun will try it again`);
+            return 'structure';
+        }
+        const at = v.kind === 'cue' ? group.findIndex(g => g.i === v.cue) : -1;
+        if (at >= 0) {                                                     // take the named cue out: 3 requests instead of a halving chain
+            ctx.log(`      a batch of ${group.length} came back wrong (${v.why}); asking again without cue ${v.cue}, which is asked alone`);
+            await run(group.slice(0, at));
+            await run([group[at]]);
+            await run(group.slice(at + 1));
+            return 'cue';
         }
         ctx.log(`      a batch of ${group.length} came back wrong (${v.why}); asking again in two halves`);
         const mid = Math.ceil(group.length / 2);
         await run(group.slice(0, mid));
         await run(group.slice(mid));
+        return 'structure';
     }
 
-    const size = ctx.batch;
-    for (let k = 0; k < items.length && !ctx.stopped; k += size) await run(items.slice(k, k + size));
-    return { got, failed };
+    // Batches shrink after a failure of the answer as a whole (long answers break more often) and grow back after three
+    // good ones. A failure because of one cue does not change the size: it is local, and isolating that cue is cheap.
+    const floor = Math.min(ADAPT_FLOOR, ctx.batch);
+    let size = ctx.batch;
+    let wins = 0;
+    for (let k = 0; k < items.length && !ctx.stopped;) {
+        const group = items.slice(k, k + size);
+        k += group.length;
+        const r = await run(group);
+        if (r === 'ok') {
+            if (size < ctx.batch && ++wins >= 3) { size = Math.min(ctx.batch, Math.ceil(size * 1.5)); wins = 0; ctx.log(`      batches of ${size} cues again`); }
+        } else if (r === 'structure' && !ctx.stopped) {
+            wins = 0;
+            const next = Math.max(floor, Math.floor(size / 2));
+            if (next < size) { size = next; ctx.log(`      using batches of ${size} cues from now on`); }
+        }
+    }
+    return { got, failed, unchanged };
 }
 
 // ── Transcript files ─────────────────────────────────────────────────────
@@ -319,8 +397,9 @@ function withTracks(transcript, main, maps, model) {
     for (const [lang, map] of maps) {
         if (!map.size) continue;
         const at = alt.findIndex(a => a && a.lang === lang);
-        const was = at >= 0 && alt[at].via === 'gemini' ? alt[at].model : '';
-        const entry = { lang, source: 'translated', via: 'gemini', model: was && was !== model && !was.split(', ').includes(model) ? `${was}, ${model}` : model, segments: segmentsOf(main, map) };
+        const used = at >= 0 && alt[at].via === 'gemini' && alt[at].model ? String(alt[at].model).split(', ') : [];     // the models that made this track so far
+        if (!used.includes(model)) used.push(model);
+        const entry = { lang, source: 'translated', via: 'gemini', model: used.join(', '), segments: segmentsOf(main, map) };
         if (at >= 0) alt[at] = entry; else alt.push(entry);
     }
     return { ...transcript, alt };
@@ -408,7 +487,8 @@ async function main(argv = process.argv.slice(2), root = DEFAULT_ROOT, deps = {}
     }
 
     // retries: 0, because this script is the only retry layer: every request it counts is one real call to Google
-    const ai = deps.ai || (deps.createGemini || createGemini)({ model: args.model, retries: 0, timeoutMs: nums.timeout });
+    const makeAi = () => (deps.createGemini || createGemini)({ model: args.model, retries: 0, timeoutMs: nums.timeout });
+    const ai = deps.ai || makeAi();
     if (!ai.available) {
         error('GEMINI_API_KEY is not set. It is free: create a key in Google AI Studio (https://aistudio.google.com/apikey) and set it, e.g. in PowerShell: $env:GEMINI_API_KEY = "...".');
         return 1;
@@ -417,7 +497,7 @@ async function main(argv = process.argv.slice(2), root = DEFAULT_ROOT, deps = {}
     const dry = !!args['dry-run'];
 
     const makeContext = (source, main, to) => ({
-        ai, source, targets: to, glossary, log, sleep, requests: 0,
+        ai, makeAi: deps.ai ? null : makeAi, source, targets: to, glossary, log, sleep, requests: 0,
         pause: nums.pause, cooldown: nums.cooldown, max429: nums.max429, retryWait: nums.retryWait, maxTransient: nums.maxTransient, maxRequests: dry ? 0 : nums.maxRequests, batch: nums.batch,
         before: i => main.slice(Math.max(0, i - CONTEXT_CUES), i).map(c => c[1]),
         in429: 0, inTransient: 0, bad: 0, stopped: '', fatal: '', lastError: '', pauseFirst: false,
@@ -445,6 +525,7 @@ async function main(argv = process.argv.slice(2), root = DEFAULT_ROOT, deps = {}
             else log('        (not translated)');
         }
         log(`\n${got.size} of ${items.length} cues translated in ${ctx.requests} request(s); ${failed.length} left out.`);
+        if (typeof ai.printUsage === 'function') ai.printUsage();
         if (ctx.stopped === 'fatal') { error(`Gemini refused: ${ctx.fatal}. If the model name is the problem, set GEMINI_MODEL or use --model.`); return 1; }
         if (ctx.stopped) log(HINTS[ctx.stopped]);
         return 0;
@@ -452,7 +533,8 @@ async function main(argv = process.argv.slice(2), root = DEFAULT_ROOT, deps = {}
 
     // ── The run
     const model = ai.model || 'unknown';
-    log(`Model: ${model}. Targets: ${targets.join(', ')}. ${glossary.length} glossary term(s).`);
+    const models = ai.models && ai.models.length ? ai.models : [model];
+    log(`${models.length > 1 ? 'Models (in order of preference)' : 'Model'}: ${models.join(', ')}. Targets: ${targets.join(', ')}. ${glossary.length} glossary term(s).`);
     let videosDone = 0;
     let cuesDone = 0;
     let requests = 0;
@@ -483,7 +565,7 @@ async function main(argv = process.argv.slice(2), root = DEFAULT_ROOT, deps = {}
         ctx.pauseFirst = requests > 0;                        // a pause between videos too, not only inside one
         let sinceSave = 0;
         const save = () => {
-            transcript = withTracks(transcript, main, maps, model);
+            transcript = withTracks(transcript, main, maps, ctx.ai.model || model);       // the model that answered last (the shared client may have moved to the next one)
             writeTranscript(dir, transcript);
             writeIndex(dir);
             sinceSave = 0;
@@ -497,11 +579,12 @@ async function main(argv = process.argv.slice(2), root = DEFAULT_ROOT, deps = {}
         cuesDone += result.got.size;
         const missing = Math.max(...to.map(l => main.length - maps.get(l).size));
         if (missing > 0) openVideos++; else videosDone++;
-        log(`    ${result.got.size} cue(s) translated${missing ? `, ${missing} still missing` : ''}`);
+        log(`    ${result.got.size} cue(s) translated${result.unchanged.length ? ` (${result.unchanged.length} of them kept unchanged)` : ''}${missing ? `, ${missing} still missing` : ''}`);
         if (ctx.stopped) { stopped = ctx.stopped; fatal = ctx.fatal; }
     }
 
     const { count } = writeIndex(dir);
+    if (typeof ai.printUsage === 'function') ai.printUsage();                // what the run cost in tokens
     log(`Done: ${videosDone} video(s) complete, ${openVideos} with cues still missing, ${cuesDone} cue(s) translated, ${requests} request(s); ${count} transcript(s) in the index.`);
     if (stopped === 'fatal') { error(`Gemini refused: ${fatal}. If the model name is the problem, set GEMINI_MODEL or use --model.`); return 1; }
     if (stopped) log(HINTS[stopped]);

@@ -15,6 +15,8 @@
 // for a tiny answer. The repository variable GEMINI_THINKING_LEVEL (minimal | low | medium | high) is sent as
 // generationConfig.thinkingConfig.thinkingLevel. Unset (the default) sends nothing: the model's own default. Gemini 2.5
 // models take a number of tokens instead (GEMINI_THINKING_BUDGET); the API refuses both together, so only one is sent.
+// A model that has no "minimal" gets "low" instead (for that model only, after one refused call); a model that refuses any
+// other setting gets none.
 // If a model rejects the setting (HTTP 400 naming thinking) the call is repeated once without it and the log says so; that
 // model is then asked without it for the rest of the run, and the other models in GEMINI_MODELS still get the setting.
 //
@@ -81,7 +83,7 @@ function unavailableError(message) {
 /**
  * @param {{ apiKey?: string, model?: string, models?: string|string[], fetchImpl?: Function, retries?: number, timeoutMs?: number, sleep?: Function, cooldownMs?: number, now?: Function,
  *           thinkingLevel?: string, thinkingBudget?: number|string, log?: Function }} options
- * @returns {{ available: boolean, model: string, models: string[], json: Function, usage: Function, printUsage: Function }}
+ * @returns {{ available: boolean, model: string, models: string[], json: Function, usage: Function, printUsage: Function, reset: Function }}
  */
 function createGemini(options = {}) {
     const apiKey = options.apiKey ?? process.env.GEMINI_API_KEY;
@@ -92,6 +94,7 @@ function createGemini(options = {}) {
     const cooldownMs = options.cooldownMs ?? 120000;  // after this long on a fallback model the preferred one is tried again
     const skipped = new Set();                        // models the key cannot use (404)
     const noThinking = new Set();                     // models that refused the thinking setting
+    const levelFor = {};                              // models that refused the level asked for and take the next one up: model -> thinkingConfig
     const perModel = {};                              // calls per model, for the usage line
     const fetchImpl = options.fetchImpl || globalThis.fetch;
     const retries = options.retries ?? 3;
@@ -120,13 +123,16 @@ function createGemini(options = {}) {
      * @param {{ system?: string, prompt: string, parts?: Object[], temperature?: number }} request
      *   parts: extra content parts put before the prompt (e.g. a YouTube fileData part with videoMetadata)
      */
+    /** The thinking setting to send to a model: the one asked for, a step up if the model refused it, or none. */
+    const thinkingFor = (forModel) => (!thinking || noThinking.has(forModel) ? null : (levelFor[forModel] || thinking));
+
     async function json({ system, prompt, parts = [], temperature = 0 }) {
         if (!apiKey) throw new Error('GEMINI_API_KEY is not set');
         if (unavailable) throw unavailableError(`Gemini not asked again in this run: it stayed unavailable earlier (${unavailable})`);
         const makeBody = (forModel) => ({
             ...(system ? { systemInstruction: { parts: [{ text: system }] } } : {}),
             contents: [{ role: 'user', parts: [...parts, { text: prompt }] }],
-            generationConfig: { temperature, responseMimeType: 'application/json', ...(thinking && !noThinking.has(forModel) ? { thinkingConfig: thinking } : {}) },
+            generationConfig: { temperature, responseMimeType: 'application/json', ...(thinkingFor(forModel) ? { thinkingConfig: thinkingFor(forModel) } : {}) },
         });
         let lastError;
         if (current > 0 && now() - movedAt >= cooldownMs) {
@@ -167,10 +173,18 @@ function createGemini(options = {}) {
                     continue;
                 }
                 const payload = await res.json().catch(() => ({}));
-                if (!res.ok && res.status === 400 && thinking && !noThinking.has(useModel) && /thinking/i.test(payload.error?.message || '')) {
-                    // this model does not accept the thinking setting: say so once, drop it for this model for the rest of the run, and repeat the call
-                    log(`[gemini] ${useModel} refused the thinking setting (${payload.error.message}); continuing without it for this model`);
-                    noThinking.add(useModel);
+                if (!res.ok && res.status === 400 && thinkingFor(useModel) && /thinking/i.test(payload.error?.message || '')) {
+                    const asked = thinkingFor(useModel);
+                    if (asked.thinkingLevel === 'minimal') {
+                        // some models have no "minimal" and say "retry with other thinking level": take "low", which is still far less
+                        // than the model's own default, for this model for the rest of the run, and repeat the call
+                        log(`[gemini] ${useModel} refused thinking level minimal (${payload.error.message}); using low for this model`);
+                        levelFor[useModel] = { thinkingLevel: 'low' };
+                    } else {
+                        // this model does not accept the thinking setting: say so once, drop it for this model for the rest of the run, and repeat the call
+                        log(`[gemini] ${useModel} refused the thinking setting (${payload.error.message}); continuing without it for this model`);
+                        noThinking.add(useModel);
+                    }
                     attempt--;
                     continue;
                 }
@@ -182,13 +196,18 @@ function createGemini(options = {}) {
                     const why = payload.promptFeedback?.blockReason || payload.candidates?.[0]?.finishReason || 'empty answer';
                     throw new Error(`Gemini returned no text (${why})`);
                 }
-                return parseJsonAnswer(text);
+                try { return parseJsonAnswer(text); } catch (err) { err.raw = text; throw err; }   // the whole answer, so a caller can show where the JSON broke
             }
         }
         unavailable = lastError.message;
         log(`[gemini] still unavailable after the retries${order.length > 1 ? ` (${order.map((m) => m.name).join(', ')})` : ''}: ${lastError.message}; no more Gemini calls in this run`);
         throw unavailableError(lastError.message);
     }
+
+    /** Lift the "unavailable" flag so the next call is really made. For a script that waits for a busy spell to pass and then
+     *  asks again (scripts/translate-transcripts.js). Everything else the client has learned stays: which model answered last,
+     *  the models this key cannot use, the models that refused the thinking setting, and the usage totals. */
+    function reset() { unavailable = null; }
 
     /** Totals so far: { calls, prompt, output, thinking, total, ms }. */
     function usage() { return { ...totals }; }
@@ -202,7 +221,7 @@ function createGemini(options = {}) {
         log(`[gemini] ${Object.entries(perModel).map(([m, n]) => `${m}${models.length > 1 ? ` x${n}` : ''}`).join(', ')}: ${totals.calls} call(s), in ${totals.prompt}, out ${totals.output}, thinking ${totals.thinking}, total ${totals.total} tokens, ${(totals.ms / 1000).toFixed(1)}s${level}`);
     }
 
-    return { available: Boolean(apiKey), get model() { return models[current]; }, models, json, usage, printUsage };
+    return { available: Boolean(apiKey), get model() { return models[current]; }, models, json, usage, printUsage, reset };
 }
 
 module.exports = { createGemini, parseJsonAnswer, thinkingConfigFrom, modelsFrom, DEFAULT_MODEL, THINKING_LEVELS };
