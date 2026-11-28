@@ -11,6 +11,8 @@ import { answerQuestion } from './rag.js';
 import { getEngine } from './engines/index.js';
 import { LOCAL_TIERS } from './config.js';
 import { LOCAL_GPU_FAILED } from './engines/local.js';
+import { loadModelsFromFolder, folderSource, loadRecordLookup } from './engines/model-files.js';
+import { recallFolder, folderAccess } from './engines/model-folder-memory.js';
 import { destinationHost, isLocalBaseUrl, normalizeBaseUrl } from './engines/custom.js';
 import { openAiConfig } from './ai-config.js';
 import { loadTranscripts, createVideoIndex, findMoments } from './video-nav.js';
@@ -409,6 +411,52 @@ export function revealTarget(blockId) {
     return covered;
 }
 
+// Local is about to download its model. If the reader saved a copy to a folder earlier (the browser remembers
+// the folder), offer to load that instead. The browser usually wants a click before it lets the page read the
+// folder again, so this asks once; if it already allows reading, it loads without asking.
+async function offerSavedFolder({ modelIds }) {
+    const handle = await recallFolder();
+    if (!handle) return;
+    let access = await folderAccess(handle);
+    if (access !== 'granted') {
+        const yes = await askInChat(`Load the saved model from the folder \u201c${handle.name}\u201d instead of downloading it?`, 'Load from folder', 'Download instead');
+        if (!yes) return;
+        access = await folderAccess(handle, { request: true });   // straight after the click, so the browser may show its prompt
+        if (access !== 'granted') {
+            addMessage('assistant', 'The browser didn\u2019t allow reading that folder, so the model will be downloaded.');
+            return;
+        }
+    }
+    try {
+        setStatus('Loading the saved model\u2026');
+        await loadModelsFromFolder({
+            source: folderSource(handle), recordFor: await loadRecordLookup(), caches: window.caches, modelIds,
+            onProgress: p => setStatus(p.text),
+        });
+    } catch (err) {
+        // Nothing was put in the cache (everything is checked first), so the download goes ahead.
+        addMessage('assistant', `${err?.message || 'The saved model couldn\u2019t be loaded.'} The model will be downloaded instead.`);
+    }
+}
+
+// A question in the chat with two buttons; resolves true for the first, false for the second (or when stopped).
+function askInChat(text, yesLabel, noLabel) {
+    return new Promise(resolve => {
+        const box = addMessage('assistant', text);
+        const done = answer => { box.querySelectorAll('button').forEach(b => { b.disabled = true; }); resolve(answer); };
+        const mk = (label, answer) => {
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'ai-retry';
+            b.textContent = label;
+            b.addEventListener('click', () => done(answer));
+            return b;
+        };
+        box.append(document.createElement('br'), mk(yesLabel, true), ' ', mk(noLabel, false));
+        state.abort?.signal.addEventListener('abort', () => done(false), { once: true });
+    });
+}
+
 async function ask(question, { retry = false } = {}) {
     const engine = currentEngine();
     if (state.busy) return;
@@ -434,7 +482,7 @@ async function ask(question, { retry = false } = {}) {
 
     try {
         if (engine.id === 'local') {
-            await engine.prepare(p => setStatus(p.text || 'Preparing the on-device model…'));
+            await engine.prepare(p => setStatus(p.text || 'Preparing the on-device model…'), { beforeDownload: offerSavedFolder });
             setStatus('');
         }
         state.index ||= createIndex(state.data);

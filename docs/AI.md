@@ -1290,8 +1290,17 @@ ai/
   (`engines/model-files.test.js`) and the real Cache API plus a real folder handle (`test/e2e/core/model-files.test.js`, using a
   small stand-in model); the real multi-GB model and the real folder picker were not exercised. **Verify on his machine:** save
   after a real download, clear site data, load, confirm Local starts with no network traffic.
-- **Idea, not built:** `navigator.storage.persist()` before the first download would protect the model from the browser's
-  automatic eviction under disk pressure (not from the reader clearing data, which is what the folder copy is for).
+- **Built, not yet verified in a real browser: persistent storage and a remembered folder** (`engines/model-folder-memory.js`, hooks in
+  `engines/local.js`, the offer in `ai-panel.js`, a "Forget remembered folder" button in Configure). (1) When Local's first use starts
+  (the click that sends a question, never page load) the engine calls `navigator.storage.persist()` without waiting for the answer;
+  Chrome decides quietly, Firefox may prompt. It only stops automatic eviction, not the reader clearing site data. (2) Save, and Load
+  through the folder picker, store the folder handle in IndexedDB. When Local is about to download (the model isn't completely cached)
+  the panel offers "Load the saved model from <folder>?"; if the browser still grants read access it loads without asking, otherwise
+  one click is needed (permission is usually asked again each session, so truly automatic loading only happens where the browser kept
+  it). Only the selected size's models are restored; if loading fails nothing is cached and the download goes ahead. Save and Load
+  otherwise cover every size; the selected size only decides which one Local starts. Unit tests with fakes; real IndexedDB check in
+  `test/e2e/core/model-folder-memory.test.js` (not run yet). **Verify on his machine:** the prompt appears only with an empty cache,
+  and the permission prompt after a browser restart.
 - **TODO (decide later):** keep or remove the optional Anthropic backend in the proxy (`BACKEND = "anthropic"`, off by default;
   the free Workers AI backend is the default). He tests with his own Anthropic key meanwhile.
 - **Done (after the tags review, 2026-11-16):** the tag boost already existed (a tag hit counts as 3 body hits) and works with the

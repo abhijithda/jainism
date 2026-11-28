@@ -185,17 +185,20 @@ async function readManifest(source) {
  * @param {Object} opts
  * @param {Object} opts.source        folderSource(...) or fileListSource(...)
  * @param {(modelId: string) => Object|null} opts.recordFor   WebLLM's record for a model id, or null if not offered
+ * @param {string[]} [opts.modelIds]  only restore these models (the folder may hold other sizes); others are left alone, silently
  * @returns {Promise<{restored: string[], warnings: string[], bytes: number}>}
  */
-export async function loadModelsFromFolder({ source, recordFor, caches, onProgress = () => {}, signal }) {
+export async function loadModelsFromFolder({ source, recordFor, caches, modelIds, onProgress = () => {}, signal }) {
     const manifest = await readManifest(source);
+    const targetModels = Array.isArray(modelIds) ? manifest.models.filter(m => modelIds.includes(m?.modelId)) : manifest.models;
+    if (Array.isArray(modelIds) && !targetModels.length) throw new ModelFolderError('That folder has no saved copy of the size you chose.');
     const warnings = [];
     if (manifest.webllm && webllmVersion() && manifest.webllm !== webllmVersion()) {
         warnings.push(`It was saved with WebLLM ${manifest.webllm} and this site uses ${webllmVersion()}; anything that doesn\u2019t match is downloaded again.`);
     }
 
     const plan = [];
-    for (const { modelId, entries } of manifest.models) {
+    for (const { modelId, entries } of targetModels) {
         const record = recordFor(modelId);
         const known = Object.values(LOCAL_TIERS).some(t => t.model === modelId || t.compat === modelId);
         if (!record || !known || !Array.isArray(entries)) { warnings.push(`Skipped ${String(modelId).slice(0, 80)}: this site doesn\u2019t offer that model.`); continue; }
