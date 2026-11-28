@@ -5,12 +5,13 @@
 
 /* Read tracking while Study is on: looks locked, and a click on it explains why (study-panel.js). */
 input[data-locked="1"] + .slider { opacity: .55; cursor: not-allowed; }
-.rt-lock-note { margin: 2px 8px 6px; padding: 5px 9px; border-radius: 6px; background: #fff4e0; color: #6b4200; font-size: .8em; line-height: 1.4; }
+.rt-lock-note { margin: 2px 12px 8px; padding: 5px 9px; border-radius: 6px; background: #fff4e0; color: #6b4200; font-size: .8em; line-height: 1.4; }
 .rt-lock-note[hidden] { display: none; }
 .rt-lock-flash { background: #ffd98a; outline: 2px solid #e09b00; }
 
 #study-btn[hidden], .study-nudge[hidden], .study-drawer[hidden] { display: none; }
 #study-btn { position: relative; }
+#study-btn-pop[hidden] { display: none; }
 /* .ai-drawer adds its 1px border outside its width; on a phone that is 1px of sideways scroll. */
 .study-drawer { box-sizing: border-box; }
 .study-badge {

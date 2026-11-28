@@ -110,9 +110,21 @@ export function computeProgress(readSet, totalBlockCount) {
  * @param {number} totalBlockCount
  */
 export function updateProgressDisplay(readSet, totalBlockCount) {
-    const { read, total } = computeProgress(readSet, totalBlockCount);
+    const { read, total, percentage } = computeProgress(readSet, totalBlockCount);
     const el = document.getElementById('read-progress');
     if (el) el.textContent = `✓ ${read}/${total} read`;
+
+    // The header's progress button (ring + card, see header/progress-button.js) shows the same numbers.
+    const ring = document.getElementById('progress-ring-fill');
+    if (ring) ring.setAttribute('stroke-dasharray', `${percentage} 100`);
+    const set = (id, text) => { const n = document.getElementById(id); if (n) n.textContent = text; };
+    set('progress-pct', String(percentage));
+    set('progress-pop-text', `${read} of ${total} read`);
+    set('progress-pop-pct', `${percentage}%`);
+    const ringBtn = document.getElementById('progress-btn');
+    if (ringBtn) { const t = `${percentage}% read (${read} of ${total})`; ringBtn.title = t; ringBtn.setAttribute('aria-label', t); }
+    const bar = document.getElementById('progress-pop-bar');
+    if (bar) bar.style.width = `${percentage}%`;
 }
 
 // CommonJS shim for Jest

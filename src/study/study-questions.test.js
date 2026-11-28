@@ -118,7 +118,7 @@ describe('suggestionsForRead', () => {
         const recall = full.find(s => s.kind === 'recall');
         expect(recall).toBeDefined();
         expect(recall.id).toBe(`recall:${item.id}`);
-        expect(recall.prompt).toMatch(/^A question from the book: \u201C.+\u201D What does the book answer\?$/);
+        expect(recall.prompt).toMatch(/^A question from the FAQs: \u201C.+\u201D What do the FAQs answer\?$/);
         expect(recall.passages.length).toBeGreaterThan(0);
     });
 
@@ -226,9 +226,9 @@ describe('wording follows the selected languages', () => {
         const [kn, en] = s.promptLines;
         expect(kn.lang).toBe('kn');
         expect(hasKannada(kn.text)).toBe(true);
-        expect(kn.text).not.toMatch(/A question from the book/);
+        expect(kn.text).not.toMatch(/A question from the FAQs/);
         expect(hasKannada(en.text.replace(/\u201C[\s\S]*\u201D/, ''))).toBe(false);
-        expect(en.text).toMatch(/^A question from the book: \u201C/);
+        expect(en.text).toMatch(/^A question from the FAQs: \u201C/);
         const knOnly = Q.buildSuggestion(model, { kind: 'recall', itemId: item.id }, { langs: ['kn'] });
         expect(knOnly.promptLines).toHaveLength(1);
         expect(hasKannada(knOnly.title)).toBe(true);

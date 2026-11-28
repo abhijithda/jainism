@@ -23,9 +23,11 @@ describe('describe: what the row shows in each state', () => {
     test('a sign-in problem replaces the explanation', () => {
         expect(describeSync({ status: 'signed-out', message: 'Permission to save to Google Drive was not given' }).hintText).toMatch(/Permission/);
     });
-    test('synced: a tick with the time, a refresh button and the account button; no explanation', () => {
+    test('synced: a tick with the time, a refresh button and the account button, and a status line without the email', () => {
         const d = describeSync({ status: 'synced', account: acct, lastSyncAt: 1000 }, 1000);
-        expect(d).toMatchObject({ icon: 'ok', tip: 'Synced just now', actions: ['refresh', 'account'], hint: false, email: 'a@x.com' });
+        expect(d).toMatchObject({ icon: 'ok', tip: 'Synced just now', actions: ['refresh', 'account'], hint: true, email: 'a@x.com' });
+        expect(d.hintText).toMatch(/^Synced just now\. /);
+        expect(d.hintText).not.toMatch(/a@x\.com/);
     });
     test('syncing: a spinner and just the account button', () => {
         expect(describeSync({ status: 'syncing', account: acct })).toMatchObject({ icon: 'sync', actions: ['account'] });
@@ -78,7 +80,7 @@ describe('the built row', () => {
         expect(home.querySelector('.sync-hint').hidden).toBe(false);
         expect(home.querySelector('.sync-hint a').getAttribute('href')).toBe('privacy.html');
     });
-    test('synced: tick with its hover hint, refresh and account buttons with accessible names, no explanation', () => {
+    test('synced: tick with its hover hint, refresh and account buttons with accessible names, and a status line', () => {
         const { home } = mount({ status: 'synced', account: { email: 'a@x.com' }, lastSyncAt: Date.now() });
         const state = home.querySelector('.sync-state');
         expect(state.hidden).toBe(false);
@@ -87,7 +89,9 @@ describe('the built row', () => {
         expect(act(home, 'refresh').getAttribute('aria-label')).toBe('Sync now');
         expect(act(home, 'account').getAttribute('aria-label')).toBe('Account');
         expect(act(home, 'account').dataset.tip).toBe('a@x.com');        // hover on desktop
-        expect(home.querySelector('.sync-hint').hidden).toBe(true);
+        expect(home.querySelector('.sync-hint').hidden).toBe(false);
+        expect(home.querySelector('.sync-hint').className).toContain('sync-hint--ok');
+        expect(home.querySelector('.sync-hint').textContent).toMatch(/^Synced just now\./);
         expect(act(home, 'signin').hidden).toBe(true);
     });
     test('the account menu opens on click with the address first, closes on a second click, outside click and Escape', () => {

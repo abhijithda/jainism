@@ -19,6 +19,9 @@ import { loadSettings, saveSettings } from './settings.js';
 
 export const SW_PATH = 'sw.js';
 export const STATUS_ELEMENT_ID = 'home-offline-status';
+// The same line is in Settings (header) and on Home.
+export const STATUS_ELEMENT_IDS = ['offline-status', STATUS_ELEMENT_ID];
+export const NOT_SAVED_TEXT = 'Not saved. Reading needs internet.';
 export const TOGGLE_ID = 'toggle-offline';
 
 // Can this browser/page use a service worker at all? (They need https, or
@@ -52,9 +55,9 @@ export function describeStatus(status, online, usageBytes = 0) {
     const missing = status ? Math.max(0, status.total - status.done) : 0;
     if (!online) {
         if (status && status.state === 'ready') {
-            return { state: 'offline-ready', text: '📴 You’re offline — showing the copy saved on this device.' };
+            return { state: 'offline-ready', text: 'You’re offline. Showing the copy saved on this device.' };
         }
-        return { state: 'offline', text: '📴 You’re offline.' };
+        return { state: 'offline', text: 'You’re offline.' };
     }
     if (!status) return null;
     switch (status.state) {
@@ -62,15 +65,15 @@ export function describeStatus(status, online, usageBytes = 0) {
             const size = formatSize(usageBytes);
             return {
                 state: 'ready',
-                text: `✓ Ready to use offline — saved on this device${size ? ` (about ${size})` : ''}.`,
+                text: `Saved on this device${size ? ` (about ${size})` : ''}. Opens without internet.`,
             };
         }
         case 'preparing':
             return {
                 state: 'preparing',
                 text: status.total
-                    ? `📥 Saving a copy for offline use… ${status.done}/${status.total}`
-                    : '📥 Saving a copy for offline use…',
+                    ? `Saving a copy for offline use… ${status.done}/${status.total}`
+                    : 'Saving a copy for offline use…',
             };
         case 'incomplete': {
             const what = status.reason === 'app'
@@ -79,7 +82,7 @@ export function describeStatus(status, online, usageBytes = 0) {
             const next = status.giveUp
                 ? 'Turn the switch off and on to try again.'
                 : 'Keep this page open on a good connection.';
-            return { state: 'incomplete', text: `⚠️ Offline copy incomplete — ${what}. ${next}` };
+            return { state: 'incomplete', text: `Offline copy incomplete — ${what}. ${next}` };
         }
         default:
             return null;       // 'off' and anything unknown: show nothing
@@ -87,19 +90,17 @@ export function describeStatus(status, online, usageBytes = 0) {
 }
 
 function render(doc, info) {
-    const el = doc.getElementById(STATUS_ELEMENT_ID);
-    if (!el) return;
-    if (!info) {
-        el.hidden = true;
-        el.textContent = '';
-        delete el.dataset.state;
-        return;
-    }
-    el.hidden = false;
-    // Only touch the DOM when something changed: the line is a live region, and
-    // rewriting identical text can make screen readers announce it again.
-    if (el.textContent !== info.text) el.textContent = info.text;
-    if (el.dataset.state !== info.state) el.dataset.state = info.state;
+    // Nothing to report means the copy is not saved: say so, so the line always answers "is it saved?".
+    const shown = info || { state: 'off', text: NOT_SAVED_TEXT };
+    STATUS_ELEMENT_IDS.forEach(id => {
+        const el = doc.getElementById(id);
+        if (!el) return;
+        el.hidden = false;
+        // Only touch the DOM when something changed: the line is a live region, and
+        // rewriting identical text can make screen readers announce it again.
+        if (el.textContent !== shown.text) el.textContent = shown.text;
+        if (el.dataset.state !== shown.state) el.dataset.state = shown.state;
+    });
 }
 
 // Unregister the worker(s) and delete everything saved. The worker is asked to

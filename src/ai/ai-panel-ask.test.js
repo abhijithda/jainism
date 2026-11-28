@@ -44,7 +44,7 @@ test('an uncited answer is never shown: the reader sees the closest passages ins
     await ask('what is the result of worshipping shasana devata as bhagawan');
     expect(last().textContent).not.toMatch(/purify oneself/);
     expect(last().textContent).toMatch(/couldn.t write a reliable summary/);
-    expect(last().querySelector('summary').textContent).toBe('Matching passages in the book');
+    expect(last().querySelector('summary').textContent).toBe('Matching passages');
     expect(last().querySelectorAll('.ai-passage').length).toBeGreaterThan(0);
 });
 
@@ -68,7 +68,7 @@ test('"really?" to the on-device model does not produce the same answer again', 
     await ask('really?');
     expect(mockEngine.generate).toHaveBeenCalledTimes(1);          // not asked again
     expect(last().textContent).not.toBe(first);
-    expect(last().textContent).toMatch(/Open one in the book, or ask a more specific question/);
+    expect(last().textContent).toMatch(/Open one, or ask a more specific question/);
     expect(last().querySelectorAll('.ai-passage').length).toBeGreaterThan(0);
 });
 
@@ -101,7 +101,7 @@ test('an empty answer from the model shows the matching passages, not an error',
     await ask('what is the result of worshipping shasana devata as bhagawan');
     expect(last().classList.contains('ai-msg--error')).toBe(false);
     expect(last().textContent).toMatch(/couldn.t write a reliable summary/);
-    expect(last().querySelector('summary').textContent).toBe('Matching passages in the book');
+    expect(last().querySelector('summary').textContent).toBe('Matching passages');
     expect(last().querySelectorAll('.ai-passage').length).toBeGreaterThan(0);
     mockEngine.id = 'local';
 });

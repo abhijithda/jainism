@@ -752,9 +752,9 @@ view was never affected — `#continuous-container` was already centered with
 
 ---
 
-## Focus / Zen Mode — ✅ Current
+## Full screen / Zen Mode — ✅ Current
 
-A header button (`#zen-mode-btn`, "⛶ Focus") that hides the entire
+A header icon button (`#zen-mode-btn`, the full-screen arrows icon) that hides the entire
 `.app-header` (search, view toggle, settings) via a `body.zen-mode` class,
 and best-effort requests real browser Fullscreen so the browser's own
 chrome (tabs, address bar) gets out of the way too. Works identically from
@@ -1148,10 +1148,10 @@ the core requirement without needing a separate render pass.
 
 ---
 
-## AI assistant ("Ask the book") — ✅ Phase 1 current
+## AI assistant ("Ask AI") — ✅ Phase 1 current
 
-Opt-in (**Settings → 💬 AI assistant: Off | Cloud | Local**, setting `aiEngine`
-in `src/core/settings.js`, default `off`). A header **Ask** button appears only when
+Opt-in (**Settings → AI assistant: Off | Cloud | Local**, with a Configure button for Cloud and Local, setting `aiEngine`
+in `src/core/settings.js`, default `off`). An **Ask AI** chip inside the header search box appears only when
 the chosen engine is usable; it opens an overlay drawer (an overlay, never a
 column, so book pagination is unaffected; hidden in print).
 

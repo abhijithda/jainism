@@ -14,6 +14,8 @@ import {
     applyFontScale, changeFontScale, initFontScaleControl,
 } from '../core/font-scale.js';
 
+import { initSegmented } from '../core/segmented.js';
+
 export { SETTINGS_KEY, loadSettings, saveSettings };
 export { PAPER_SIZES, applyPaperSize, initPaperSizeControl };
 export { FONT_SCALE_MIN, FONT_SCALE_MAX, FONT_SCALE_STEP, applyFontScale, changeFontScale, initFontScaleControl };
@@ -56,16 +58,25 @@ export function saveActiveLangs(langs) {
  *   #lang-search   (text input inside the panel)
  *   #lang-list     (checkbox rows render here)
  * Calls onLangChange(activeLangs[]) whenever selection changes.
+ * The same picker is on Home too: `prefix` ('home-') gives that copy its own element ids, and a change in either
+ * redraws the other, so the two always agree.
  * At least one and at most MAX_ACTIVE_LANGS (two) languages are active: with
  * two active, the other rows are disabled until one of them is unchecked. What
  * is selected here is what the views show and what gets printed.
  */
-export function initLangPicker(onLangChange) {
-    const trigger = document.getElementById('lang-trigger');
-    const summary = document.getElementById('lang-summary');
-    const panel   = document.getElementById('lang-panel');
-    const search  = document.getElementById('lang-search');
-    const list    = document.getElementById('lang-list');
+const langPickers = new Map();   // prefix -> { refresh }: every picker on the page
+
+/** Redraws every language picker from the saved settings (used when something else may have changed them). */
+export function refreshLangPickers() {
+    langPickers.forEach(p => p.refresh());
+}
+
+export function initLangPicker(onLangChange, prefix = '') {
+    const trigger = document.getElementById(`${prefix}lang-trigger`);
+    const summary = document.getElementById(`${prefix}lang-summary`);
+    const panel   = document.getElementById(`${prefix}lang-panel`);
+    const search  = document.getElementById(`${prefix}lang-search`);
+    const list    = document.getElementById(`${prefix}lang-list`);
     if (!trigger || !panel || !list) return;
 
     function updateSummary() {
@@ -98,11 +109,11 @@ export function initLangPicker(onLangChange) {
 
             const row = document.createElement('label');
             row.className = 'lang-row';
-            row.htmlFor = `lang-chk-${lang.code}`;
+            row.htmlFor = `${prefix}lang-chk-${lang.code}`;
 
             const chk = document.createElement('input');
             chk.type = 'checkbox';
-            chk.id   = `lang-chk-${lang.code}`;
+            chk.id   = `${prefix}lang-chk-${lang.code}`;
             chk.checked = getActiveLangs().includes(lang.code);
             chk.disabled = !chk.checked && getActiveLangs().length >= MAX_ACTIVE_LANGS;
 
@@ -121,7 +132,7 @@ export function initLangPicker(onLangChange) {
 
             chk.addEventListener('change', () => {
                 const newActive = KNOWN_LANGS
-                    .filter(l => document.getElementById(`lang-chk-${l.code}`)?.checked
+                    .filter(l => document.getElementById(`${prefix}lang-chk-${l.code}`)?.checked
                         ?? getActiveLangs().includes(l.code)) // langs filtered out of view keep their prior state
                     .map(l => l.code);
 
@@ -138,6 +149,7 @@ export function initLangPicker(onLangChange) {
                 saveActiveLangs(newActive);
                 updateSummary();
                 refreshDisabled(); // in place: re-rendering the list would drop the keyboard focus from the box just toggled
+                langPickers.forEach((p, key) => { if (key !== prefix) p.refresh(); });   // the other copy follows
                 if (onLangChange) onLangChange(newActive);
             });
         });
@@ -182,6 +194,7 @@ export function initLangPicker(onLangChange) {
 
     renderList('');
     updateSummary();
+    langPickers.set(prefix, { refresh: () => { updateSummary(); renderList(search ? search.value : ''); } });
 }
 
 // ── Media visibility ──────────────────────────────────────────────────────
@@ -217,16 +230,28 @@ export function updateReadTrackingVisibility() {
 export function initHeaderDropdown() {
     const btn  = document.getElementById('settings-btn');
     const menu = document.getElementById('settings-menu');
+    const closeBtn = document.getElementById('settings-close');
     if (!btn || !menu) return;
+
+    // body.settings-open dims the page behind the sheet on a phone (header.css); it does nothing on desktop.
+    const setOpen = (open) => {
+        menu.style.display = open ? 'block' : 'none';
+        document.body.classList.toggle('settings-open', open);
+        btn.setAttribute('aria-expanded', String(open));
+    };
 
     btn.onclick = (e) => {
         e.stopPropagation();
-        menu.style.display = menu.style.display === 'block' ? 'none' : 'block';
+        setOpen(menu.style.display !== 'block');
     };
+    if (closeBtn) closeBtn.addEventListener('click', () => setOpen(false));
     document.addEventListener('click', (e) => {
-        if (menu && !menu.contains(e.target) && e.target !== btn) {
-            menu.style.display = 'none';
+        if (menu && menu.style.display === 'block' && !menu.contains(e.target) && !btn.contains(e.target)) {
+            setOpen(false);
         }
+    });
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && menu.style.display === 'block') setOpen(false);
     });
 }
 
@@ -235,7 +260,7 @@ export function initHeaderDropdown() {
  * @param {Function} onLangChange  - callback(activeLangs[]) on lang change
  * @param {Function} [onReadToggle] - callback when read-tracking toggle changes
  */
-// ── Focus / zen mode ─────────────────────────────────────────────────────
+// ── Full screen / zen mode ─────────────────────────────────────────────────────
 // Hides the header and, best-effort, requests real browser Fullscreen so
 // the browser's own chrome gets out of the way too — see the CSS comment
 // on body.zen-mode in header.css for why Fullscreen is optional rather
@@ -329,9 +354,12 @@ export function initHeaderControls(onLangChange, onReadToggle) {
     });
 
     initLangPicker(onLangChange);
+    initLangPicker(onLangChange, 'home-');   // the same picker on the Home page
     initHeaderDropdown();
     initPaperSizeControl();
     initFontScaleControl();
+    // The page-size and AI choices are a row of buttons instead of a drop-down (the <select> stays underneath).
+    initSegmented(['paper-size-select', 'home-paper-size-select', 'ai-engine-select', 'home-ai-engine-select']);
     initZenModeControl();
     updateMediaVisibility();
     updateReadTrackingVisibility();

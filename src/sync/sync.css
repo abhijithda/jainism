@@ -36,7 +36,12 @@
 .sync-mi:hover { background: rgba(0, 0, 0, .06); }
 .sync-mi svg { color: #666; flex: none; }
 .sync-mi--danger, .sync-mi--danger svg { color: #a33; }
-.sync-hint { margin: 0 0 4px; font-size: 12px; line-height: 1.45; color: #666; }
+.sync-hint { margin: 0 0 4px; font-size: 12.5px; line-height: 1.45; color: #555; }
+/* The status dot (same idea as the Offline copy line): grey = not syncing, green = synced, blue = working, amber = needs attention. */
+.sync-hint--out::before, .sync-hint--off::before, .sync-hint--ok::before, .sync-hint--sync::before, .sync-hint--warn::before { content: ""; display: inline-block; width: 7px; height: 7px; margin-right: 7px; border-radius: 50%; vertical-align: 1px; background: #c4c9cd; }
+.sync-hint--ok::before { background: #2e7d32; }
+.sync-hint--sync::before { background: #1a73e8; }
+.sync-hint--warn::before { background: #c77700; }
 .sync-hint[hidden] { display: none; }
 .sync-hint a, .sync-link { color: #1a56c4; }
 .sync-link { font: inherit; padding: 0; border: 0; background: none; text-decoration: underline; cursor: pointer; }

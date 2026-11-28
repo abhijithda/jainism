@@ -303,7 +303,7 @@ describe('initZenModeControl', () => {
         expect(document.getElementById('zen-exit-btn').hidden).toBe(true);
     });
 
-    test('clicking the Focus button again while peeked open exits zen mode, rather than no-op-ing', () => {
+    test('clicking the Full screen button again while peeked open exits zen mode, rather than no-op-ing', () => {
         initZenModeControl();
         document.getElementById('zen-mode-btn').click();
         document.getElementById('zen-peek-btn').click(); // header (and #zen-mode-btn) visible again

@@ -98,3 +98,20 @@ describe('block-read event', () => {
         expect(seen).toEqual([{ blockId: 'blk1', read: true }, { blockId: 'blk1', read: false }]);
     });
 });
+
+describe('header progress ring', () => {
+    test('marking blocks read moves the ring, the percent and the card together', () => {
+        document.body.innerHTML = `<span id="read-progress"></span>
+            <svg><circle id="progress-ring-fill" stroke-dasharray="0 100"></circle></svg>
+            <span id="progress-pct"></span><span id="progress-pop-text"></span><span id="progress-pop-pct"></span>
+            <div class="bar"><i id="progress-pop-bar"></i></div>`;
+        const tick = buildReadTick({ id: 'a_001_b_1' }, { isRead: false, totalBlockCount: 4 });
+        tick.click();
+        expect(document.getElementById('read-progress').textContent).toBe('✓ 1/4 read');
+        expect(document.getElementById('progress-ring-fill').getAttribute('stroke-dasharray')).toBe('25 100');
+        expect(document.getElementById('progress-pct').textContent).toBe('25');
+        expect(document.getElementById('progress-pop-text').textContent).toBe('1 of 4 read');
+        expect(document.getElementById('progress-pop-pct').textContent).toBe('25%');
+        expect(document.getElementById('progress-pop-bar').style.width).toBe('25%');
+    });
+});

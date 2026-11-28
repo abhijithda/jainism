@@ -10,8 +10,8 @@ import { CLOUD_ENDPOINT, MAX_ANSWER_TOKENS } from '../config.js';
 const REFUSALS = {
     rate: 'Too many questions right now. Please try again in a minute.',
     busy: 'The assistant is very busy right now. Please try again in a minute.',
-    'ip-daily': 'You\u2019ve reached today\u2019s question limit for the cloud assistant. It resets tomorrow. Meanwhile the book\u2019s search and Local mode still work, or use your own AI service (Settings \u2192 AI assistant \u2192 Configure).',
-    budget: 'The cloud assistant has reached its limit for today and will be back tomorrow. Meanwhile the book\u2019s search and Local mode still work, or use your own AI service (Settings \u2192 AI assistant \u2192 Configure).',
+    'ip-daily': 'You\u2019ve reached today\u2019s question limit for the cloud assistant. It resets tomorrow. Meanwhile search and the On this device option still work, or use your own AI service (Settings \u2192 AI assistant \u2192 Choose service).',
+    budget: 'The cloud assistant has reached its limit for today and will be back tomorrow. Meanwhile search and the On this device option still work, or use your own AI service (Settings \u2192 AI assistant \u2192 Choose service).',
     unavailable: 'The cloud assistant is temporarily unavailable. Please try again shortly.',
 };
 

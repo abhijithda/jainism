@@ -26,10 +26,11 @@ export function formatAgo(ms, now = Date.now()) {
 export const pendingKeys = snap => Object.keys((snap && snap.pendingPrefs) || {}).filter(k => SYNCED_PREFS.includes(k));
 
 export const NAME_HINT = 'Keeps your reading progress, study answers and display settings the same on all your devices.';
-export const SIGNED_OUT_HINT = 'Optional. Saves your progress in a hidden folder of your own Google Drive.';
+export const SIGNED_OUT_HINT = 'Optional. Not signed in, so your progress and settings stay on this device only. Signing in saves them in a hidden folder of your own Google Drive.';
 
 /**
  * What the row shows for an engine snapshot. Pure.
+ * `hintText` is the status line shown under the row in every state (the email is not in it: the account menu shows that).
  * @returns {{icon: 'out'|'sync'|'ok'|'warn'|'off', tip: string, actions: string[], hint: boolean, hintText: string, email: string, applyNote: boolean}}
  */
 export function describe(snap, now = Date.now()) {
@@ -62,6 +63,9 @@ export function describe(snap, now = Date.now()) {
         default:           out.actions = ['signin'];
     }
     out.applyNote = pendingKeys(snap).length > 0 && snap.status === 'synced';
+    // Signed out: the reason / the optional-feature line. Signed in: where sync stands (plus what it carries once synced).
+    out.hint = true;
+    if (signedIn) out.hintText = snap.status === 'synced' ? `${out.tip}. ${NAME_HINT}` : out.tip;
     return out;
 }
 
@@ -159,6 +163,7 @@ export function initSyncUi({ engine, auth, doc = document, win = typeof window !
             if (!d.actions.includes('account')) closeMenus();
 
             p.hint.hidden = !d.hint;
+            p.hint.className = `sync-hint sync-hint--${d.icon}`;
             p.hintText.textContent = d.hintText;
             p.note.hidden = !d.applyNote;
         });
