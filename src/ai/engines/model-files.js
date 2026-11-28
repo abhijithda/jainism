@@ -359,6 +359,25 @@ export async function loadModelsFromFolder({ source, recordFor, caches, modelIds
     return { restored, warnings, bytes };
 }
 
+// WebLLM's prebuilt records for these models live under this address (the record's `model`). Used only to look in the
+// browser's cache for a status tag without loading the WebLLM library; the real record is used for everything else.
+export const MODEL_HOST = 'https://huggingface.co/mlc-ai/';
+
+/** Is this model completely in the browser's cache? Best effort (see MODEL_HOST); never throws. */
+export async function isModelCached(modelId, caches) {
+    try { return (await cachedState({ model: MODEL_HOST + modelId, model_lib: '' }, caches)).complete; } catch (_) { return false; }
+}
+
+/** The model ids a folder's manifest lists ([] when the folder has none or can't be read). */
+export async function listFolderModels(source) {
+    try {
+        const file = await source.getFile('', MANIFEST_NAME);
+        const manifest = file ? JSON.parse(await file.text()) : null;
+        if (manifest?.format !== MANIFEST_FORMAT || !Array.isArray(manifest.models)) return [];
+        return manifest.models.map(m => m?.modelId).filter(id => typeof id === 'string');
+    } catch (_) { return []; }
+}
+
 /** WebLLM's record for a model id, from a loaded library. */
 export function recordLookup(lib) {
     const list = lib?.prebuiltAppConfig?.model_list || [];

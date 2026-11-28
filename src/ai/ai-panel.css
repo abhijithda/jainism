@@ -119,6 +119,11 @@ body.ai-resizing { user-select: none; cursor: ew-resize; }
 .ai-config-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0 4px; }
 .ai-config-small { font: inherit; font-size: .9em; padding: 5px 10px; border: 1px solid #bbb; border-radius: 6px; background: #fff; cursor: pointer; }
 .ai-config-small[hidden] { display: none; }
+.ai-config-tags { margin-left: auto; display: flex; gap: 4px; flex-wrap: wrap; align-items: flex-start; }
+.ai-config-tag { font-size: .78em; padding: 1px 7px; border-radius: 6px; background: #eee; color: #444; white-space: nowrap; }
+.ai-config-tag--ok { background: #e3f1e3; color: #1d5a1d; }
+.ai-config-row { align-items: center; }
+.ai-config-folder-name { font-weight: 600; word-break: break-all; }
 .ai-config-small:disabled { opacity: .55; cursor: default; }
 .ai-config-status { font-size: .85em; color: #333; margin: 4px 0 0; min-height: 1.2em; overflow-wrap: anywhere; }
 .ai-config-own { margin-top: 6px; padding-left: 4px; }

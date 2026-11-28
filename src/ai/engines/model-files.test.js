@@ -6,7 +6,7 @@
 // in a browser by test/e2e/core/model-files.test.js.
 
 const {
-    SCOPES, MANIFEST_NAME, locations, belongsToModel, cachedState, saveModelsToFolder, loadModelsFromFolder, downloadModelToFolder, NoSavedCopyError,
+    SCOPES, MANIFEST_NAME, locations, belongsToModel, cachedState, saveModelsToFolder, loadModelsFromFolder, downloadModelToFolder, NoSavedCopyError, isModelCached, listFolderModels, MODEL_HOST,
     folderSource, fileListSource, ModelFolderError, webllmVersion,
 } = require('./model-files');
 const { LOCAL_TIERS } = require('../config');
@@ -377,5 +377,31 @@ describe('downloading one model straight into a folder', () => {
         const dir = fakeDir();
         await run(dir, makeFetch());
         await expect(loadModelsFromFolder({ source: folderSource(dir), recordFor, caches: fakeCaches(), modelIds: ['Nope'] })).rejects.toBeInstanceOf(NoSavedCopyError);
+    });
+});
+
+describe('looking without loading anything', () => {
+    test('isModelCached sees a completely cached model by id alone, and never throws', async () => {
+        const c = fakeCaches();
+        const guess = { model: MODEL_HOST + MODEL_ID, model_lib: '' };
+        const gbase = locations(guess).modelUrl;
+        expect(await isModelCached(MODEL_ID, c)).toBe(false);
+        const put = async (scope, url, body) => (await c.open(SCOPES[scope])).put(new Request(url), new Response(body));
+        await put('config', gbase + 'mlc-chat-config.json', '{}');
+        await put('model', gbase + 'ndarray-cache.json', JSON.stringify({ records: [{ dataPath: 'a.bin', nbytes: 1 }] }));
+        expect(await isModelCached(MODEL_ID, c)).toBe(false);          // a weight file is still missing
+        await put('model', gbase + 'a.bin', bytes(1));
+        expect(await isModelCached(MODEL_ID, c)).toBe(true);
+        expect(await isModelCached(MODEL_ID, null)).toBe(false);
+    });
+
+    test('listFolderModels lists the manifest\u2019s models, or nothing for an empty or foreign folder', async () => {
+        const c = fakeCaches(), dir = fakeDir();
+        expect(await listFolderModels(folderSource(dir))).toEqual([]);
+        await seed(c);
+        await saveAll(c, dir);
+        expect(await listFolderModels(folderSource(dir))).toEqual([MODEL_ID]);
+        dir.files.set(MANIFEST_NAME, Buffer.from('not json'));
+        expect(await listFolderModels(folderSource(dir))).toEqual([]);
     });
 });

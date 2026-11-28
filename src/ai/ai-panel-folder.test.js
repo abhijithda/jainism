@@ -97,6 +97,7 @@ describe('a folder is already remembered', () => {
     });
 
     test('a folder without this size says so, then offers to download into that same folder', async () => {
+        memory.folderAccess.mockImplementation(async (_h, opts = {}) => (opts.request ? 'granted' : opts.mode === 'readwrite' ? 'prompt' : 'granted'));
         files.loadModelsFromFolder.mockRejectedValueOnce(new files.NoSavedCopyError('That folder has no saved copy of the size you chose.'));
         await startAsk();
         expect(messages()).toMatch(/no saved copy of this size/);
@@ -105,6 +106,19 @@ describe('a folder is already remembered', () => {
         expect(memory.folderAccess).toHaveBeenCalledWith(saved, { request: true, mode: 'readwrite' });
         expect(picker).not.toHaveBeenCalled();                      // the remembered folder is used, nothing to pick
         expect(files.downloadModelToFolder.mock.calls[0][0]).toMatchObject({ modelId: MODEL, dir: saved });
+    });
+});
+
+describe('a chosen download folder with write access still granted', () => {
+    test('a size the folder lacks is downloaded into it with no question at all', async () => {
+        const saved = { name: 'saved-models' };
+        memory.recallFolder.mockResolvedValue(saved);
+        files.loadModelsFromFolder.mockRejectedValueOnce(new files.NoSavedCopyError('no copy')).mockResolvedValue({ restored: [MODEL], warnings: [], bytes: 1 });
+        await startAsk(); await finish();
+        expect(buttons()).toHaveLength(0);
+        expect(files.downloadModelToFolder.mock.calls[0][0]).toMatchObject({ modelId: MODEL, dir: saved });
+        expect(files.loadModelsFromFolder).toHaveBeenCalledTimes(2);
+        expect(mockEngine.generate).toHaveBeenCalled();
     });
 });
 

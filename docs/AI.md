@@ -1290,22 +1290,28 @@ ai/
   (`engines/model-files.test.js`) and the real Cache API plus a real folder handle (`test/e2e/core/model-files.test.js`, using a
   small stand-in model); the real multi-GB model and the real folder picker were not exercised. **Verify on his machine:** save
   after a real download, clear site data, load, confirm Local starts with no network traffic.
-- **Built, not yet verified in a real browser: persistent storage, a remembered folder, and download-into-a-folder-first** (`engines/model-folder-memory.js`,
-  `downloadModelToFolder` in `engines/model-files.js`, hooks in `engines/local.js`, the offers in `ai-panel.js`, a \"Forget remembered folder\" button in
-  Configure). (1) When Local's first use starts (the click that sends a question, never page load) the engine calls `navigator.storage.persist()`
-  without waiting for the answer; it only stops automatic eviction, not the reader clearing site data. (2) Everything works on the **selected size
-  only**: Save copies just that size's models from the browser's cache, manual Load restores just that size (a folder without it says so), and the
-  manifest keeps other sizes already listed. (3) Just before Local would download (model not completely cached), the panel (a) loads the selected size
-  from the remembered folder if there is one (no question if the browser still allows reading, one click otherwise), and if there is none or it has no copy of
-  this size (b) offers \"download into a folder first, then load from there\" (Chrome/Edge on a computer only; the folder picker or write permission
-  needs that click). `downloadModelToFolder` streams one model (config, file list, weights, tokenizer files, compiled code) to disk, keeps weight files already
-  there at the right size (a resumed download), checks sizes, writes the manifest last; then `loadModelsFromFolder` puts it in the cache. Tokenizer files and the
-  compiled code are best effort (WebLLM fetches a missing one itself); the tokenizer list comes from `tokenizer_files` in mlc-chat-config.json, which is
-  assumed, not yet checked against the real file. It costs disk space twice (folder + browser) and a second pass of copying. Declining, cancelling or any
-  failure leaves the normal browser download to go ahead; Stop stops. Unit tests with fakes (`model-files.test.js`, `model-folder-memory.test.js`,
-  `ai-panel-folder.test.js`); real IndexedDB check in `test/e2e/core/model-folder-memory.test.js` (not run yet). **Verify on his machine:** a real first
-  download into a folder, then clear site data and use the remembered-folder load; the permission prompt after a browser restart; that the tokenizer files
-  were downloaded (folder contents) and Local starts without further downloads.
+- **Built, not yet verified in a real browser: persistent storage, a download folder, and download-into-a-folder-first** (`engines/model-folder-memory.js`,
+  `downloadModelToFolder` in `engines/model-files.js`, hooks in `engines/local.js`, the offers in `ai-panel.js`, the folder row in Configure). (1) When Local's
+  first use starts (the click that sends a question, never page load) the engine calls `navigator.storage.persist()` without waiting for the answer; it only
+  stops automatic eviction, not the reader clearing site data. (2) Everything works on the **selected size only**: Save copies just that size from the
+  browser's cache, Load restores just that size (a folder without it says so), and the manifest keeps other sizes already listed. (3) **Configure, \"On-device
+  model\":** each size shows tags (In browser / Not in browser / Not downloaded, and In folder once the folder is readable). The browser tag is found by
+  looking in the cache for the model id's usual address (`MODEL_HOST`), without loading WebLLM, so it is best effort and cosmetic. Folder row: Choose folder
+  (picker with write access, remembered at once), Change, Forget, and Check folder when the browser hasn't allowed reading it yet. Buttons depend on the
+  selected size: Load X now (in folder, not in browser), Download X into folder (in neither), Save X to folder (only in browser); Save uses the remembered
+  folder when write access is granted. \"Load from another folder\" stays and also remembers that folder. (4) Just before Local would download (model not
+  completely cached) the panel loads the selected size from the remembered folder (no question if the browser still allows reading, one click otherwise);
+  if the folder has no copy, or none is chosen, it downloads into the chosen folder (no question if write access is still granted, otherwise one click) or
+  offers \"Choose a folder / Browser only\" (Chrome/Edge on a computer only). `downloadModelToFolder` streams one model (config, file list, weights,
+  tokenizer files, compiled code) to disk, keeps weight files already there at the right size (a resumed download), checks sizes, writes the manifest last;
+  then `loadModelsFromFolder` puts it in the cache. Tokenizer files and compiled code are best effort (WebLLM fetches a missing one itself); the tokenizer list
+  comes from `tokenizer_files` in mlc-chat-config.json, assumed, not yet checked against the real file. The Configure download button fetches the normal
+  (f16) build; if the device needs the compatibility build, Local's first start offers that one. It costs disk space twice (folder + browser) and a second
+  pass of copying. Declining, cancelling or any failure leaves the normal browser download to go ahead; Stop stops. Unit tests with fakes
+  (`model-files.test.js`, `model-folder-memory.test.js`, `ai-panel-folder.test.js`, `ai-config.test.js`); real IndexedDB check in
+  `test/e2e/core/model-folder-memory.test.js` (not run yet). **Verify on his machine:** choose a folder, download a size into it, clear site data, reopen
+  Configure (tags, Load now), change the size; the permission prompt after a browser restart; the folder holds the tokenizer files and Local starts with
+  no further downloads.
 - **TODO (decide later):** keep or remove the optional Anthropic backend in the proxy (`BACKEND = "anthropic"`, off by default;
   the free Workers AI backend is the default). He tests with his own Anthropic key meanwhile.
 - **Done (after the tags review, 2026-11-16):** the tag boost already existed (a tag hit counts as 3 body hits) and works with the

@@ -429,7 +429,9 @@ async function offerSavedFolder({ modelIds, modelId }) {
 
     const tier = Object.values(LOCAL_TIERS).find(t => t.model === modelId || t.compat === modelId);
     const what = tier ? `the ${tier.label.toLowerCase()} model (${tier.size})` : 'the model';
-    const yes = await askInChat(
+    // A folder the reader already chose, with write access still granted, needs no question.
+    const writable = !!saved && await folderAccess(saved, { mode: 'readwrite' }) === 'granted';
+    const yes = writable || await askInChat(
         saved
             ? `Download ${what} into the folder \u201c${saved.name}\u201d first, then load it from there? You keep a copy that can be loaded again if the browser\u2019s data is cleared. It takes disk space twice: once in the folder, once in the browser.`
             : `Download ${what} into a folder on this computer first, then load it from there? You keep a copy that can be loaded again if the browser\u2019s data is cleared. It takes disk space twice: once in the folder, once in the browser.`,
@@ -439,7 +441,7 @@ async function offerSavedFolder({ modelIds, modelId }) {
     let dir = null;
     try {
         // Straight after the click: the folder picker (or the permission prompt) needs it.
-        if (saved && await folderAccess(saved, { request: true, mode: 'readwrite' }) === 'granted') dir = saved;
+        if (saved && (writable || await folderAccess(saved, { request: true, mode: 'readwrite' }) === 'granted')) dir = saved;
         else if (!saved) dir = await window.showDirectoryPicker({ mode: 'readwrite', id: 'pooja-model' });
         else addMessage('assistant', 'The browser didn\u2019t allow writing to that folder, so the model will be downloaded into the browser only.');
     } catch (err) {

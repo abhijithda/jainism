@@ -6,6 +6,7 @@ const { openAiConfig, closeAiConfig, isAiConfigOpen } = require('./ai-config');
 const { saveSettings, loadSettings } = require('../core/settings');
 const { KEY_STORAGE_KEY } = require('./engines/custom');
 const modelFiles = require('./engines/model-files');
+const folderMemory = require('./engines/model-folder-memory');
 const { LOCAL_TIERS } = require('./config');
 
 const KEY = 'sk-test-SECRET-123';
@@ -257,13 +258,129 @@ describe('local: a model in this browser, or one already on this computer', () =
         const flushAll = async () => { for (let i = 0; i < 5; i++) await flush(); };
         afterEach(() => { delete window.showDirectoryPicker; jest.restoreAllMocks(); });
 
-        test('the Save button is offered only where a folder can be picked for writing', () => {
+        test('Choose folder is offered only where a folder can be picked for writing', async () => {
             openAiConfig({ section: 'local' });
-            expect($('ai-config-save-folder').hidden).toBe(true);
+            await flushAll();
+            expect($('ai-config-choose-folder').hidden).toBe(true);
+            expect($('ai-config-folder-note').textContent).toMatch(/Chrome or Edge/);
             window.showDirectoryPicker = jest.fn();
             closeAiConfig();
             openAiConfig({ section: 'local' });
-            expect($('ai-config-save-folder').hidden).toBe(false);
+            await flushAll();
+            expect($('ai-config-choose-folder').hidden).toBe(false);
+            expect($('ai-config-folder-name').textContent).toBe('No download folder chosen');
+        });
+
+        describe('the download folder row', () => {
+            const dir = { name: 'saved-models' };
+            const tags = id => [...$(`ai-tier-status-${id}`).querySelectorAll('span')].map(x => x.textContent);
+            let inBrowser, inFolder, access;
+            beforeEach(() => {
+                inBrowser = [LOCAL_TIERS.small.model];
+                inFolder = [LOCAL_TIERS.medium.model];
+                access = 'granted';
+                window.showDirectoryPicker = jest.fn().mockResolvedValue(dir);
+                window.caches = {};
+                jest.spyOn(folderMemory, 'recallFolder').mockImplementation(async () => dir);
+                jest.spyOn(folderMemory, 'rememberFolder').mockResolvedValue(true);
+                jest.spyOn(folderMemory, 'folderAccess').mockImplementation(async (_h, opts = {}) => (opts.request ? 'granted' : access));
+                jest.spyOn(modelFiles, 'isModelCached').mockImplementation(async id => inBrowser.includes(id));
+                jest.spyOn(modelFiles, 'listFolderModels').mockImplementation(async () => inFolder);
+                jest.spyOn(modelFiles, 'loadRecordLookup').mockResolvedValue(id => ({ model_id: id }));
+            });
+            afterEach(() => { delete window.caches; });
+            const open = async () => { openAiConfig({ section: 'local' }); await flushAll(); };
+            const select = async id => { $(`ai-tier-${id}`).checked = true; $(`ai-tier-${id}`).dispatchEvent(new Event('change', { bubbles: true })); await flushAll(); };
+
+            test('shows the folder, and per size what is in the browser and in the folder', async () => {
+                await open();
+                expect($('ai-config-folder-name').textContent).toBe('saved-models');
+                expect($('ai-config-forget-folder').hidden).toBe(false);
+                expect($('ai-config-choose-folder').textContent).toBe('Change\u2026');
+                expect(tags('small')).toEqual(['In browser']);
+                expect(tags('medium')).toEqual(['Not in browser', 'In folder']);
+                expect(tags('large')).toEqual(['Not downloaded']);
+            });
+
+            test('a size that is in the folder but not the browser offers Load now, which loads only that size', async () => {
+                const load = jest.spyOn(modelFiles, 'loadModelsFromFolder').mockResolvedValue({ restored: [LOCAL_TIERS.medium.model], warnings: [], bytes: 2 * 1024 * 1024 });
+                await open();
+                await select('medium');
+                expect($('ai-config-load-now').hidden).toBe(false);
+                expect($('ai-config-load-now').textContent).toBe('Load Medium now');
+                expect($('ai-config-download-now').hidden).toBe(true);
+                expect($('ai-config-save-folder').hidden).toBe(true);
+                expect($('ai-config-folder-note').textContent).toMatch(/Medium is in your folder but not in this browser/);
+                $('ai-config-load-now').click();
+                await flushAll();
+                expect(folderMemory.folderAccess).toHaveBeenCalledWith(dir, { request: true });
+                expect(load.mock.calls[0][0].modelIds).toEqual([LOCAL_TIERS.medium.model, LOCAL_TIERS.medium.compat]);
+                expect($('ai-config-folder-status').textContent).toMatch(/Loaded Medium/);
+            });
+
+            test('a size in neither place offers to download it into the folder, then loads it', async () => {
+                const download = jest.spyOn(modelFiles, 'downloadModelToFolder').mockResolvedValue({ bytes: 3 * 1024 * 1024 });
+                const load = jest.spyOn(modelFiles, 'loadModelsFromFolder').mockResolvedValue({ restored: [LOCAL_TIERS.large.model], warnings: [], bytes: 1 });
+                await open();
+                await select('large');
+                expect($('ai-config-download-now').hidden).toBe(false);
+                expect($('ai-config-download-now').textContent).toBe('Download Large into folder');
+                expect($('ai-config-load-now').hidden).toBe(true);
+                $('ai-config-download-now').click();
+                await flushAll();
+                expect(folderMemory.folderAccess).toHaveBeenCalledWith(dir, { request: true, mode: 'readwrite' });
+                expect(download.mock.calls[0][0]).toMatchObject({ modelId: LOCAL_TIERS.large.model, dir });
+                expect(load.mock.calls[0][0].modelIds).toEqual([LOCAL_TIERS.large.model]);
+                expect($('ai-config-folder-status').textContent).toMatch(/Downloaded Large \(3 MB\) into the folder and loaded it/);
+            });
+
+            test('a size only in the browser offers Save, which writes into the remembered folder without asking for another', async () => {
+                const save = jest.spyOn(modelFiles, 'saveModelsToFolder').mockResolvedValue({ saved: [LOCAL_TIERS.small.model], skipped: [], bytes: 1024 * 1024 });
+                await open();
+                expect($('ai-config-save-folder').hidden).toBe(false);
+                expect($('ai-config-save-folder').textContent).toBe('Save Small to folder');
+                $('ai-config-save-folder').click();
+                await flushAll();
+                expect(window.showDirectoryPicker).not.toHaveBeenCalled();
+                expect(save.mock.calls[0][0].dir).toBe(dir);
+                expect($('ai-config-folder-status').textContent).toMatch(/Saved Small/);
+            });
+
+            test('when the browser has not allowed reading the folder yet, Check folder asks for it', async () => {
+                access = 'prompt';
+                await open();
+                expect($('ai-config-check-folder').hidden).toBe(false);
+                expect(tags('medium')).toEqual(['Not downloaded']);          // the folder's contents are not known yet
+                expect($('ai-config-folder-note').textContent).toMatch(/Check the folder/);
+                expect($('ai-config-load-now').hidden).toBe(true);
+                access = 'granted';
+                $('ai-config-check-folder').click();
+                await flushAll();
+                expect(folderMemory.folderAccess).toHaveBeenCalledWith(dir, { request: true });
+                expect($('ai-config-check-folder').hidden).toBe(true);
+                expect(tags('medium')).toEqual(['Not in browser', 'In folder']);
+            });
+
+            test('Choose folder picks one with write access and remembers it', async () => {
+                folderMemory.recallFolder.mockResolvedValue(null);
+                await open();
+                expect($('ai-config-folder-name').textContent).toBe('No download folder chosen');
+                $('ai-config-choose-folder').click();
+                await flushAll();
+                expect(window.showDirectoryPicker).toHaveBeenCalledWith({ mode: 'readwrite', id: 'pooja-model' });
+                expect(folderMemory.rememberFolder).toHaveBeenCalledWith(dir);
+                expect($('ai-config-folder-status').textContent).toMatch(/remember .saved-models. as the download folder/);
+            });
+
+            test('Forget clears the remembered folder and the row goes back to "none chosen"', async () => {
+                const forget = jest.spyOn(folderMemory, 'forgetFolder').mockImplementation(async () => { folderMemory.recallFolder.mockResolvedValue(null); return true; });
+                await open();
+                $('ai-config-forget-folder').click();
+                await flushAll();
+                expect(forget).toHaveBeenCalled();
+                expect($('ai-config-folder-name').textContent).toBe('No download folder chosen');
+                expect($('ai-config-forget-folder').hidden).toBe(true);
+            });
         });
 
         test('Load reports what it put back into the browser', async () => {
