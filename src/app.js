@@ -19,7 +19,7 @@ import { buildBlockIndex } from './core/blocks.js';
 import { getBookTitle, joinTitle, bookHeaderTitle } from './core/book-title.js';
 import { parseShareHash, resolveShared } from './core/share.js';
 import { setShareData } from './core/share-ui.js';
-import { getReadBlocks, saveReadBlocks, pruneUnknownReadIds } from './core/read-tracking.js';
+import { getReadBlocks, saveReadBlocks, pruneUnknownReadIds, countTrackableBlocks, updateProgressDisplay } from './core/read-tracking.js';
 
 let data;
 const continuous = () => document.getElementById('continuous-container');
@@ -241,6 +241,9 @@ async function init() {
     // ── Home surface — the landing page, not a third view state ────────────
     initHomeControls(data);
     initProgressButton();
+    // The header's progress ring and count are otherwise only filled in when a view draws its ticks, so on Home
+    // (before any view is opened) they would show 0 even when sections were read on an earlier visit.
+    updateProgressDisplay(getReadBlocks(localStorage), countTrackableBlocks(data));
 
     // ── AI assistant (opt-in; see ai/). A citation chip opens the cited block in
     // the view the reader is already using (Book or Continuous). From Home it

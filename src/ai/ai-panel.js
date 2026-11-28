@@ -93,7 +93,7 @@ export function renderAnswer(container, text, citations, onCite) {
             chip.type = 'button';
             chip.className = 'ai-cite';
             chip.textContent = label;
-            chip.title = 'Go to this passage in the book';
+            chip.title = 'Go to this passage';
             chip.addEventListener('click', () => onCite && onCite(byLabel.get(label)));
             container.appendChild(chip);
         } else if (part) {
@@ -128,7 +128,7 @@ export function renderPassages(container, passages, onCite, { title, open, more 
         chip.type = 'button';
         chip.className = 'ai-cite';
         chip.textContent = p.label;
-        chip.title = 'Open this passage in the book';
+        chip.title = 'Open this passage';
         chip.addEventListener('click', () => onCite && onCite(p.id));
         card.appendChild(chip);
         Object.values(p.text).forEach(text => {
@@ -274,7 +274,7 @@ export function applyAiSetting() {
     // both always show the same value and the same one-line note.
     const selects = [$('ai-engine-select'), $('home-ai-engine-select')];
     const tag = $('ai-engine-tag');
-    if (tag) tag.textContent = choice === 'cloud' ? 'Cloud' : choice === 'local' ? 'Local' : '';
+    if (tag) tag.textContent = choice === 'cloud' ? 'Online' : choice === 'local' ? 'On this device' : '';
     const notes = [$('ai-engine-note'), $('home-ai-engine-note')];
     selects.forEach(sel => { if (sel) sel.value = choice; });
 
@@ -287,7 +287,14 @@ export function applyAiSetting() {
     // Both hosted and on-device engines have something to set: Cloud (whose service, and the key if it is your own),
     // Local (model size). Only "off" has nothing.
     const showConfigure = choice === 'cloud' || choice === 'local';
-    [$('ai-config-btn'), $('home-ai-config-btn')].forEach(b => { if (b) b.hidden = !showConfigure; });
+    // The button says what there is to choose: Online = which service, On this device = which model.
+    const configureText = choice === 'local' ? 'Choose model…' : 'Choose service…';
+    [$('ai-config-btn'), $('home-ai-config-btn')].forEach(b => {
+        if (!b) return;
+        b.hidden = !showConfigure;
+        const label = b.querySelector('.ai-config-btn-text');
+        if (label) label.textContent = configureText;
+    });
     const usable = !!engine && !reason;
     const btn = $('ai-btn');
     if (btn) btn.hidden = !usable;
@@ -461,7 +468,7 @@ async function ask(question, { retry = false } = {}) {
         });
         setStatus('');
         renderAnswer(reply, result.text, result.citations, state.onCite);
-        const title = result.fallback ? 'Matching passages in the book' : (engine.id === 'local' ? 'From the book' : 'Passages cited');
+        const title = result.fallback ? 'Matching passages' : (engine.id === 'local' ? 'From the FAQs' : 'Passages cited');
         const open = result.fallback || engine.id === 'local';
         renderPassages(reply, result.shown, state.onCite, { title, open, more: result.more });
         const moments = await momentsFor(question, result);
@@ -504,7 +511,7 @@ function buildDrawer() {
     drawer.id = 'ai-drawer';
     drawer.className = 'ai-drawer';
     drawer.hidden = true;
-    drawer.setAttribute('aria-label', 'Ask about this book');
+    drawer.setAttribute('aria-label', 'Ask AI');
 
     const head = document.createElement('div');
     head.className = 'ai-head';
@@ -541,7 +548,7 @@ function buildDrawer() {
     const emptyIcon = document.createElement('span');
     emptyIcon.className = 'ic';
     emptyIcon.appendChild(icon(document, 'sparkles', 26));
-    empty.append(emptyIcon, 'Ask a question about the book. The answer comes only from its own text, with the passages shown so you can check them.');
+    empty.append(emptyIcon, 'Ask a question. Answers come from the FAQs themselves, with the passages shown so you can check them.');
     messages.appendChild(empty);
 
     const status = document.createElement('div');
@@ -574,7 +581,7 @@ function buildDrawer() {
 
     const note = document.createElement('div');
     note.className = 'ai-disclaimer';
-    note.textContent = 'Answers use only this book\u2019s text and can still be wrong. Check the cited passages, shlokas and videos in the book.';
+    note.textContent = 'Answers come only from the FAQs and can still be wrong. Check the cited passages, shlokas and videos.';
 
     drawer.append(buildResizeHandle(), head, messages, status, form, note);
     document.body.appendChild(drawer);

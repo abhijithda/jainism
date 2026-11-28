@@ -72,10 +72,10 @@ test('reveal shows the book\u2019s words with chips that open the passage; "I go
     const b = devaBlock();
     tickBlock(b.id);
     $('study-btn').click();
-    [...$('study-body').querySelectorAll('button')].find(x => /Show what the book says/.test(x.textContent)).click();
+    [...$('study-body').querySelectorAll('button')].find(x => /Show what the FAQs say/.test(x.textContent)).click();
     const chips = $('study-body').querySelectorAll('.ai-passage .ai-cite');
     expect(chips.length).toBeGreaterThan(1);
-    expect($('study-body').textContent).toMatch(/What the book says about Loka Moodhata/);
+    expect($('study-body').textContent).toMatch(/What the FAQs say about Loka Moodhata/);
     chips[0].click();
     expect(onCite).toHaveBeenCalledWith(expect.any(String));
 
@@ -92,7 +92,7 @@ test('"Review later" keeps it in a review list that can be practised again', () 
     boot();
     tickBlock(devaBlock().id);
     $('study-btn').click();
-    [...$('study-body').querySelectorAll('button')].find(x => /Show what the book says/.test(x.textContent)).click();
+    [...$('study-body').querySelectorAll('button')].find(x => /Show what the FAQs say/.test(x.textContent)).click();
     [...$('study-body').querySelectorAll('button')].find(x => /Review later/.test(x.textContent)).click();
     expect($('study-body').textContent).toMatch(/To review \(1\)/);
     [...$('study-body').querySelectorAll('button')].find(x => /Practise again/.test(x.textContent)).click();
@@ -151,7 +151,7 @@ describe('panel size, language and drafts', () => {
         $('study-btn').click();
         const third = state => state;                       // (just reading the order)
         const before = cards().map(c => c.querySelector('.study-prompt').textContent);
-        [...$('study-body').querySelectorAll('button')].find(b => /Show what the book says/.test(b.textContent)).click();
+        [...$('study-body').querySelectorAll('button')].find(b => /Show what the FAQs say/.test(b.textContent)).click();
         [...$('study-body').querySelectorAll('button')].find(b => /I got it/.test(b.textContent)).click();
         const after = cards().map(c => c.querySelector('.study-prompt').textContent);
         expect(after).toHaveLength(2);

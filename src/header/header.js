@@ -58,16 +58,25 @@ export function saveActiveLangs(langs) {
  *   #lang-search   (text input inside the panel)
  *   #lang-list     (checkbox rows render here)
  * Calls onLangChange(activeLangs[]) whenever selection changes.
+ * The same picker is on Home too: `prefix` ('home-') gives that copy its own element ids, and a change in either
+ * redraws the other, so the two always agree.
  * At least one and at most MAX_ACTIVE_LANGS (two) languages are active: with
  * two active, the other rows are disabled until one of them is unchecked. What
  * is selected here is what the views show and what gets printed.
  */
-export function initLangPicker(onLangChange) {
-    const trigger = document.getElementById('lang-trigger');
-    const summary = document.getElementById('lang-summary');
-    const panel   = document.getElementById('lang-panel');
-    const search  = document.getElementById('lang-search');
-    const list    = document.getElementById('lang-list');
+const langPickers = new Map();   // prefix -> { refresh }: every picker on the page
+
+/** Redraws every language picker from the saved settings (used when something else may have changed them). */
+export function refreshLangPickers() {
+    langPickers.forEach(p => p.refresh());
+}
+
+export function initLangPicker(onLangChange, prefix = '') {
+    const trigger = document.getElementById(`${prefix}lang-trigger`);
+    const summary = document.getElementById(`${prefix}lang-summary`);
+    const panel   = document.getElementById(`${prefix}lang-panel`);
+    const search  = document.getElementById(`${prefix}lang-search`);
+    const list    = document.getElementById(`${prefix}lang-list`);
     if (!trigger || !panel || !list) return;
 
     function updateSummary() {
@@ -100,11 +109,11 @@ export function initLangPicker(onLangChange) {
 
             const row = document.createElement('label');
             row.className = 'lang-row';
-            row.htmlFor = `lang-chk-${lang.code}`;
+            row.htmlFor = `${prefix}lang-chk-${lang.code}`;
 
             const chk = document.createElement('input');
             chk.type = 'checkbox';
-            chk.id   = `lang-chk-${lang.code}`;
+            chk.id   = `${prefix}lang-chk-${lang.code}`;
             chk.checked = getActiveLangs().includes(lang.code);
             chk.disabled = !chk.checked && getActiveLangs().length >= MAX_ACTIVE_LANGS;
 
@@ -123,7 +132,7 @@ export function initLangPicker(onLangChange) {
 
             chk.addEventListener('change', () => {
                 const newActive = KNOWN_LANGS
-                    .filter(l => document.getElementById(`lang-chk-${l.code}`)?.checked
+                    .filter(l => document.getElementById(`${prefix}lang-chk-${l.code}`)?.checked
                         ?? getActiveLangs().includes(l.code)) // langs filtered out of view keep their prior state
                     .map(l => l.code);
 
@@ -140,6 +149,7 @@ export function initLangPicker(onLangChange) {
                 saveActiveLangs(newActive);
                 updateSummary();
                 refreshDisabled(); // in place: re-rendering the list would drop the keyboard focus from the box just toggled
+                langPickers.forEach((p, key) => { if (key !== prefix) p.refresh(); });   // the other copy follows
                 if (onLangChange) onLangChange(newActive);
             });
         });
@@ -184,6 +194,7 @@ export function initLangPicker(onLangChange) {
 
     renderList('');
     updateSummary();
+    langPickers.set(prefix, { refresh: () => { updateSummary(); renderList(search ? search.value : ''); } });
 }
 
 // ── Media visibility ──────────────────────────────────────────────────────
@@ -343,6 +354,7 @@ export function initHeaderControls(onLangChange, onReadToggle) {
     });
 
     initLangPicker(onLangChange);
+    initLangPicker(onLangChange, 'home-');   // the same picker on the Home page
     initHeaderDropdown();
     initPaperSizeControl();
     initFontScaleControl();

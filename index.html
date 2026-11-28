@@ -54,8 +54,8 @@
         <button id="home-btn" class="menu-trigger icon-btn home-btn" title="Home: cover, progress and settings" aria-label="Home"><span class="ic" data-icon="home"></span></button>
 
         <div class="view-toggle" role="group" aria-label="Reading view">
-            <button class="view-toggle-btn" data-view="book" title="Book: page by page, like the printed book" aria-label="Book view"><span class="ic" data-icon="book-2"></span><span class="btn-label">Book</span></button>
-            <button class="view-toggle-btn" data-view="continuous" title="Scroll: one long page, easier for skimming" aria-label="Scroll view"><span class="ic" data-icon="layout-list"></span><span class="btn-label">Scroll</span></button>
+            <button class="view-toggle-btn" data-view="book" title="Book: page by page, like the printed book" aria-label="Book view"><span class="ic" data-icon="book"></span><span class="btn-label">Book</span></button>
+            <button class="view-toggle-btn" data-view="continuous" title="Scroll: one long page, easier for skimming" aria-label="Scroll view"><span class="ic" data-icon="arrows-vertical"></span><span class="btn-label">Scroll</span></button>
         </div>
 
         <!-- One box for finding things. Typing searches the book (and lists matches below);
@@ -65,7 +65,7 @@
             <div class="omni-field">
                 <span class="ic omni-glass" data-icon="search"></span>
                 <input type="text" id="search-bar" placeholder="Search topics - ಅಭಿಷೇಕ, Daana..." autocomplete="off" enterkeyhint="search" aria-controls="omni-menu">
-                <button type="button" id="ai-btn" class="ask-chip" title="Ask AI a question about this book" aria-label="Ask AI" hidden><span class="ic" data-icon="sparkles"></span><span class="ask-chip-label">Ask AI</span></button>
+                <button type="button" id="ai-btn" class="ask-chip" title="Ask AI. Answers come from the FAQs" aria-label="Ask AI" hidden><span class="ic" data-icon="sparkles"></span><span class="ask-chip-label">Ask AI</span></button>
             </div>
             <div id="omni-menu" class="omni-menu" role="listbox" aria-label="Search results" hidden></div>
         </div>
@@ -137,7 +137,7 @@
                             <span class="ic" data-icon="ruler-2"></span>
                             <label class="set-text" for="paper-size-select">Page size<span class="set-sub">Changes the screen and print</span></label>
                             <select id="paper-size-select">
-                                <option value="dynamic">Dynamic</option>
+                                <option value="dynamic">Auto</option>
                                 <option value="a4">A4</option>
                                 <option value="a3">A3</option>
                             </select>
@@ -146,7 +146,7 @@
                 </div>
 
                 <div class="set-group">
-                    <div class="set-group-label">Show in the book</div>
+                    <div class="set-group-label">Show with the text</div>
                     <div class="set-card">
                         <div class="set-row">
                             <span class="ic" data-icon="video"></span>
@@ -172,34 +172,36 @@
                         <div id="rt-lock-note" class="rt-lock-note" role="status" hidden></div>
                         <div class="set-row set-row--nested">
                             <span class="ic" data-icon="corner-down-right"></span>
-                            <label class="set-text" for="toggle-study" title="After you mark a section as read, get questions about it. Uses the book's own text; no AI needed.">Study questions<span class="set-sub">After each section you mark read</span></label>
+                            <label class="set-text" for="toggle-study" title="After you mark a section as read, get questions about it. Made from the FAQs themselves; no AI needed.">Study questions<span class="set-sub">After each section you mark read</span></label>
                             <label class="switch"><input type="checkbox" id="toggle-study"><span class="slider"></span></label>
                         </div>
                         <div class="set-row set-row--ai">
                             <span class="ic" data-icon="sparkles"></span>
-                            <label class="set-text" for="ai-engine-select" title="Ask questions about the book. Off by default.">AI assistant<span class="set-sub">Answers from the book's own text</span></label>
+                            <label class="set-text" for="ai-engine-select" title="Ask questions and get answers from the FAQs">AI assistant<span class="set-sub">Answers from the FAQs themselves</span></label>
                             <select id="ai-engine-select">
                                 <option value="off">Off</option>
-                                <option value="cloud">Cloud</option>
-                                <option value="local">Local</option>
+                                <option value="cloud">Online</option>
+                                <option value="local">On this device</option>
                             </select>
                         </div>
                         <div class="set-row set-row--config">
-                            <button type="button" id="ai-config-btn" class="ai-config-btn" title="Cloud: use this site's assistant or your own service. Local: choose the model size." hidden><span class="ic" data-icon="adjustments"></span>Configure…</button>
                             <span id="ai-engine-note" class="set-note"></span>
+                            <button type="button" id="ai-config-btn" class="ai-config-btn" title="Online: use this site's assistant or your own service. On this device: choose the model size." hidden><span class="ic" data-icon="adjustments"></span><span class="ai-config-btn-text">Choose service…</span></button>
                         </div>
                     </div>
                 </div>
 
                 <div class="set-group">
-                    <div class="set-group-label">This device</div>
+                    <div class="set-group-label">Saved on this device and sync</div>
                     <div class="set-card">
                         <div class="set-row">
                             <span class="ic" data-icon="cloud-download"></span>
-                            <label class="set-text" for="toggle-offline" title="Save the book on this device so it opens without internet">Offline copy<span class="set-sub">Saves the book here, a few MB</span></label>
+                            <label class="set-text" for="toggle-offline" title="Save the FAQs on this device so they open without internet">Offline copy<span class="set-sub">Opens without internet. A few MB.</span></label>
                             <label class="switch"><input type="checkbox" id="toggle-offline"><span class="slider"></span></label>
                         </div>
+                        <p id="offline-status" class="set-status" role="status" aria-live="polite"></p>
                         <div class="set-row set-row--sync" data-sync hidden></div>
+                        <p class="set-foot">Never synced, they stay on each device: the offline copy, the AI assistant's settings and keys, and where you stopped reading.</p>
                     </div>
                 </div>
             </div>
@@ -218,8 +220,8 @@
             <div id="home-progress" class="home-progress"></div>
             <button type="button" id="home-continue" class="home-primary-btn"><span class="ic" data-icon="player-play"></span><span id="home-continue-label">Start reading</span></button>
             <div class="home-view-options">
-                <button type="button" id="home-open-book" class="home-view-option-btn"><span class="ic" data-icon="book-2"></span>Book</button>
-                <button type="button" id="home-open-continuous" class="home-view-option-btn"><span class="ic" data-icon="layout-list"></span>Scroll</button>
+                <button type="button" id="home-open-book" class="home-view-option-btn"><span class="ic" data-icon="book"></span>Book</button>
+                <button type="button" id="home-open-continuous" class="home-view-option-btn"><span class="ic" data-icon="arrows-vertical"></span>Scroll</button>
             </div>
             <p class="home-view-hint">Book turns pages like print. Scroll is one long page, easier for skimming.</p>
         </div>
@@ -228,10 +230,19 @@
             <div class="set-group">
                 <div class="set-group-label">Reading</div>
                 <div class="set-card">
-                    <div class="set-row set-row--chips">
+                    <div class="set-row set-row--lang">
                         <span class="ic" data-icon="language"></span>
                         <span class="set-text">Language</span>
-                        <div id="home-lang-list" class="home-lang-list"></div>
+                        <div class="lang-picker">
+                            <button type="button" id="home-lang-trigger" class="lang-trigger" aria-expanded="false">
+                                <span id="home-lang-summary" class="lang-summary"></span>
+                                <span class="ic lang-chevron" data-icon="chevron-down"></span>
+                            </button>
+                            <div id="home-lang-panel" class="lang-panel" hidden>
+                                <input type="text" id="home-lang-search" class="lang-search" placeholder="Search languages">
+                                <div id="home-lang-list" class="lang-list"></div>
+                            </div>
+                        </div>
                     </div>
                     <div class="set-row">
                         <span class="ic" data-icon="typography"></span>
@@ -246,7 +257,7 @@
                         <span class="ic" data-icon="ruler-2"></span>
                         <label class="set-text" for="home-paper-size-select">Page size<span class="set-sub">Changes the screen and print. A3 fits more on each page.</span></label>
                         <select id="home-paper-size-select">
-                            <option value="dynamic">Dynamic</option>
+                            <option value="dynamic">Auto</option>
                             <option value="a4">A4</option>
                             <option value="a3">A3</option>
                         </select>
@@ -255,7 +266,7 @@
             </div>
 
             <div class="set-group">
-                <div class="set-group-label">Show in the book</div>
+                <div class="set-group-label">Show with the text</div>
                 <div class="set-card">
                     <div class="set-row">
                         <span class="ic" data-icon="video"></span>
@@ -281,35 +292,36 @@
                     <div id="home-rt-lock-note" class="rt-lock-note" role="status" hidden></div>
                     <div class="set-row set-row--nested">
                         <span class="ic" data-icon="corner-down-right"></span>
-                        <label class="set-text" for="home-toggle-study">Study questions<span class="set-sub">After each section you mark read, made from the book's own text. With an AI assistant on, it can also write extra questions and check your answers.</span></label>
+                        <label class="set-text" for="home-toggle-study">Study questions<span class="set-sub">After each section you mark read, made from the FAQs themselves. With an AI assistant on, it can also write extra questions and check your answers.</span></label>
                         <label class="switch"><input type="checkbox" id="home-toggle-study"><span class="slider"></span></label>
                     </div>
                     <div class="set-row set-row--ai">
                         <span class="ic" data-icon="sparkles"></span>
-                        <label class="set-text" for="home-ai-engine-select">AI assistant<span class="set-sub">Answers from the book's own text</span></label>
+                        <label class="set-text" for="home-ai-engine-select">AI assistant<span class="set-sub">Answers from the FAQs themselves</span></label>
                         <select id="home-ai-engine-select">
                             <option value="off">Off</option>
-                            <option value="cloud">Cloud</option>
-                            <option value="local">Local</option>
+                            <option value="cloud">Online</option>
+                            <option value="local">On this device</option>
                         </select>
                     </div>
                     <div class="set-row set-row--config">
-                        <button type="button" id="home-ai-config-btn" class="ai-config-btn" hidden><span class="ic" data-icon="adjustments"></span>Configure…</button>
                         <span id="home-ai-engine-note" class="set-note"></span>
+                        <button type="button" id="home-ai-config-btn" class="ai-config-btn" hidden><span class="ic" data-icon="adjustments"></span><span class="ai-config-btn-text">Choose service…</span></button>
                     </div>
                 </div>
             </div>
 
             <div class="set-group">
-                <div class="set-group-label">This device</div>
+                <div class="set-group-label">Saved on this device and sync</div>
                 <div class="set-card">
                     <div class="set-row">
                         <span class="ic" data-icon="cloud-download"></span>
-                        <label class="set-text" for="home-toggle-offline">Offline copy<span class="set-sub">Saves the whole book, pictures included, so it opens without internet. Downloads a few MB once, so Wi‑Fi is best. Turning it off removes the saved copy.</span></label>
+                        <label class="set-text" for="home-toggle-offline">Offline copy<span class="set-sub">Saves the whole FAQs, pictures included, so they open without internet. Downloads a few MB once, so Wi‑Fi is best. Turning it off removes the saved copy.</span></label>
                         <label class="switch"><input type="checkbox" id="home-toggle-offline"><span class="slider"></span></label>
                     </div>
-                    <p id="home-offline-status" class="home-offline-status" role="status" aria-live="polite" hidden></p>
+                    <p id="home-offline-status" class="set-status" role="status" aria-live="polite"></p>
                     <div class="set-row set-row--sync" data-sync hidden></div>
+                    <p class="set-foot">Never synced, they stay on each device: the offline copy, the AI assistant's settings and keys, and where you stopped reading.</p>
                 </div>
             </div>
         </div>

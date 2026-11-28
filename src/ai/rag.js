@@ -22,8 +22,8 @@ const BUDGET_CHARS = { local: 5000, cloud: 20000 };
 const MAX_SHOWN = 4;
 const MAX_MORE = 12;
 
-export const NO_RELIABLE_ANSWER = 'I couldn\u2019t write a reliable summary of this, so here are the passages in the book that match. Please read them directly:';
-export const FOLLOW_UP_LOCAL = 'Those are the passages the book has on that. Open one in the book, or ask a more specific question.';
+export const NO_RELIABLE_ANSWER = 'I couldn\u2019t write a reliable summary of this, so here are the matching passages. Please read them directly:';
+export const FOLLOW_UP_LOCAL = 'Those are the passages the FAQs have on that. Open one, or ask a more specific question.';
 
 function lastUserQuestion(history) {
     for (let i = history.length - 1; i >= 0; i--) if (history[i].role === 'user') return history[i].content;

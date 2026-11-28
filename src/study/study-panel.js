@@ -117,7 +117,7 @@ function el(tag, className, text) {
 function cite(label, blockId) {
     const chip = el('button', 'ai-cite', label);
     chip.type = 'button';
-    chip.title = 'Open this passage in the book';
+    chip.title = 'Open this passage';
     chip.addEventListener('click', () => state.onCite && state.onCite(blockId));
     return chip;
 }
@@ -136,7 +136,7 @@ function passagesNode(passages) {
     const wrap = el('div', 'ai-sources');
     let topic;
     passages.forEach(p => {
-        if (p.topic && p.topic !== topic) { topic = p.topic; wrap.appendChild(el('div', 'study-topic', `What the book says about ${topic}`)); }
+        if (p.topic && p.topic !== topic) { topic = p.topic; wrap.appendChild(el('div', 'study-topic', `What the FAQs say about ${topic}`)); }
         const card = el('div', 'ai-passage');
         card.appendChild(cite(p.label, p.id));
         Object.values(p.text).forEach(t => card.appendChild(el('div', 'ai-passage-text', t.length > 500 ? `${t.slice(0, 500).trimEnd()}\u2026` : t)));
@@ -179,7 +179,7 @@ function cardNode(entry) {
     card.appendChild(box);
 
     const actions = el('div', 'study-actions');
-    const show = el('button', 'study-primary', entry.revealed ? 'Hide the book\u2019s words' : 'Show what the book says');
+    const show = el('button', 'study-primary', entry.revealed ? 'Hide what the FAQs say' : 'Show what the FAQs say');
     show.type = 'button';
     show.addEventListener('click', () => { entry.revealed = !entry.revealed; render(); });
     actions.appendChild(show);
@@ -228,7 +228,7 @@ async function runCheck(entry, engine) {
     render();
     try {
         const r = await checkAnswer({ engine, question: entry.sug.prompt, learnerAnswer: entry.text.trim(), passages: entry.sug.passages.map(p => ({ ...p, label: p.label })), langs: langs() });
-        entry.feedback = r || { error: 'The AI couldn\u2019t give feedback it could back up with the book\u2019s text. Compare your answer with the passages below instead.' };
+        entry.feedback = r || { error: 'The AI couldn\u2019t give feedback it could back up with the passages. Compare your answer with the passages below instead.' };
         if (!r) entry.revealed = true;
     } catch (err) {
         entry.feedback = { error: err?.message || 'Something went wrong.' };
@@ -295,7 +295,7 @@ async function askAiForQuestion() {
             const passages = passagesAround(focus);
             if (!passages.length) continue;
             const q = await generateQuestion({ engine, passages, langs: langs(), avoid: state.aiAsked.slice(-10) });
-            if (!q) { state.aiNote = 'The AI didn\u2019t produce a question it could back up with the book\u2019s text. Try again.'; continue; }
+            if (!q) { state.aiNote = 'The AI didn\u2019t produce a question it could back up with the passages. Try again.'; continue; }
             if (seenBefore(q.question)) { state.aiNote = 'The AI gave a question you have already had. Try again, or mark more sections as read.'; continue; }
             state.aiAsked.push(q.question);
             const label = model().chunkById.get(focus)?.label;
@@ -319,7 +319,7 @@ function render() {
     if (!body) return;
     body.replaceChildren();
     if (!state.pending.length) {
-        body.appendChild(el('p', 'study-empty', 'Mark a section as read (the \u2713 at its corner) and questions about it will appear here. They come from the book\u2019s own text, so they work without any AI.'));
+        body.appendChild(el('p', 'study-empty', 'Mark a section as read (the \u2713 at its corner) and questions about it will appear here. They come from the FAQs themselves, so they work without any AI.'));
     }
     const shown = state.showAll ? state.pending : state.pending.slice(0, VISIBLE_CARDS);
     shown.forEach(e => body.appendChild(cardNode(e)));
@@ -382,7 +382,7 @@ function buildDrawer() {
     const body = el('div', 'study-body');
     body.id = 'study-body';
     body.setAttribute('aria-live', 'polite');
-    const note = el('div', 'ai-disclaimer', 'Questions come from this book\u2019s own text. Check your answers against the passages, shlokas and videos in the book.');
+    const note = el('div', 'ai-disclaimer', 'Questions come from the FAQs themselves. Check your answers against the passages, shlokas and videos.');
     drawer.append(buildResizeHandle('study-resize', 'Resize the study panel (drag, or use the arrow keys)'), head, body, note);
     document.body.appendChild(drawer);
     drawer.style.setProperty('--ai-width', `${loadSettings().aiPanelWidth}px`);

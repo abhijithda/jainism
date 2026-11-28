@@ -85,7 +85,7 @@ body.ai-resizing { user-select: none; cursor: ew-resize; }
 @media print { .ai-drawer, .ai-back, #ai-btn, #omnibox, .search-toggle { display: none !important; } }
 
 /* ── Configure dialog (ai/ai-config.js) ─────────────────────────────────── */
-.ai-config-btn { font: inherit; font-size: 13px; padding: 6px 12px; border: 1px solid #d5dadd; border-radius: 8px; background: #fff; color: #222; cursor: pointer; }
+.ai-config-btn { font: inherit; font-size: 13px; font-weight: 400; padding: 6px 12px; border: 1px solid #d5dadd; border-radius: 8px; background: #fff; color: #222; cursor: pointer; }
 .ai-config-btn:hover { background: #f1f3f4; }
 .ai-config-btn[hidden] { display: none; }
 @media (max-width: 700px) { .ai-config-btn { font-size: 14px; padding: 10px 14px; } }

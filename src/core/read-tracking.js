@@ -121,6 +121,8 @@ export function updateProgressDisplay(readSet, totalBlockCount) {
     set('progress-pct', String(percentage));
     set('progress-pop-text', `${read} of ${total} read`);
     set('progress-pop-pct', `${percentage}%`);
+    const ringBtn = document.getElementById('progress-btn');
+    if (ringBtn) { const t = `${percentage}% read (${read} of ${total})`; ringBtn.title = t; ringBtn.setAttribute('aria-label', t); }
     const bar = document.getElementById('progress-pop-bar');
     if (bar) bar.style.width = `${percentage}%`;
 }

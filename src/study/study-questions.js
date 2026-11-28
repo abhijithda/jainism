@@ -35,7 +35,7 @@ const QUESTION_MAX_CHARS = 300;
 const WORDING = {
     en: {
         compare: (a, b) => `You just read about ${a}. Can you explain how it differs from ${b}?`,
-        recall: q => `A question from the book: \u201C${q}\u201D What does the book answer?`,
+        recall: q => `A question from the FAQs: \u201C${q}\u201D What do the FAQs answer?`,
         recallTitle: q => `Recall: ${q}`,
     },
     kn: {

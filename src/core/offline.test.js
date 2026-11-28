@@ -50,7 +50,7 @@ describe('describeStatus', () => {
     test('ready, with the amount of storage used when known', () => {
         const d = describeStatus({ state: 'ready', done: 7, total: 7 }, true, 2.4 * 1024 * 1024);
         expect(d.state).toBe('ready');
-        expect(d.text).toContain('Ready to use offline');
+        expect(d.text).toContain('Saved on this device');
         expect(d.text).toContain('about 2.4 MB');
         expect(describeStatus({ state: 'ready', done: 7, total: 7 }, true).text).not.toContain('about');
     });
@@ -147,12 +147,14 @@ function makeEnv({ webdriver = false, search = '', supported = true, enabled = f
 const flush = () => new Promise(r => setTimeout(r, 0));
 
 describe('initOffline', () => {
-    test('with the switch off (the default): downloads nothing, registers nothing, shows nothing', async () => {
+    test('with the switch off (the default): downloads nothing, registers nothing, and says it is not saved', async () => {
         const t = makeEnv({ enabled: false });
         initOffline(t);
         await flush();
         expect(t.register).not.toHaveBeenCalled();
-        expect(t.status.hidden).toBe(true);
+        expect(t.status.hidden).toBe(false);
+        expect(t.status.dataset.state).toBe('off');
+        expect(t.status.textContent).toBe('Not saved. Reading needs internet.');
         expect(t.toggle.checked).toBe(false);
     });
 
@@ -176,7 +178,7 @@ describe('initOffline', () => {
         expect(t.status.dataset.state).toBe('preparing');
     });
 
-    test('turning the switch off removes the worker and every saved copy, and hides the status', async () => {
+    test('turning the switch off removes the worker and every saved copy, and the status goes back to not saved', async () => {
         const t = makeEnv({ enabled: true, registrations: [1] });
         initOffline(t);
         await flush();
@@ -189,7 +191,8 @@ describe('initOffline', () => {
         expect(t.postMessage).toHaveBeenCalledWith({ type: 'uninstall' });
         expect(t.unregister).toHaveBeenCalled();
         expect(t.deleted).toEqual(['pooja-shell-v1', 'pooja-images-v1']);   // only this app's caches
-        expect(t.status.hidden).toBe(true);
+        expect(t.status.dataset.state).toBe('off');
+        expect(t.status.textContent).toBe('Not saved. Reading needs internet.');
     });
 
     test('keeps the Home copy of the switch in step with the header one', () => {

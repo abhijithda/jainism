@@ -3,7 +3,7 @@
 
 import { KNOWN_LANGS } from '../core/langs.js';
 
-export const NOT_COVERED = 'This book doesn\u2019t seem to cover that yet. Try different words, or browse the topics in the book.';
+export const NOT_COVERED = 'The FAQs don\u2019t seem to cover that yet. Try different words, or browse the topics.';
 
 const SYSTEM = `You answer questions about Jaina pooja for readers of a bilingual (Kannada/English) FAQ book.
 

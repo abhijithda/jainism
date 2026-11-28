@@ -15,8 +15,7 @@
 // is just a second, larger-font, always-expanded place to reach the same
 // switches (the whole point of putting settings here instead of a link).
 
-import { KNOWN_LANGS } from '../core/langs.js';
-import { loadSettings, getActiveLangs } from '../header/header.js';
+import { loadSettings, getActiveLangs, refreshLangPickers } from '../header/header.js';
 import { getReadBlocks, isBlockTrackable, computeProgress } from '../core/read-tracking.js';
 
 let coverItem = null;
@@ -100,33 +99,6 @@ function proxyToHeader(headerId, apply) {
     el.dispatchEvent(new Event('change', { bubbles: true }));
 }
 
-function renderLangList() {
-    const list = document.getElementById('home-lang-list');
-    if (!list) return;
-    const active = getActiveLangs();
-    list.innerHTML = '';
-
-    KNOWN_LANGS.forEach(lang => {
-        const row = document.createElement('label');
-        row.className = 'home-lang-row';
-
-        const chk = document.createElement('input');
-        chk.type = 'checkbox';
-        chk.checked = active.includes(lang.code);
-        chk.addEventListener('change', () => {
-            proxyToHeader(`lang-chk-${lang.code}`, (headerChk) => { headerChk.checked = chk.checked; });
-            refreshHomeView(); // re-sync in case the header enforced "at least one"
-        });
-
-        const labelText = document.createElement('span');
-        labelText.textContent = `${lang.label} (${lang.name})`;
-
-        row.appendChild(chk);
-        row.appendChild(labelText);
-        list.appendChild(row);
-    });
-}
-
 function renderSettingsMirror() {
     const saved = loadSettings();
 
@@ -148,7 +120,7 @@ function renderSettingsMirror() {
     if (aiEngine) aiEngine.value = saved.aiEngine;
     if (fontDisplay) fontDisplay.textContent = `${Math.round(saved.fontScale * 100)}%`;
 
-    renderLangList();
+    refreshLangPickers();   // the Home copy of the language picker, kept in step with the header's
 }
 
 // Called on boot and every time the Home page becomes visible again (app.js
