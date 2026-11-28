@@ -123,8 +123,8 @@ export function createLocalEngine({
         /**
          * Downloads/initialises the model. onProgress({ text, progress 0..1 }). Safe to call repeatedly.
          * beforeDownload({ modelIds }) runs only when the model is not in the browser's cache yet, just before the
-         * download would start: the page can use it to offer loading a saved copy from a folder. If it throws,
-         * the download simply goes ahead.
+         * download would start: the page can use it to offer loading a saved copy from a folder, or downloading into one
+         * first (modelId is the build about to be used). If it throws, the download simply goes ahead; an AbortError stops.
          */
         prepare(onProgress, { beforeDownload } = {}) {
             if (engine) return Promise.resolve();
@@ -152,9 +152,9 @@ export function createLocalEngine({
                         try {
                             const record = recordLookup(lib)(currentModel());
                             if (record && !(await cachedState(record, cacheStorage)).complete) {
-                                await beforeDownload({ modelIds: [modelId, compatModelId] });
+                                await beforeDownload({ modelIds: [modelId, compatModelId], modelId: currentModel() });
                             }
-                        } catch (_) { /* the download goes ahead */ }
+                        } catch (err) { if (err?.name === 'AbortError') throw err; /* anything else: the download goes ahead */ }
                     }
                     const create = () => lib.CreateMLCEngine(currentModel(), { initProgressCallback: report });
                     try {

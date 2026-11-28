@@ -66,16 +66,16 @@ export async function forgetFolder(idb = defaultIdb()) {
 }
 
 /**
- * Can the folder be read right now?
+ * Can the folder be read (mode 'read') or written to (mode 'readwrite') right now?
  * With request: false it only asks the browser (no dialog). With request: true it may show the browser's
  * permission prompt, which needs a click in progress, so call it straight from a click handler.
  * @returns {Promise<'granted'|'prompt'|'denied'>}
  */
-export async function folderAccess(handle, { request = false } = {}) {
+export async function folderAccess(handle, { request = false, mode = 'read' } = {}) {
     if (!handle) return 'denied';
     try {
         if (typeof handle.queryPermission !== 'function') return 'granted';   // old browser: reading will fail by itself if not allowed
-        const opts = { mode: 'read' };
+        const opts = { mode };
         if ((await handle.queryPermission(opts)) === 'granted') return 'granted';
         if (!request) return 'prompt';
         return (await handle.requestPermission(opts)) === 'granted' ? 'granted' : 'denied';

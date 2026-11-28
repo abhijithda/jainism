@@ -6,7 +6,7 @@
 // in a browser by test/e2e/core/model-files.test.js.
 
 const {
-    SCOPES, MANIFEST_NAME, locations, belongsToModel, cachedState, saveModelsToFolder, loadModelsFromFolder,
+    SCOPES, MANIFEST_NAME, locations, belongsToModel, cachedState, saveModelsToFolder, loadModelsFromFolder, downloadModelToFolder, NoSavedCopyError,
     folderSource, fileListSource, ModelFolderError, webllmVersion,
 } = require('./model-files');
 const { LOCAL_TIERS } = require('../config');
@@ -276,5 +276,106 @@ describe('loading from a folder', () => {
         const r = await loadModelsFromFolder({ source: fileListSource(list), recordFor, caches: fresh });
         expect(r.restored).toEqual([MODEL_ID]);
         expect(await cachedState(record, fresh)).toEqual({ complete: true, reason: '' });
+    });
+});
+
+describe('downloading one model straight into a folder', () => {
+    const files = {
+        [base + 'mlc-chat-config.json']: JSON.stringify({ tokenizer_files: ['tokenizer.json', 'tokenizer.model'] }),
+        [base + 'ndarray-cache.json']: JSON.stringify({ records: [{ dataPath: 'params_shard_0.bin', nbytes: 5 }, { dataPath: 'params_shard_1.bin', nbytes: 3 }] }),
+        [base + 'params_shard_0.bin']: bytes(1, 2, 3, 4, 5),
+        [base + 'params_shard_1.bin']: bytes(6, 7, 8),
+        [base + 'tokenizer.json']: '{"t":1}',
+        [record.model_lib]: bytes(0, 97, 115, 109),
+    };                                                               // tokenizer.model is missing on the server (404)
+    const makeFetch = (overrides = {}) => jest.fn(async url => {
+        const body = (url in overrides ? overrides[url] : files[url]);
+        return body === undefined ? new Response('nope', { status: 404 }) : body === 'FAIL' ? new Response('x', { status: 500 }) : new Response(body);
+    });
+    const run = (dir, fetchFn, extra = {}) => downloadModelToFolder({ modelId: MODEL_ID, record, dir, fetchFn, ...extra });
+
+    test('writes the same files and manifest as a save, and the result loads into an empty cache', async () => {
+        const dir = fakeDir(), fetchFn = makeFetch();
+        const r = await run(dir, fetchFn);
+        expect(r.bytes).toBeGreaterThan(8);
+        const manifest = JSON.parse(Buffer.from(dir.files.get(MANIFEST_NAME)).toString());
+        expect(manifest.models.map(m => m.modelId)).toEqual([MODEL_ID]);
+        const names = manifest.models[0].entries.map(e => e.file);
+        expect(names).toEqual(expect.arrayContaining(['mlc-chat-config.json', 'ndarray-cache.json', 'params_shard_0.bin', 'params_shard_1.bin', 'tokenizer.json']));
+        expect(names).not.toContain('tokenizer.model');             // a tokenizer file the server doesn't have is left out, not fatal
+        const fresh = fakeCaches();
+        const loaded = await loadModelsFromFolder({ source: folderSource(dir), recordFor, caches: fresh, modelIds: [MODEL_ID] });
+        expect(loaded.restored).toEqual([MODEL_ID]);
+        expect(await cachedState(record, fresh)).toEqual({ complete: true, reason: '' });
+        expect(await raw(fresh, 'model', base + 'params_shard_1.bin')).toEqual([6, 7, 8]);
+    });
+
+    test('reports progress and keeps a weight file already in the folder at the right size (a resumed download)', async () => {
+        const dir = fakeDir();
+        await run(dir, makeFetch());
+        const again = makeFetch();
+        const seen = [];
+        await run(dir, again, { onProgress: p => seen.push(p.text) });
+        expect(again.mock.calls.map(c => c[0])).not.toContain(base + 'params_shard_0.bin');
+        expect(again.mock.calls.map(c => c[0])).not.toContain(base + 'params_shard_1.bin');
+        expect(seen[seen.length - 1]).toMatch(/Downloading to the folder.*100%/);
+    });
+
+    test('a server error stops it and writes no manifest, so Load refuses the folder', async () => {
+        const dir = fakeDir();
+        await expect(run(dir, makeFetch({ [base + 'params_shard_1.bin']: 'FAIL' }))).rejects.toThrow(/params_shard_1\.bin.*500/);
+        expect(dir.files.has(MANIFEST_NAME)).toBe(false);
+    });
+
+    test('a weight file of the wrong size is refused', async () => {
+        const dir = fakeDir();
+        await expect(run(dir, makeFetch({ [base + 'params_shard_0.bin']: bytes(1, 2) }))).rejects.toThrow(/instead of 5/);
+        expect(dir.files.has(MANIFEST_NAME)).toBe(false);
+    });
+
+    test('a file list that points outside the model is refused', async () => {
+        const dir = fakeDir();
+        const evil = JSON.stringify({ records: [{ dataPath: 'https://evil.example/x.bin', nbytes: 1 }] });
+        await expect(run(dir, makeFetch({ [base + 'ndarray-cache.json']: evil }))).rejects.toThrow(/outside the model/);
+    });
+
+    test('a missing compiled-code file is not fatal (WebLLM fetches it itself)', async () => {
+        const dir = fakeDir();
+        await run(dir, makeFetch({ [record.model_lib]: undefined }));
+        const manifest = JSON.parse(Buffer.from(dir.files.get(MANIFEST_NAME)).toString());
+        expect(manifest.models[0].entries.some(e => e.scope === 'wasm')).toBe(false);
+    });
+
+    test('stops when cancelled, leaving no manifest', async () => {
+        const dir = fakeDir(), ctl = new AbortController();
+        const fetchFn = jest.fn(async url => { ctl.abort(); return new Response(files[url] ?? 'x'); });
+        await expect(run(dir, fetchFn, { signal: ctl.signal })).rejects.toMatchObject({ name: 'AbortError' });
+        expect(dir.files.has(MANIFEST_NAME)).toBe(false);
+    });
+
+    test('downloading or saving one size keeps the other sizes already listed in the manifest', async () => {
+        const dir = fakeDir();
+        await run(dir, makeFetch());
+        const other = { ...record, model: 'https://huggingface.co/mlc-ai/Other-Model' };
+        const otherId = LOCAL_TIERS.medium.model;
+        const otherBase = locations(other).modelUrl;
+        const otherFiles = {
+            [otherBase + 'mlc-chat-config.json']: '{}', [otherBase + 'ndarray-cache.json']: JSON.stringify({ records: [{ dataPath: 'p.bin', nbytes: 1 }] }),
+            [otherBase + 'p.bin']: bytes(1), [other.model_lib]: bytes(0),
+        };
+        await downloadModelToFolder({ modelId: otherId, record: other, dir, fetchFn: async url => new Response(otherFiles[url]) });
+        const manifest = JSON.parse(Buffer.from(dir.files.get(MANIFEST_NAME)).toString());
+        expect(manifest.models.map(m => m.modelId).sort()).toEqual([MODEL_ID, otherId].sort());
+        // and loading only one of them leaves the other alone
+        const fresh = fakeCaches();
+        const r = await loadModelsFromFolder({ source: folderSource(dir), recordFor: id => (id === MODEL_ID ? record : id === otherId ? other : null), caches: fresh, modelIds: [otherId] });
+        expect(r.restored).toEqual([otherId]);
+        expect(await raw(fresh, 'model', base + 'params_shard_0.bin')).toBeNull();
+    });
+
+    test('asking for a size the folder does not hold is a NoSavedCopyError', async () => {
+        const dir = fakeDir();
+        await run(dir, makeFetch());
+        await expect(loadModelsFromFolder({ source: folderSource(dir), recordFor, caches: fakeCaches(), modelIds: ['Nope'] })).rejects.toBeInstanceOf(NoSavedCopyError);
     });
 });

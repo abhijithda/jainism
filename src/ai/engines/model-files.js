@@ -129,14 +129,118 @@ export async function saveModelsToFolder({ models, dir, caches, onProgress = () 
         manifestModels.push({ modelId, entries });
         saved.push(modelId);
     }
-    if (saved.length) {
-        const manifest = { format: MANIFEST_FORMAT, webllm: webllmVersion(), savedAt: new Date().toISOString(), models: manifestModels };
-        const handle = await dir.getFileHandle(MANIFEST_NAME, { create: true });
-        const writable = await handle.createWritable();
-        await writable.write(JSON.stringify(manifest, null, 2));
-        await writable.close();
-    }
+    if (saved.length) await writeManifest(dir, manifestModels);
     return { saved, skipped, bytes };
+}
+
+/**
+ * Writes the manifest, keeping the models an earlier save or download already listed (their files are still in
+ * the folder), so saving or downloading one size never drops another from the list.
+ */
+async function writeManifest(dir, models) {
+    let kept = [];
+    try {
+        const old = JSON.parse(await (await (await dir.getFileHandle(MANIFEST_NAME)).getFile()).text());
+        if (old?.format === MANIFEST_FORMAT && Array.isArray(old.models)) kept = old.models.filter(m => m && !models.some(n => n.modelId === m.modelId));
+    } catch (_) { /* no manifest yet, or an unreadable one: start a new list */ }
+    const manifest = { format: MANIFEST_FORMAT, webllm: webllmVersion(), savedAt: new Date().toISOString(), models: [...kept, ...models] };
+    const handle = await dir.getFileHandle(MANIFEST_NAME, { create: true });
+    const writable = await handle.createWritable();
+    await writable.write(JSON.stringify(manifest, null, 2));
+    await writable.close();
+}
+
+const abortError = () => new DOMException('Aborted', 'AbortError');
+const megabytes = n => Math.round(n / (1024 * 1024));
+
+/**
+ * Downloads ONE model straight into `dir` (a folder handle with write access), the same files and manifest that
+ * saveModelsToFolder writes, so loadModelsFromFolder can then put it into the browser's cache. Files stream to disk
+ * (never held in memory). A weight file already in the folder at the right size is kept, so an interrupted download
+ * continues where it stopped. The tokenizer files and the compiled code are best effort: if one can't be fetched it is
+ * left out, and WebLLM fetches it itself later. The manifest is written last.
+ *
+ * @param {{modelId: string, record: Object, dir: Object, fetchFn?: Function, onProgress?: Function, signal?: AbortSignal}} opts
+ * @returns {Promise<{bytes: number}>}
+ */
+export async function downloadModelToFolder({ modelId, record, dir, fetchFn = (...a) => fetch(...a), onProgress = () => {}, signal }) {
+    const { modelUrl, configUrl, ndarrayUrl, wasmUrl } = locations(record);
+    const folderFor = scope => `${modelId}-${SUBFOLDER[scope]}`.replace(/[^A-Za-z0-9._-]/g, '_');
+    const taken = { config: new Set(), model: new Set(), wasm: new Set() };
+    const subs = {}, entries = [];
+    let done = 0, total = 0, last = 0;
+    const subFor = async scope => (subs[scope] ||= await dir.getDirectoryHandle(folderFor(scope), { create: true }));
+    const report = (force = false) => {
+        const now = Date.now();
+        if (!force && now - last < 250) return;
+        last = now;
+        const pct = total ? ` ${Math.min(100, Math.floor(done / total * 100))}% (${megabytes(done)} of ${megabytes(total)} MB)` : '';
+        onProgress({ text: `Downloading to the folder\u2026${pct}`, done, total });
+    };
+
+    async function fetchInto(scope, url, expectBytes, countsInProgress) {
+        if (signal?.aborted) throw abortError();
+        const sub = await subFor(scope);
+        const file = fileNameFor(url, taken[scope]);
+        if (expectBytes !== undefined) {
+            try {
+                if ((await (await sub.getFileHandle(file)).getFile()).size === expectBytes) {
+                    entries.push({ scope, url, folder: folderFor(scope), file, bytes: expectBytes });
+                    if (countsInProgress) { done += expectBytes; report(); }
+                    return file;
+                }
+            } catch (_) { /* not there yet */ }
+        }
+        const response = await fetchFn(url, { signal });
+        if (!response.ok) throw new ModelFolderError(`Couldn\u2019t download ${file} (the server answered ${response.status}).`);
+        const writable = await (await sub.getFileHandle(file, { create: true })).createWritable();
+        let size = 0;
+        if (response.body) {
+            const counter = new TransformStream({
+                transform(chunk, ctl) { size += chunk.byteLength; if (countsInProgress) { done += chunk.byteLength; report(); } ctl.enqueue(chunk); },
+            });
+            await response.body.pipeThrough(counter).pipeTo(writable, { signal });
+        } else {
+            const buf = await response.arrayBuffer();
+            size = buf.byteLength;
+            await writable.write(buf);
+            await writable.close();
+            if (countsInProgress) { done += size; report(); }
+        }
+        if (expectBytes !== undefined && size !== expectBytes) {
+            throw new ModelFolderError(`${file} arrived at ${size} bytes instead of ${expectBytes}. Check the connection and try again.`);
+        }
+        entries.push({ scope, url, folder: folderFor(scope), file, bytes: size });
+        return file;
+    }
+    const readBack = async (scope, file) => (await (await (await subFor(scope)).getFileHandle(file)).getFile()).text();
+    const bestEffort = async (...args) => {
+        try { await fetchInto(...args); } catch (err) { if (err?.name === 'AbortError' || signal?.aborted) throw err; }
+    };
+
+    report(true);
+    const configFile = await fetchInto('config', configUrl);
+    const listFile = await fetchInto('model', ndarrayUrl);
+    let config = null, list = null;
+    try { config = JSON.parse(await readBack('config', configFile)); } catch (_) {}
+    try { list = JSON.parse(await readBack('model', listFile)); } catch (_) {}
+    if (!Array.isArray(list?.records)) throw new ModelFolderError('The model\u2019s file list couldn\u2019t be read, so nothing was downloaded.');
+
+    total = list.records.reduce((n, r) => n + (Number.isFinite(r.nbytes) ? r.nbytes : 0), 0);
+    for (const shard of list.records) {
+        const url = new URL(shard.dataPath, modelUrl).href;
+        if (!belongsToModel('model', url, record)) throw new ModelFolderError('The model\u2019s file list names a file outside the model, so nothing was downloaded.');
+        await fetchInto('model', url, Number.isFinite(shard.nbytes) ? shard.nbytes : undefined, true);
+    }
+    for (const name of Array.isArray(config?.tokenizer_files) ? config.tokenizer_files : []) {
+        const url = typeof name === 'string' ? new URL(name, modelUrl).href : '';
+        if (url && belongsToModel('model', url, record)) await bestEffort('model', url, undefined, false);
+    }
+    if (wasmUrl) await bestEffort('wasm', wasmUrl, undefined, false);
+
+    report(true);
+    await writeManifest(dir, [{ modelId, entries }]);
+    return { bytes: entries.reduce((n, e) => n + e.bytes, 0) };
 }
 
 /** A folder picked with showDirectoryPicker, as { getFile(folder, name) -> File|null }. */
@@ -165,6 +269,8 @@ export function fileListSource(files) {
 }
 
 export class ModelFolderError extends Error {}
+/** The folder is fine but holds no copy of the size that was asked for (so a download may be the next step). */
+export class NoSavedCopyError extends ModelFolderError {}
 
 async function readManifest(source) {
     const file = await source.getFile('', MANIFEST_NAME);
@@ -191,7 +297,7 @@ async function readManifest(source) {
 export async function loadModelsFromFolder({ source, recordFor, caches, modelIds, onProgress = () => {}, signal }) {
     const manifest = await readManifest(source);
     const targetModels = Array.isArray(modelIds) ? manifest.models.filter(m => modelIds.includes(m?.modelId)) : manifest.models;
-    if (Array.isArray(modelIds) && !targetModels.length) throw new ModelFolderError('That folder has no saved copy of the size you chose.');
+    if (Array.isArray(modelIds) && !targetModels.length) throw new NoSavedCopyError('That folder has no saved copy of the size you chose.');
     const warnings = [];
     if (manifest.webllm && webllmVersion() && manifest.webllm !== webllmVersion()) {
         warnings.push(`It was saved with WebLLM ${manifest.webllm} and this site uses ${webllmVersion()}; anything that doesn\u2019t match is downloaded again.`);

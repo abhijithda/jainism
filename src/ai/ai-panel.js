@@ -11,8 +11,8 @@ import { answerQuestion } from './rag.js';
 import { getEngine } from './engines/index.js';
 import { LOCAL_TIERS } from './config.js';
 import { LOCAL_GPU_FAILED } from './engines/local.js';
-import { loadModelsFromFolder, folderSource, loadRecordLookup } from './engines/model-files.js';
-import { recallFolder, folderAccess } from './engines/model-folder-memory.js';
+import { loadModelsFromFolder, downloadModelToFolder, folderSource, loadRecordLookup, NoSavedCopyError } from './engines/model-files.js';
+import { recallFolder, rememberFolder, folderAccess } from './engines/model-folder-memory.js';
 import { destinationHost, isLocalBaseUrl, normalizeBaseUrl } from './engines/custom.js';
 import { openAiConfig } from './ai-config.js';
 import { loadTranscripts, createVideoIndex, findMoments } from './video-nav.js';
@@ -411,31 +411,92 @@ export function revealTarget(blockId) {
     return covered;
 }
 
-// Local is about to download its model. If the reader saved a copy to a folder earlier (the browser remembers
-// the folder), offer to load that instead. The browser usually wants a click before it lets the page read the
-// folder again, so this asks once; if it already allows reading, it loads without asking.
-async function offerSavedFolder({ modelIds }) {
-    const handle = await recallFolder();
-    if (!handle) return;
-    let access = await folderAccess(handle);
-    if (access !== 'granted') {
-        const yes = await askInChat(`Load the saved model from the folder \u201c${handle.name}\u201d instead of downloading it?`, 'Load from folder', 'Download instead');
-        if (!yes) return;
-        access = await folderAccess(handle, { request: true });   // straight after the click, so the browser may show its prompt
-        if (access !== 'granted') {
-            addMessage('assistant', 'The browser didn\u2019t allow reading that folder, so the model will be downloaded.');
-            return;
-        }
+// Local is about to download its model. Two offers, both about a folder on the reader's computer:
+//  1. If a saved copy of this size exists in the remembered folder, load it instead of downloading (the browser
+//     usually wants a click before it lets the page read the folder again; if it still allows reading, no question).
+//  2. Otherwise offer to download the model into a folder first (a copy that survives clearing the browser's data),
+//     then load it into the browser from there. Only the size about to be used is downloaded.
+// Declining, cancelling the folder picker, or any failure leaves the normal download in the browser to go ahead
+// (Stop is the exception: it stops).
+async function offerSavedFolder({ modelIds, modelId }) {
+    const signal = state.abort?.signal;
+    const saved = await recallFolder();
+    if (saved) {
+        const outcome = await loadFromFolder(saved, modelIds, signal);
+        if (outcome === 'loaded' || outcome === 'declined') return;
     }
+    if (typeof window.showDirectoryPicker !== 'function') return;     // other browsers: the download goes to the browser only
+
+    const tier = Object.values(LOCAL_TIERS).find(t => t.model === modelId || t.compat === modelId);
+    const what = tier ? `the ${tier.label.toLowerCase()} model (${tier.size})` : 'the model';
+    const yes = await askInChat(
+        saved
+            ? `Download ${what} into the folder \u201c${saved.name}\u201d first, then load it from there? You keep a copy that can be loaded again if the browser\u2019s data is cleared. It takes disk space twice: once in the folder, once in the browser.`
+            : `Download ${what} into a folder on this computer first, then load it from there? You keep a copy that can be loaded again if the browser\u2019s data is cleared. It takes disk space twice: once in the folder, once in the browser.`,
+        saved ? 'Download into the folder' : 'Choose a folder', 'Browser only');
+    if (!yes) return;
+
+    let dir = null;
     try {
+        // Straight after the click: the folder picker (or the permission prompt) needs it.
+        if (saved && await folderAccess(saved, { request: true, mode: 'readwrite' }) === 'granted') dir = saved;
+        else if (!saved) dir = await window.showDirectoryPicker({ mode: 'readwrite', id: 'pooja-model' });
+        else addMessage('assistant', 'The browser didn\u2019t allow writing to that folder, so the model will be downloaded into the browser only.');
+    } catch (err) {
+        if (err?.name === 'AbortError') addMessage('assistant', 'No folder chosen, so the model will be downloaded into the browser only.');
+        else addMessage('assistant', `${err?.message || 'The folder couldn\u2019t be opened.'} The model will be downloaded into the browser only.`);
+    }
+    if (!dir) return;
+
+    try {
+        const lookup = await loadRecordLookup();
+        const record = lookup(modelId);
+        if (!record) return;
+        await downloadModelToFolder({ modelId, record, dir, signal, onProgress: p => setStatus(p.text) });
+        await rememberFolder(dir);
         setStatus('Loading the saved model\u2026');
         await loadModelsFromFolder({
-            source: folderSource(handle), recordFor: await loadRecordLookup(), caches: window.caches, modelIds,
+            source: folderSource(dir), recordFor: lookup, caches: window.caches, modelIds: [modelId], signal,
             onProgress: p => setStatus(p.text),
         });
     } catch (err) {
-        // Nothing was put in the cache (everything is checked first), so the download goes ahead.
-        addMessage('assistant', `${err?.message || 'The saved model couldn\u2019t be loaded.'} The model will be downloaded instead.`);
+        if (err?.name === 'AbortError') throw err;
+        // What reached the folder stays there (a retry continues from it); the browser's own download goes ahead now.
+        addMessage('assistant', `${err?.message || 'The download into the folder failed.'} The model will be downloaded into the browser only.`);
+    }
+}
+
+// Loads this size from a folder that holds it. Resolves 'loaded', 'declined' (the reader chose to download),
+// or 'none' (nothing usable there: no copy of this size, no permission, or an error, each said in the chat).
+async function loadFromFolder(handle, modelIds, signal) {
+    let access = await folderAccess(handle);
+    let asked = false;
+    const attempt = async () => {
+        setStatus('Loading the saved model\u2026');
+        await loadModelsFromFolder({
+            source: folderSource(handle), recordFor: await loadRecordLookup(), caches: window.caches, modelIds, signal,
+            onProgress: p => setStatus(p.text),
+        });
+    };
+    try {
+        if (access !== 'granted') {
+            // The folder can't be looked into until the browser allows it, so this asks before knowing whether it has this size.
+            const yes = await askInChat(`Load the saved model from the folder \u201c${handle.name}\u201d instead of downloading it?`, 'Load from folder', 'Download instead');
+            asked = true;
+            if (!yes) return 'declined';
+            access = await folderAccess(handle, { request: true });   // straight after the click, so the browser may show its prompt
+            if (access !== 'granted') {
+                addMessage('assistant', 'The browser didn\u2019t allow reading that folder, so the model will be downloaded.');
+                return 'none';
+            }
+        }
+        await attempt();
+        return 'loaded';
+    } catch (err) {
+        if (err?.name === 'AbortError') throw err;
+        if (err instanceof NoSavedCopyError) { addMessage('assistant', 'That folder has no saved copy of this size.'); return 'none'; }
+        addMessage('assistant', `${err?.message || 'The saved model couldn\u2019t be loaded.'} ${asked ? 'The model will be downloaded instead.' : ''}`.trim());
+        return 'none';
     }
 }
 

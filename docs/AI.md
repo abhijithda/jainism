@@ -1290,17 +1290,22 @@ ai/
   (`engines/model-files.test.js`) and the real Cache API plus a real folder handle (`test/e2e/core/model-files.test.js`, using a
   small stand-in model); the real multi-GB model and the real folder picker were not exercised. **Verify on his machine:** save
   after a real download, clear site data, load, confirm Local starts with no network traffic.
-- **Built, not yet verified in a real browser: persistent storage and a remembered folder** (`engines/model-folder-memory.js`, hooks in
-  `engines/local.js`, the offer in `ai-panel.js`, a "Forget remembered folder" button in Configure). (1) When Local's first use starts
-  (the click that sends a question, never page load) the engine calls `navigator.storage.persist()` without waiting for the answer;
-  Chrome decides quietly, Firefox may prompt. It only stops automatic eviction, not the reader clearing site data. (2) Save, and Load
-  through the folder picker, store the folder handle in IndexedDB. When Local is about to download (the model isn't completely cached)
-  the panel offers "Load the saved model from <folder>?"; if the browser still grants read access it loads without asking, otherwise
-  one click is needed (permission is usually asked again each session, so truly automatic loading only happens where the browser kept
-  it). Only the selected size's models are restored; if loading fails nothing is cached and the download goes ahead. Save and Load
-  otherwise cover every size; the selected size only decides which one Local starts. Unit tests with fakes; real IndexedDB check in
-  `test/e2e/core/model-folder-memory.test.js` (not run yet). **Verify on his machine:** the prompt appears only with an empty cache,
-  and the permission prompt after a browser restart.
+- **Built, not yet verified in a real browser: persistent storage, a remembered folder, and download-into-a-folder-first** (`engines/model-folder-memory.js`,
+  `downloadModelToFolder` in `engines/model-files.js`, hooks in `engines/local.js`, the offers in `ai-panel.js`, a \"Forget remembered folder\" button in
+  Configure). (1) When Local's first use starts (the click that sends a question, never page load) the engine calls `navigator.storage.persist()`
+  without waiting for the answer; it only stops automatic eviction, not the reader clearing site data. (2) Everything works on the **selected size
+  only**: Save copies just that size's models from the browser's cache, manual Load restores just that size (a folder without it says so), and the
+  manifest keeps other sizes already listed. (3) Just before Local would download (model not completely cached), the panel (a) loads the selected size
+  from the remembered folder if there is one (no question if the browser still allows reading, one click otherwise), and if there is none or it has no copy of
+  this size (b) offers \"download into a folder first, then load from there\" (Chrome/Edge on a computer only; the folder picker or write permission
+  needs that click). `downloadModelToFolder` streams one model (config, file list, weights, tokenizer files, compiled code) to disk, keeps weight files already
+  there at the right size (a resumed download), checks sizes, writes the manifest last; then `loadModelsFromFolder` puts it in the cache. Tokenizer files and the
+  compiled code are best effort (WebLLM fetches a missing one itself); the tokenizer list comes from `tokenizer_files` in mlc-chat-config.json, which is
+  assumed, not yet checked against the real file. It costs disk space twice (folder + browser) and a second pass of copying. Declining, cancelling or any
+  failure leaves the normal browser download to go ahead; Stop stops. Unit tests with fakes (`model-files.test.js`, `model-folder-memory.test.js`,
+  `ai-panel-folder.test.js`); real IndexedDB check in `test/e2e/core/model-folder-memory.test.js` (not run yet). **Verify on his machine:** a real first
+  download into a folder, then clear site data and use the remembered-folder load; the permission prompt after a browser restart; that the tokenizer files
+  were downloaded (folder contents) and Local starts without further downloads.
 - **TODO (decide later):** keep or remove the optional Anthropic backend in the proxy (`BACKEND = "anthropic"`, off by default;
   the free Workers AI backend is the default). He tests with his own Anthropic key meanwhile.
 - **Done (after the tags review, 2026-11-16):** the tag boost already existed (a tag hit counts as 3 body hits) and works with the

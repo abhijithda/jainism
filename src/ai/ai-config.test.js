@@ -277,15 +277,20 @@ describe('local: a model in this browser, or one already on this computer', () =
             expect($('ai-config-load-folder').disabled).toBe(false);
         });
 
-        test('Load says so when the loaded size is not the one selected', async () => {
+        test('Load restores only the selected size, and says a folder without it has none', async () => {
             window.showDirectoryPicker = jest.fn().mockResolvedValue({});
             jest.spyOn(modelFiles, 'loadRecordLookup').mockResolvedValue(() => ({}));
-            jest.spyOn(modelFiles, 'loadModelsFromFolder').mockResolvedValue({ restored: [LOCAL_TIERS.large.model], warnings: [], bytes: 1024 * 1024 });
+            const load = jest.spyOn(modelFiles, 'loadModelsFromFolder').mockResolvedValue({ restored: [LOCAL_TIERS.large.model], warnings: [], bytes: 1024 * 1024 });
             openAiConfig({ section: 'local' });
-            document.getElementById('ai-tier-small').checked = true;
+            document.getElementById('ai-tier-large').checked = true;
             $('ai-config-load-folder').click();
             await flushAll();
-            expect($('ai-config-folder-status').textContent).toMatch(/Loaded Large.*Small.*still download/);
+            expect(load.mock.calls[0][0].modelIds).toEqual([LOCAL_TIERS.large.model, LOCAL_TIERS.large.compat]);
+            expect($('ai-config-folder-status').textContent).toMatch(/Loaded Large.*without downloading/);
+            load.mockRejectedValueOnce(new modelFiles.NoSavedCopyError('That folder has no saved copy of the size you chose.'));
+            $('ai-config-load-folder').click();
+            await flushAll();
+            expect($('ai-config-folder-status').textContent).toMatch(/no saved copy of the size you chose/);
         });
 
         test('Load shows a refused folder\u2019s own explanation', async () => {
@@ -315,12 +320,12 @@ describe('local: a model in this browser, or one already on this computer', () =
             $('ai-config-save-folder').click();
             await flushAll();
             expect($('ai-config-folder-status').textContent).toMatch(/Saved Medium \(5 MB\)/);
-            // every size's normal and compatibility build is offered to save; only fully downloaded ones are written
-            expect(save.mock.calls[0][0].models).toHaveLength(6);
+            // only the selected size's normal and compatibility build are offered to save (fully downloaded ones are written)
+            expect(save.mock.calls[0][0].models.map(m => m.modelId)).toEqual([LOCAL_TIERS.small.model, LOCAL_TIERS.small.compat]);
             save.mockResolvedValueOnce({ saved: [], skipped: [], bytes: 0 });
             $('ai-config-save-folder').click();
             await flushAll();
-            expect($('ai-config-folder-status').textContent).toMatch(/Nothing to save yet.*downloads once/);
+            expect($('ai-config-folder-status').textContent).toMatch(/Nothing to save: the Small model isn.t fully downloaded.*downloads once/);
         });
 
         test('without a folder picker, Load falls back to a file input (a folder chosen with webkitdirectory)', () => {

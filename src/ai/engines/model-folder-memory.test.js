@@ -107,6 +107,13 @@ describe('folderAccess', () => {
         expect(await folderAccess(null)).toBe('denied');
         expect(await folderAccess(undefined, { request: true })).toBe('denied');
     });
+    test('write access is asked for in readwrite mode', async () => {
+        const requestPermission = jest.fn(async () => 'granted');
+        const handle = { queryPermission: jest.fn(async () => 'prompt'), requestPermission };
+        expect(await folderAccess(handle, { request: true, mode: 'readwrite' })).toBe('granted');
+        expect(handle.queryPermission).toHaveBeenCalledWith({ mode: 'readwrite' });
+        expect(requestPermission).toHaveBeenCalledWith({ mode: 'readwrite' });
+    });
     test('refused or failing is "denied"', async () => {
         expect(await folderAccess({ queryPermission: async () => 'prompt', requestPermission: async () => 'denied' }, { request: true })).toBe('denied');
         expect(await folderAccess({ queryPermission: async () => { throw new Error('gone'); } })).toBe('denied');
@@ -157,15 +164,23 @@ describe('local engine: persistence and the saved-folder offer', () => {
         expect(lib.CreateMLCEngine).toHaveBeenCalledTimes(1);
     });
 
-    test('offers the saved folder before downloading, with both builds of the chosen size', async () => {
+    test('offers the saved folder before downloading, with both builds of the chosen size and the one about to be used', async () => {
         const lib = makeLib();
         const order = [];
         lib.CreateMLCEngine = jest.fn(async () => { order.push('download'); return fakeEngine; });
         const beforeDownload = jest.fn(async () => { order.push('offer'); });
         const engine = createLocalEngine({ loadLibrary: async () => lib, modelId: MODEL, compatModelId: 'Test-Model-f32', persist: async () => 'granted', cacheStorage: newCaches() });
         await engine.prepare(undefined, { beforeDownload });
-        expect(beforeDownload).toHaveBeenCalledWith({ modelIds: [MODEL, 'Test-Model-f32'] });
+        expect(beforeDownload).toHaveBeenCalledWith({ modelIds: [MODEL, 'Test-Model-f32'], modelId: MODEL });
         expect(order).toEqual(['offer', 'download']);
+    });
+
+    test('Stop during the offer stops the start instead of downloading', async () => {
+        const lib = makeLib();
+        const abort = Object.assign(new Error('Aborted'), { name: 'AbortError' });
+        const engine = createLocalEngine({ loadLibrary: async () => lib, modelId: MODEL, persist: async () => 'granted', cacheStorage: newCaches() });
+        await expect(engine.prepare(undefined, { beforeDownload: async () => { throw abort; } })).rejects.toMatchObject({ name: 'AbortError' });
+        expect(lib.CreateMLCEngine).not.toHaveBeenCalled();
     });
 
     test('does not offer anything when the model is already in the browser', async () => {

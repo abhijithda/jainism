@@ -73,7 +73,7 @@ function build() {
     folderInput.setAttribute('webkitdirectory', '');
     const folderStatus = el('p', { id: 'ai-config-folder-status', className: 'ai-config-status', role: 'status' });
     tierList.append(
-        el('p', { className: 'ai-config-hint', text: 'The browser keeps the model until its data is cleared. To avoid downloading it again after that, save a copy to a folder and load it back later. The folder you used is remembered on this device: when Local needs to download a model, it offers to load it from that folder first. Saving and loading cover every size that is downloaded or saved; the size selected above only decides which one Local starts.' }),
+        el('p', { className: 'ai-config-hint', text: 'The browser keeps the model until its data is cleared. To avoid downloading it again after that, save a copy to a folder and load it back later. The folder you used is remembered on this device: when Local needs to download a model, it offers to load it from that folder, or to download it into a folder first and load it from there. Saving and loading handle only the size selected above.' }),
         el('div', { className: 'ai-config-row' }, saveFolder, loadFolder, forgetFolderBtn, folderInput),
         folderStatus);
 
@@ -185,6 +185,8 @@ function build() {
     const mb = bytes => `${Math.round(bytes / (1024 * 1024))} MB`;
     const sizeName = modelId => Object.values(LOCAL_TIERS).find(t => t.model === modelId || t.compat === modelId)?.label || modelId;
     const sizeList = ids => [...new Set(ids.map(sizeName))].join(', ');
+    // Save and Load work on the size selected above only (less disk space, less time).
+    const selectedTier = () => LOCAL_TIERS[document.querySelector('input[name="ai-local-tier"]:checked')?.value || loadSettings().aiLocalModel] || LOCAL_TIERS.small;
     const refreshForgetButton = async () => { forgetFolderBtn.hidden = !(await recallFolder()); };
     refreshFolderButton = refreshForgetButton;
 
@@ -198,27 +200,27 @@ function build() {
             const dir = await window.showDirectoryPicker({ mode: 'readwrite', id: 'pooja-model' });
             folderStatus.textContent = 'Preparing\u2026';
             const lookup = await loadRecordLookup();
-            const models = Object.values(LOCAL_TIERS).flatMap(t => [t.model, t.compat])
+            const tier = selectedTier();
+            const models = [tier.model, tier.compat]
                 .map(modelId => ({ modelId, record: lookup(modelId) })).filter(m => m.record);
             const result = await saveModelsToFolder({ models, dir, caches: window.caches, onProgress: p => { folderStatus.textContent = p.text; } });
             const remembered = result.saved.length && await rememberFolder(dir);
             if (remembered) refreshForgetButton();
             folderStatus.textContent = result.saved.length
                 ? `Saved ${sizeList(result.saved)} (${mb(result.bytes)}) to that folder. Keep the folder; \u201cLoad a saved model\u201d puts it back without downloading.${remembered ? ' This device will remember the folder.' : ''}`
-                : 'Nothing to save yet: no model is fully downloaded in this browser. Ask a question with Local first (it downloads once), then save it.';
+                : `Nothing to save: the ${tier.label} model isn\u2019t fully downloaded in this browser. Ask a question with Local first (it downloads once), or choose another size above.`;
         } catch (err) { showFolderError(err); } finally { setFolderBusy(false); }
     });
 
     const loadFrom = async (source, handle) => {
         folderStatus.textContent = 'Checking the folder\u2026';
         const lookup = await loadRecordLookup();
-        const result = await loadModelsFromFolder({ source, recordFor: lookup, caches: window.caches, onProgress: p => { folderStatus.textContent = p.text; } });
+        const tier = selectedTier();
+        const result = await loadModelsFromFolder({ source, recordFor: lookup, caches: window.caches, modelIds: [tier.model, tier.compat], onProgress: p => { folderStatus.textContent = p.text; } });
         const remembered = handle ? await rememberFolder(handle) : false;
         if (remembered) refreshForgetButton();
-        const chosen = LOCAL_TIERS[document.querySelector('input[name="ai-local-tier"]:checked')?.value || loadSettings().aiLocalModel];
-        const hasChosen = !chosen || result.restored.some(id => id === chosen.model || id === chosen.compat);
         folderStatus.textContent = `Loaded ${sizeList(result.restored)} (${mb(result.bytes)}) into this browser.`
-            + (hasChosen ? ' Local will start from it without downloading.' : ` The size selected above (${chosen.label}) wasn\u2019t in that folder, so Local will still download it; choose a size that was loaded to start without downloading.`)
+            + ' Local will start from it without downloading.'
             + (remembered ? ' This device will remember the folder.' : '')
             + (result.warnings.length ? ' ' + result.warnings.join(' ') : '');
     };
