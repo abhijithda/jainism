@@ -76,6 +76,12 @@ describe('remembered folder', () => {
         expect(await recallFolder(null)).toBeNull();
         expect(await forgetFolder(null)).toBe(true);
     });
+    test('an empty handle is never stored', async () => {
+        const idb = fakeIdb();
+        expect(await rememberFolder(null, idb)).toBe(false);
+        expect(await rememberFolder(undefined, idb)).toBe(false);
+        expect(idb.data.size).toBe(0);
+    });
     test('a failing database is not an error', async () => {
         const broken = { open() { const r = {}; Promise.resolve().then(() => { r.error = new Error('blocked'); r.onerror(); }); return r; } };
         expect(await rememberFolder({ name: 'x' }, broken)).toBe(false);
@@ -96,6 +102,10 @@ describe('folderAccess', () => {
         expect(requestPermission).not.toHaveBeenCalled();
         expect(await folderAccess(handle, { request: true })).toBe('granted');
         expect(requestPermission).toHaveBeenCalledWith({ mode: 'read' });
+    });
+    test('no handle is "denied", not an old browser', async () => {
+        expect(await folderAccess(null)).toBe('denied');
+        expect(await folderAccess(undefined, { request: true })).toBe('denied');
     });
     test('refused or failing is "denied"', async () => {
         expect(await folderAccess({ queryPermission: async () => 'prompt', requestPermission: async () => 'denied' }, { request: true })).toBe('denied');

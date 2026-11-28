@@ -198,6 +198,7 @@ describe('loading from a folder', () => {
         const fresh = fakeCaches();
         const r = await loadModelsFromFolder({ source: folderSource(dir), recordFor, caches: fresh, modelIds: [MODEL_ID, 'Other-Model'] });
         expect(r.restored).toEqual([MODEL_ID]);
+        expect(await cachedState(record, fresh)).toEqual({ complete: true, reason: '' });
         const none = fakeCaches();
         await expect(loadModelsFromFolder({ source: folderSource(dir), recordFor, caches: none, modelIds: ['Other-Model'] }))
             .rejects.toThrow(/no saved copy of the size you chose/);

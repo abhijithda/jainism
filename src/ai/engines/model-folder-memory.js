@@ -52,7 +52,7 @@ async function withStore(idb, mode, action) {
 
 /** Remembers a folder handle (from showDirectoryPicker). Never throws: remembering is a convenience. */
 export async function rememberFolder(handle, idb = defaultIdb()) {
-    if (!idb) return false;
+    if (!idb || !handle) return false;
     try { await withStore(idb, 'readwrite', s => s.put(handle, KEY)); return true; } catch (_) { return false; }
 }
 
@@ -72,8 +72,9 @@ export async function forgetFolder(idb = defaultIdb()) {
  * @returns {Promise<'granted'|'prompt'|'denied'>}
  */
 export async function folderAccess(handle, { request = false } = {}) {
+    if (!handle) return 'denied';
     try {
-        if (typeof handle?.queryPermission !== 'function') return 'granted';   // old browser: reading will fail by itself if not allowed
+        if (typeof handle.queryPermission !== 'function') return 'granted';   // old browser: reading will fail by itself if not allowed
         const opts = { mode: 'read' };
         if ((await handle.queryPermission(opts)) === 'granted') return 'granted';
         if (!request) return 'prompt';

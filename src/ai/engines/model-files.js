@@ -190,17 +190,15 @@ async function readManifest(source) {
  */
 export async function loadModelsFromFolder({ source, recordFor, caches, modelIds, onProgress = () => {}, signal }) {
     const manifest = await readManifest(source);
-    if (Array.isArray(modelIds)) {
-        manifest.models = manifest.models.filter(m => modelIds.includes(m?.modelId));
-        if (!manifest.models.length) throw new ModelFolderError('That folder has no saved copy of the size you chose.');
-    }
+    const targetModels = Array.isArray(modelIds) ? manifest.models.filter(m => modelIds.includes(m?.modelId)) : manifest.models;
+    if (Array.isArray(modelIds) && !targetModels.length) throw new ModelFolderError('That folder has no saved copy of the size you chose.');
     const warnings = [];
     if (manifest.webllm && webllmVersion() && manifest.webllm !== webllmVersion()) {
         warnings.push(`It was saved with WebLLM ${manifest.webllm} and this site uses ${webllmVersion()}; anything that doesn\u2019t match is downloaded again.`);
     }
 
     const plan = [];
-    for (const { modelId, entries } of manifest.models) {
+    for (const { modelId, entries } of targetModels) {
         const record = recordFor(modelId);
         const known = Object.values(LOCAL_TIERS).some(t => t.model === modelId || t.compat === modelId);
         if (!record || !known || !Array.isArray(entries)) { warnings.push(`Skipped ${String(modelId).slice(0, 80)}: this site doesn\u2019t offer that model.`); continue; }
